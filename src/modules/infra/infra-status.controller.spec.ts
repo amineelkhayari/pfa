@@ -105,7 +105,7 @@ describe('InfraStatusController.getStatus engine (reads the real engine.puppetee
 
   it('reports the saved headless/browserArgs instead of stale defaults from non-existent flat keys', async () => {
     const map: Record<string, unknown> = {
-      'engine.type': 'whatsapp-web.js',
+      'engine.type': 'baileys',
       'engine.puppeteer.headless': false,
       'engine.puppeteer.args': ['--foo', '--bar'],
       'engine.sessionDataPath': './sess',

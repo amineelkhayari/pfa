@@ -163,7 +163,7 @@ export class InfraConfigController {
         s3CredentialsSet: Boolean(saved.S3_ACCESS_KEY_ID && saved.S3_SECRET_ACCESS_KEY),
       },
       engine: {
-        type: saved.ENGINE_TYPE || 'whatsapp-web.js',
+        type: saved.ENGINE_TYPE || 'baileys',
         headless: saved.PUPPETEER_HEADLESS !== 'false',
         sessionDataPath: saved.SESSION_DATA_PATH || '',
         browserArgs: saved.PUPPETEER_ARGS || '',

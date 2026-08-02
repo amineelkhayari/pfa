@@ -633,7 +633,7 @@ export class PluginLoaderService implements OnModuleInit, OnApplicationBootstrap
     // reads that, not plugin status). Enabling a second engine at runtime would show two "active"
     // engines and desync the factory, so reject anything but the configured active engine.
     if (plugin.manifest.type === PluginType.ENGINE) {
-      const activeEngine = this.configService.get<string>('engine.type') ?? 'whatsapp-web.js';
+      const activeEngine = this.configService.get<string>('engine.type') ?? 'baileys';
       if (pluginId !== activeEngine) {
         throw new Error(
           `Engine "${pluginId}" is not the active engine ("${activeEngine}"). Set engine.type and restart to switch engines.`,

@@ -122,7 +122,7 @@ export class InfraStatusController {
     // backend. `path` is kept (additive) so the dashboard's local-mode rendering is unchanged.
     const storageBucket = this.configService.get<string>('storage.s3.bucket');
 
-    const engineType = this.configService.get<string>('engine.type', 'whatsapp-web.js');
+    const engineType = this.configService.get<string>('engine.type', 'baileys');
     // whatsapp-web.js only: surface the actual WhatsApp Web build (not the library version) so the
     // dashboard shows which build is running. Trigger the auto-resolve so the panel is populated even
     // before a session starts; the result is cached, so this is a one-time fetch. (#488)

@@ -9,17 +9,13 @@ import { LidMappingStoreService } from './identity/lid-mapping-store.service';
 
 describe('EngineFactory', () => {
   const engineBlob = {
-    type: 'whatsapp-web.js',
-    sessionDataPath: '/var/data/sessions',
-    puppeteer: { headless: true, args: ['--no-sandbox'], executablePath: '/usr/bin/chromium-browser' },
+    type: 'baileys',
+    baileys: { authDir: '/var/data/baileys' },
   };
   const buildConfigService = (overrides: Record<string, unknown> = {}): ConfigService => {
     const values: Record<string, unknown> = {
-      'engine.type': 'whatsapp-web.js',
-      'engine.sessionDataPath': '/var/data/sessions',
-      'engine.puppeteer.headless': true,
-      'engine.puppeteer.args': ['--no-sandbox'],
-      'engine.puppeteer.executablePath': '/usr/bin/chromium-browser',
+      'engine.type': 'baileys',
+      'engine.baileys.authDir': '/var/data/baileys',
       engine: engineBlob,
       ...overrides,
     };
@@ -68,7 +64,7 @@ describe('EngineFactory', () => {
     });
   });
 
-  it('registers the built-in engine with the opaque engine config blob (#219 guarantee moves to context.config)', async () => {
+  it('registers the built-in baileys engine with the opaque engine config blob', async () => {
     const registerBuiltInPlugin = jest.fn();
     const pluginLoader = {
       registerBuiltInPlugin,
@@ -80,13 +76,13 @@ describe('EngineFactory', () => {
     await factory.onModuleInit();
 
     expect(registerBuiltInPlugin).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'whatsapp-web.js', type: PluginType.ENGINE }),
+      expect.objectContaining({ id: 'baileys', type: PluginType.ENGINE }),
       expect.anything(),
       engineBlob,
     );
   });
 
-  it('registers the built-in baileys engine alongside whatsapp-web.js with the opaque config blob', async () => {
+  it('registers only the built-in baileys engine', async () => {
     const registerBuiltInPlugin = jest.fn();
     const pluginLoader = {
       registerBuiltInPlugin,
@@ -98,8 +94,7 @@ describe('EngineFactory', () => {
     await factory.onModuleInit();
 
     const registeredIds = registerBuiltInPlugin.mock.calls.map(call => (call as [{ id: string }])[0].id);
-    expect(registeredIds).toContain('whatsapp-web.js');
-    expect(registeredIds).toContain('baileys');
+    expect(registeredIds).toEqual(['baileys']);
   });
 
   it('falls back to the direct adapter when no engine plugin is available', () => {
