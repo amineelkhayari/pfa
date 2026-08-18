@@ -71,6 +71,10 @@ export function withPinnedBrowserLocale(args: string[]): string[] {
 export default () => ({
   port: parseInt(process.env.PORT || '2785', 10),
 
+  shopify: {
+    afterAuthRedirectUrl: process.env.SHOPIFY_AFTER_AUTH_REDIRECT_URL || '/stores?shopify=connected',
+  },
+
   // Root of the persistent state tree (see DEFAULT_DATA_DIR). Read by PluginStorageService for the
   // plugin registry and per-plugin storage; the other data paths keep their own env-specific keys.
   dataDir: DEFAULT_DATA_DIR,

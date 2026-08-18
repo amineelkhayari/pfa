@@ -10,9 +10,7 @@ import react from '@vitejs/plugin-react';
 // gateway moved on. The sidebar hid the drift by replacing the build-time value with the live
 // version from the API (see Layout.tsx); the Login screen has no session yet, so it shows this
 // constant verbatim. APP_VERSION env still overrides if explicitly provided.
-const { version: pkgVersion } = JSON.parse(
-  readFileSync(new URL('../package.json', import.meta.url), 'utf-8'),
-) as {
+const { version: pkgVersion } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8')) as {
   version: string;
 };
 
@@ -26,6 +24,9 @@ export default defineConfig({
   },
   server: {
     port: 2886,
+    // Allow temporary Cloudflare Tunnel subdomains during local development.
+    // The leading dot includes the domain itself and all its subdomains.
+    allowedHosts: ['.trycloudflare.com'],
     proxy: {
       '/api': {
         target: 'http://localhost:2785',

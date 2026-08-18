@@ -95,6 +95,118 @@ export interface MessageTemplate {
   createdAt: string;
   updatedAt: string;
 }
+export interface Store {
+  id: string;
+  name: string;
+  ownerName?: string | null;
+  email: string;
+  phone?: string | null;
+  language: string;
+  timezone: string;
+  currency: string;
+  settings?: {
+    notifications?: boolean;
+    orderPrefix?: string;
+    shopDomain?: string;
+    clientId?: string;
+    clientSecret?: string;
+    scopes?: string;
+    redirectUri?: string;
+    webhookBaseUrl?: string;
+    connected?: boolean;
+    clientSecretConfigured?: boolean;
+    importedProducts?: number;
+    importedOrders?: number;
+    lastSyncAt?: string;
+  } | null;
+  provider: 'shopify' | 'woocommerce' | 'youcan' | 'prestashop';
+  status: 'active' | 'inactive' | 'suspended';
+  sessionId: string;
+  session?: Session;
+  createdAt: string;
+  updatedAt: string;
+  merchant: {
+    id: string;
+    name: string;
+    email: string;
+    phone?: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+  merchantId: string;
+}
+
+export interface Merchant {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+}
+
+export type MerchantPayload = Pick<Merchant, 'name' | 'email'> & { phone?: string };
+
+export interface StorePayload {
+  merchantId: string;
+  sessionId: string;
+  name: string;
+  provider: Store['provider'];
+  ownerName?: string;
+  email: string;
+  phone?: string;
+  language?: string;
+  timezone?: string;
+  currency?: string;
+  status?: Store['status'];
+  settings?: Store['settings'];
+}
+
+export interface StoreProduct {
+  id: string;
+  shopifyProductId: string;
+  title: string;
+  description?: string | null;
+  vendor?: string | null;
+  productType?: string | null;
+  status: string;
+  tags?: string[] | null;
+  imageUrl?: string | null;
+  variants?: Array<Record<string, unknown>> | null;
+  price: number;
+  shopifyUpdatedAt: string;
+}
+
+export interface StoreOrder {
+  id: string;
+  shopifyOrderId: string;
+  orderNumber?: string | null;
+  customerName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  totalPrice: number;
+  currency: string;
+  financialStatus?: string | null;
+  fulfillmentStatus?: string | null;
+  status: string;
+  tags?: string[] | null;
+  lineItems?: Array<Record<string, unknown>> | null;
+  shippingAddress?: Record<string, unknown> | null;
+  shopifyCreatedAt: string;
+  confirmationStatus: string;
+  whatsappMessageId?: string | null;
+  confirmationSentAt?: string | null;
+  confirmationError?: string | null;
+}
+
+export interface OrderConfirmationSummary {
+  total: number;
+  pending: number;
+  confirmed: number;
+  cancelled: number;
+  failed: number;
+  notSent: number;
+  totalStores: number;
+  totalProducts: number;
+}
 
 export interface TemplatePayload {
   name: string;
@@ -749,6 +861,50 @@ export const webhookApi = {
     request<void>(`/sessions/${sessionId}/webhooks/${id}`, { method: 'DELETE' }),
   test: (sessionId: string, id: string) =>
     request<{ success: boolean; statusCode?: number; error?: string }>(`/sessions/${sessionId}/webhooks/${id}/test`, {
+      method: 'POST',
+    }),
+};
+
+// =============================================================================
+// Stores API
+// =============================================================================
+
+export const storesApi = {
+  listAll: () => request<Store[]>('/stores'),
+  confirmationSummary: (filters?: { days?: number; type?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.days) params.set('days', String(filters.days));
+    if (filters?.type && filters.type !== 'all') params.set('type', filters.type);
+    const query = params.toString();
+    return request<OrderConfirmationSummary>(`/stores/orders/confirmation-summary${query ? `?${query}` : ''}`);
+  },
+  get: (storeId: string) => request<Store>(`/stores/${storeId}`),
+  create: (data: StorePayload) =>
+    request<Store>('/stores', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  update: (id: string, data: Partial<StorePayload>) =>
+    request<Store>(`/stores/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  delete: (id: string) => request<void>(`/stores/${id}`, { method: 'DELETE' }),
+  products: (id: string) => request<StoreProduct[]>(`/stores/${id}/products`),
+  orders: (id: string) => request<StoreOrder[]>(`/stores/${id}/orders`),
+  remindOrder: (storeId: string, orderId: string) =>
+    request<StoreOrder>(`/stores/${storeId}/orders/${orderId}/remind`, { method: 'POST' }),
+};
+
+export const merchantsApi = {
+  listAll: () => request<Merchant[]>('/merchants'),
+  create: (data: MerchantPayload) => request<Merchant>('/merchants', { method: 'POST', body: JSON.stringify(data) }),
+};
+
+export const shopifyApi = {
+  installUrl: (storeId: string) => `${API_BASE_URL}/shopify/oauth/install?storeId=${encodeURIComponent(storeId)}`,
+  sync: (storeId: string) =>
+    request<{ storeId: string; products: number; orders: number; lastSyncAt: string }>(`/shopify/${storeId}/sync`, {
       method: 'POST',
     }),
 };

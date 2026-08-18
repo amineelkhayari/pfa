@@ -58,6 +58,8 @@
     "sessions": "Sessions",
     "chats": "Chats",
     "webhooks": "Webhooks",
+        "stores": "stores",
+
     "templates": "Templates",
     "apiKeys": "API Keys",
     "messageTester": "Message Tester",
@@ -441,6 +443,48 @@
       "all": "All events"
     }
   },
+"stores": {
+  "title": "Stores",
+  "subtitle": "Manage your connected ecommerce stores",
+  "addStore": "Add Store",
+  "editStore": "Edit Store",
+  "deleteStore": "Delete Store",
+  "deleteConfirm": "Are you sure you want to delete this store?",
+
+  "columns": {
+    "name": "Store",
+    "owner": "Owner",
+    "email": "Email",
+    "phone": "Phone",
+    "currency": "Currency",
+    "language": "Language",
+    "timezone": "Timezone",
+    "integration": "Integration",
+    "status": "Status",
+    "actions": "Actions"
+  },
+
+  "empty": {
+    "title": "No stores connected",
+    "description": "Connect a store to start managing your ecommerce integrations"
+  },
+
+  "actions": {
+    "edit": "Edit",
+    "delete": "Delete"
+  },
+
+  "status": {
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+
+  "integrations": {
+    "none": "None",
+    "shopify": "Shopify",
+    "woocommerce": "WooCommerce"
+  }
+},
   "templates": {
     "title": "Templates",
     "subtitle": "Create reusable message templates for each WhatsApp session",

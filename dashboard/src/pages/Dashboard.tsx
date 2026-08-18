@@ -1,8 +1,21 @@
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 import { lazyWithRetry as lazy } from '../utils/lazyWithRetry';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { MessageSquare, Send, Webhook, Activity, Loader2 } from 'lucide-react';
+import {
+  MessageSquare,
+  Send,
+  Webhook,
+  Activity,
+  Loader2,
+  ShoppingCart,
+  Clock3,
+  CircleCheck,
+  XCircle,
+  TriangleAlert,
+  Store,
+  Package,
+} from 'lucide-react';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import {
   useSessionsQuery,
@@ -10,6 +23,7 @@ import {
   useWebhooksQuery,
   useStopSessionMutation,
   useStatsOverviewQuery,
+  useOrderConfirmationSummaryQuery,
 } from '../hooks/queries';
 import { PageHeader } from '../components/PageHeader';
 import './Dashboard.css';
@@ -28,6 +42,12 @@ export function Dashboard() {
   // /stats/overview is ADMIN-only; for a non-admin key it 403s → overview stays undefined and the
   // message cards fall back to '—' without breaking the (un-gated) session cards.
   const { data: overview } = useStatsOverviewQuery();
+  const [orderDays, setOrderDays] = useState(30);
+  const [orderType, setOrderType] = useState('all');
+  const { data: orderSummary } = useOrderConfirmationSummaryQuery({
+    days: orderDays || undefined,
+    type: orderType,
+  });
   const stopMutation = useStopSessionMutation();
   const messagesToday = overview ? overview.messages.today.sent + overview.messages.today.received : '—';
   const totalMessages = overview ? overview.messages.sent + overview.messages.received : '—';
@@ -57,6 +77,16 @@ export function Dashboard() {
     { label: t('dashboard.stats.messagesToday'), value: messagesToday, icon: Send },
     { label: t('dashboard.stats.webhooksConfigured'), value: webhookCount, icon: Webhook },
     { label: t('dashboard.stats.totalMessages'), value: totalMessages, icon: Activity },
+  ];
+
+  const orderCards = [
+    { label: 'Total stores', value: orderSummary?.totalStores ?? 0, icon: Store, tone: 'total' },
+    { label: 'Total products', value: orderSummary?.totalProducts ?? 0, icon: Package, tone: 'total' },
+    { label: 'Total orders', value: orderSummary?.total ?? 0, icon: ShoppingCart, tone: 'total' },
+    { label: 'Awaiting customer', value: orderSummary?.pending ?? 0, icon: Clock3, tone: 'pending' },
+    { label: 'Confirmed', value: orderSummary?.confirmed ?? 0, icon: CircleCheck, tone: 'confirmed' },
+    { label: 'Cancelled', value: orderSummary?.cancelled ?? 0, icon: XCircle, tone: 'cancelled' },
+    { label: 'Failed', value: orderSummary?.failed ?? 0, icon: TriangleAlert, tone: 'failed' },
   ];
 
   const formatLastActive = (date?: string | null) => {
@@ -118,6 +148,53 @@ export function Dashboard() {
           </div>
         ))}
       </div>
+
+      <section className="commerce-summary">
+        <div className="section-header">
+          <div>
+            <h2>Customer confirmations</h2>
+            <span className="section-subtitle">Live Shopify order responses received through WhatsApp</span>
+          </div>
+          <div className="commerce-actions">
+            <label>
+              <span>Date</span>
+              <select value={orderDays} onChange={event => setOrderDays(Number(event.target.value))}>
+                <option value={0}>All time</option>
+                <option value={1}>Today</option>
+                <option value={7}>Last 7 days</option>
+                <option value={30}>Last 30 days</option>
+                <option value={90}>Last 90 days</option>
+              </select>
+            </label>
+            <label>
+              <span>Type</span>
+              <select value={orderType} onChange={event => setOrderType(event.target.value)}>
+                <option value="all">All confirmations</option>
+                <option value="pending">Awaiting customer</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="failed">Failed</option>
+                <option value="not_sent">Not sent</option>
+              </select>
+            </label>
+            <button className="btn-sm" onClick={() => navigate('/stores')}>
+              View orders
+            </button>
+          </div>
+        </div>
+        <div className="commerce-stats-grid">
+          {orderCards.map(({ label, value, icon: Icon, tone }) => (
+            <div key={label} className={`stat-card commerce-stat ${tone}`}>
+              <Icon className="stat-watermark" />
+              <div className="stat-header">
+                <span className="stat-label">{label}</span>
+                <Icon size={20} className="stat-icon" />
+              </div>
+              <div className="stat-value">{value.toLocaleString()}</div>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <Suspense fallback={null}>
         <DashboardCharts />

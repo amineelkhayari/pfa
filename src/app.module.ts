@@ -40,6 +40,10 @@ import { PluginsApiModule } from './modules/plugins/plugins.module';
 import { AgentToolsModule } from './core/agent-tools/agent-tools.module';
 import { IntegrationModule } from './modules/integration/integration.module';
 import { SearchModule } from './modules/search/search.module';
+import { MerchantModule } from './modules/merchant/merchant.module';
+import { StoreModule } from './modules/stores/store.module';
+import { EngineEcomModule } from './ecomEngine/engin.ecom.module';
+import { ShopifyModule } from './modules/shopify/shopify.module';
 
 // Only import QueueModule if explicitly enabled to avoid Redis connection errors
 const queueModules: Array<Type | DynamicModule> = [];
@@ -162,6 +166,12 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
             __dirname + '/engine/**/*.entity{.ts,.js}',
             __dirname + '/modules/integration/**/*.entity{.ts,.js}',
             __dirname + '/modules/status-store/**/*.entity{.ts,.js}',
+            // AJOUTER
+            __dirname + '/modules/merchant/**/*.entity{.ts,.js}',
+            __dirname + '/modules/stores/**/*.entity{.ts,.js}',
+            __dirname + '/modules/shopify/**/*.entity{.ts,.js}',
+
+            // __dirname + '/modules/stores/**/*.entity{.ts,.js}',
           ],
           migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
           logging: configService.get<boolean>('dataDatabase.logging', false),
@@ -297,6 +307,10 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
     PluginsApiModule, // Phase 5: Plugins API
     AgentToolsModule, // Agent-invocable tool registry (protocol-neutral)
     IntegrationModule, // Integration Fabric: @Public provider-webhook ingress + fast-ack pipeline
+    MerchantModule,
+    StoreModule,
+    ShopifyModule,
+    EngineEcomModule,
     ...searchModules, // Global message search (opt-out via SEARCH_ENABLED=false; default ON)
     ...mcpModules, // MCP Streamable-HTTP server (opt-in via MCP_ENABLED=true)
     ...serveStaticModules, // Bundled dashboard SPA (production single-port setup)

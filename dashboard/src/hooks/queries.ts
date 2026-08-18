@@ -15,6 +15,10 @@ import {
   type StatsPeriod,
   type CreateInstanceInput,
   type UpdateInstanceInput,
+  storesApi,
+  merchantsApi,
+  type StorePayload,
+  type MerchantPayload,
 } from '../services/api';
 
 // ── Query Keys ────────────────────────────────────────────────────────
@@ -27,8 +31,7 @@ export const queryKeys = {
   webhooks: ['webhooks'] as const,
   templates: (sessionId: string) => ['sessions', sessionId, 'templates'] as const,
   apiKeys: ['apiKeys'] as const,
-  logs: (params: { severity?: string; page: number; limit: number }) =>
-    ['logs', params] as const,
+  logs: (params: { severity?: string; page: number; limit: number }) => ['logs', params] as const,
   infraStatus: ['infra', 'status'] as const,
   plugins: ['plugins'] as const,
   pluginInstances: (pluginId: string) => ['plugins', pluginId, 'instances'] as const,
@@ -36,6 +39,10 @@ export const queryKeys = {
   currentEngine: ['engines', 'current'] as const,
   statsOverview: ['stats', 'overview'] as const,
   statsMessages: (period: string) => ['stats', 'messages', period] as const,
+  stores: ['stores'] as const,
+  orderConfirmationSummary: (filters: { days?: number; type?: string }) =>
+    ['stores', 'orders', 'confirmation-summary', filters] as const,
+  merchants: ['merchants'] as const,
 };
 
 // ── Session Queries ───────────────────────────────────────────────────
@@ -98,6 +105,59 @@ export function useWebhooksQuery() {
   });
 }
 
+export function useStoresQuery() {
+  return useQuery({
+    queryKey: queryKeys.stores,
+    queryFn: storesApi.listAll,
+    staleTime: 30_000,
+  });
+}
+
+export function useOrderConfirmationSummaryQuery(filters: { days?: number; type?: string }) {
+  return useQuery({
+    queryKey: queryKeys.orderConfirmationSummary(filters),
+    queryFn: () => storesApi.confirmationSummary(filters),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useMerchantsQuery() {
+  return useQuery({ queryKey: queryKeys.merchants, queryFn: merchantsApi.listAll, staleTime: 30_000 });
+}
+
+export function useCreateMerchantMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: MerchantPayload) => merchantsApi.create(data),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: queryKeys.merchants }),
+  });
+}
+
+export function useCreateStoreMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: StorePayload) => storesApi.create(data),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: queryKeys.stores }),
+  });
+}
+
+export function useUpdateStoreMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<StorePayload> }) => storesApi.update(id, data),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: queryKeys.stores }),
+  });
+}
+
+export function useDeleteStoreMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => storesApi.delete(id),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: queryKeys.stores }),
+  });
+}
+
 export function useCreateWebhookMutation() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -123,8 +183,7 @@ export function useUpdateWebhookMutation() {
 export function useDeleteWebhookMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (params: { sessionId: string; id: string }) =>
-      webhookApi.delete(params.sessionId, params.id),
+    mutationFn: (params: { sessionId: string; id: string }) => webhookApi.delete(params.sessionId, params.id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.webhooks });
     },
@@ -167,8 +226,7 @@ export function useUpdateTemplateMutation() {
 export function useDeleteTemplateMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (params: { sessionId: string; id: string }) =>
-      templateApi.delete(params.sessionId, params.id),
+    mutationFn: (params: { sessionId: string; id: string }) => templateApi.delete(params.sessionId, params.id),
     onSuccess: (_template, params) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.templates(params.sessionId) });
     },
@@ -188,8 +246,13 @@ export function useApiKeysQuery() {
 export function useCreateApiKeyMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; role: string; allowedIps?: string[]; allowedSessions?: string[]; expiresAt?: string }) =>
-      apiKeyApi.create(data),
+    mutationFn: (data: {
+      name: string;
+      role: string;
+      allowedIps?: string[];
+      allowedSessions?: string[];
+      expiresAt?: string;
+    }) => apiKeyApi.create(data),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys });
     },

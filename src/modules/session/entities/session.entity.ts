@@ -1,6 +1,7 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToOne } from 'typeorm';
 import { DateTransformer } from '../../../common/transformers/date.transformer';
 import { jsonColumnType, dateColumnType } from '../../../common/utils/column-types';
+import { Store } from '../../stores/entities/store.entity';
 
 export enum SessionStatus {
   CREATED = 'created',
@@ -63,4 +64,7 @@ export class Session {
    * is runtime state that resets when the engine re-initializes.
    */
   lastError?: string;
+
+  @OneToOne(() => Store, store => store.session)
+  store: Store;
 }
