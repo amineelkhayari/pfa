@@ -5,11 +5,12 @@ import { WebhookResponseDto } from './dto';
 import { WebhookDeliveryFailure } from './entities/webhook-delivery-failure.entity';
 import { RequireRole, CurrentApiKey } from '../auth/decorators/auth.decorators';
 import { ApiKey, ApiKeyRole } from '../auth/entities/api-key.entity';
+import { PlanUsageService } from '../auth/plan-usage.service';
 
 @ApiTags('webhooks')
 @Controller('webhooks')
 export class WebhooksListController {
-  constructor(private readonly webhookService: WebhookService) {}
+  constructor(private readonly webhookService: WebhookService, private readonly planUsage: PlanUsageService) {}
 
   @Get('delivery-failures')
   @RequireRole(ApiKeyRole.ADMIN)
@@ -53,8 +54,9 @@ export class WebhooksListController {
   ): Promise<WebhookResponseDto[]> {
     // Scope to the key's allowedSessions so a session-restricted key cannot enumerate every
     // session's webhook URLs. A null/empty allowlist (e.g. ADMIN) still sees all.
+    const sessionScope = await this.planUsage.resolveSessionScope(apiKey?.allowedSessions);
     return WebhookResponseDto.fromEntities(
-      await this.webhookService.findAll(apiKey?.allowedSessions, {
+      await this.webhookService.findAll(sessionScope ?? null, {
         limit: limit ? parseInt(limit, 10) : undefined,
         offset: offset ? parseInt(offset, 10) : undefined,
       }),

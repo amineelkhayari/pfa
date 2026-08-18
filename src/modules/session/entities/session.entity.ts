@@ -19,6 +19,9 @@ export class Session {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  userId: string | null;
+
   @Column({ type: 'varchar', length: 100, unique: true })
   name: string;
 

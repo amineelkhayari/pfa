@@ -282,6 +282,7 @@ export class WebhookService implements OnModuleInit, OnModuleDestroy {
     // A session-restricted key only sees its own sessions' webhooks; an unrestricted key
     // (null/empty allowlist, e.g. ADMIN) sees all — mirroring the ApiKeyGuard allowedSessions model.
     const { limit, offset } = resolveListWindow(opts.limit, opts.offset);
+    if (Array.isArray(allowedSessions) && allowedSessions.length === 0) return [];
     const options: FindManyOptions<Webhook> = { order: { createdAt: 'DESC' }, take: limit, skip: offset };
     if (allowedSessions && allowedSessions.length > 0) {
       options.where = { sessionId: In(allowedSessions) };

@@ -128,6 +128,17 @@
   margin-bottom: 2rem;
 }
 
+.dashboard .plan-usage { margin-bottom: 2rem; }
+.dashboard .usage-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+.dashboard .usage-item { background: var(--bg-white); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
+.dashboard .usage-item > div:first-child { display: flex; justify-content: space-between; gap: .75rem; font-size: .78rem; color: var(--text-secondary); }
+.dashboard .usage-item strong { color: var(--text-primary); white-space: nowrap; }
+.dashboard .usage-track { height: 7px; background: var(--bg-light); border-radius: 999px; overflow: hidden; margin-top: .75rem; }
+.dashboard .usage-track span { display: block; height: 100%; background: var(--primary); border-radius: inherit; }
+
+@media (max-width: 900px) { .dashboard .usage-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .dashboard .usage-grid { grid-template-columns: 1fr; } }
+
 .dashboard .commerce-stats-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

@@ -8,6 +8,9 @@ export class SearchService {
   constructor(private readonly registry: SearchProviderRegistry) {}
 
   async search(query: SearchQuery, callerSessionIds?: string[]): Promise<SearchResults> {
+    if (callerSessionIds && callerSessionIds.length === 0) {
+      return { hits: [], total: 0, tookMs: 0, provider: this.registry.active()?.id ?? 'none' };
+    }
     const provider = this.registry.active();
     if (!provider) throw new NotImplementedException('Search is not configured (no active search provider).');
     // Auth scoping is authoritative — a caller cannot override it via the query.

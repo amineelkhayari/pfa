@@ -24,6 +24,7 @@ import {
   useStopSessionMutation,
   useStatsOverviewQuery,
   useOrderConfirmationSummaryQuery,
+  useAccountUsageQuery,
 } from '../hooks/queries';
 import { PageHeader } from '../components/PageHeader';
 import './Dashboard.css';
@@ -48,6 +49,7 @@ export function Dashboard() {
     days: orderDays || undefined,
     type: orderType,
   });
+  const { data: accountUsage } = useAccountUsageQuery();
   const stopMutation = useStopSessionMutation();
   const messagesToday = overview ? overview.messages.today.sent + overview.messages.today.received : '—';
   const totalMessages = overview ? overview.messages.sent + overview.messages.received : '—';
@@ -148,6 +150,34 @@ export function Dashboard() {
           </div>
         ))}
       </div>
+
+      {accountUsage && (
+        <section className="plan-usage">
+          <div className="section-header">
+            <div>
+              <h2>{accountUsage.plan === 'pro' ? 'Pro plan' : 'Free plan'}</h2>
+              <span className="section-subtitle">Current monthly subscription usage</span>
+            </div>
+            {accountUsage.plan === 'free' && <button className="btn-sm">Upgrade to Pro · $5/month</button>}
+          </div>
+          <div className="usage-grid">
+            {([
+              ['WhatsApp sessions', 'sessions'],
+              ['Connected stores', 'stores'],
+              ['Messages sent', 'sentMessages'],
+              ['Messages received', 'receivedMessages'],
+            ] as const).map(([label, key]) => {
+              const used = accountUsage.usage[key];
+              const limit = accountUsage.limits[key];
+              const percent = Math.min(100, Math.round((used / limit) * 100));
+              return <div className="usage-item" key={key}>
+                <div><span>{label}</span><strong>{used.toLocaleString()} / {limit.toLocaleString()}</strong></div>
+                <div className="usage-track"><span style={{ width: `${percent}%` }} /></div>
+              </div>;
+            })}
+          </div>
+        </section>
+      )}
 
       <section className="commerce-summary">
         <div className="section-header">

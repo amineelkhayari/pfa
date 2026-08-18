@@ -76,6 +76,34 @@
   text-align: left;
 }
 
+.login-container .auth-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.35rem;
+  margin-bottom: 1.25rem;
+  padding: 0.3rem;
+  background: var(--bg-light);
+  border-radius: var(--radius);
+}
+
+.login-container .auth-tabs button {
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  padding: 0.6rem 0.25rem;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.login-container .auth-tabs button.active {
+  color: var(--text-primary);
+  background: var(--bg-white);
+  box-shadow: var(--shadow-sm);
+  font-weight: 600;
+}
+
+.login-container .auth-error { margin: -0.75rem 0 1rem; }
+
 .login-container [dir='rtl'] .login-form {
   text-align: right;
 }

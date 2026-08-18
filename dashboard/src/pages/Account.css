@@ -1,0 +1,36 @@
+.account-page { padding: 2rem; }
+.account-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1.5rem; max-width: 1000px; }
+.account-card { background: var(--bg-white); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 1rem; }
+.account-card h2 { margin: 0 0 .5rem; }
+.account-card label { display: flex; flex-direction: column; gap: .4rem; font-size: .8rem; color: var(--text-secondary); }
+.account-card input, .account-card select { padding: .75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-white); color: var(--text-primary); }
+.account-primary { border: 0; border-radius: 8px; padding: .75rem 1rem; background: var(--primary); color: white; font-weight: 600; cursor: pointer; }
+.account-secondary { border: 1px solid var(--border); border-radius: 8px; padding: .75rem 1rem; background: var(--bg-white); color: var(--text-primary); font-weight: 600; cursor: pointer; }
+.billing-actions { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
+.billing-error { color: var(--error) !important; }
+.account-success { color: var(--primary); font-size: .8rem; }
+.subscription-card .plan-pill { align-self: flex-start; text-transform: uppercase; padding: .35rem .7rem; border-radius: 999px; background: var(--bg-light); font-size: .75rem; font-weight: 700; }
+.subscription-card .plan-pill.pro { background: rgba(37,211,102,.12); color: var(--primary); }
+.subscription-card p, .subscription-card small { color: var(--text-secondary); }
+@media (max-width: 760px) { .account-grid { grid-template-columns: 1fr; } }
+.payment-settings-page { max-width: 1200px; }
+.payment-overview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.25rem; }
+.payment-overview > div { display: flex; align-items: center; gap: .8rem; padding: 1rem; border: 1px solid var(--border); background: var(--bg-white); border-radius: 12px; }
+.payment-overview svg, .payment-panel-title svg { color: var(--primary); }
+.payment-overview span, .payment-tabs button span { display: flex; flex-direction: column; gap: .2rem; }
+.payment-overview small, .payment-panel-title p, .payment-field small { color: var(--text-secondary); }
+.payment-layout { display: grid; grid-template-columns: 240px minmax(0, 700px); gap: 1.25rem; align-items: start; }
+.payment-tabs { display: flex; flex-direction: column; gap: .5rem; }
+.payment-tabs button { display: flex; gap: .75rem; align-items: center; text-align: left; border: 1px solid transparent; border-radius: 10px; padding: .85rem; color: var(--text-secondary); background: transparent; cursor: pointer; }
+.payment-tabs button.active { color: var(--primary); border-color: var(--border); background: var(--bg-white); box-shadow: var(--shadow-sm); }
+.payment-tabs button span { font-weight: 650; }
+.payment-tabs button small { font-weight: 400; opacity: .8; }
+.payment-panel { min-height: 430px; }
+.payment-panel-title { display: flex; gap: .8rem; align-items: flex-start; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
+.payment-panel-title h2, .payment-panel-title p { margin: 0; }
+.payment-panel-title p { margin-top: .35rem; font-size: .85rem; }
+.provider-toggle { flex-direction: row !important; justify-content: space-between; align-items: center; padding: 1rem; border: 1px solid var(--border); border-radius: 10px; }
+.provider-toggle span { display: flex; flex-direction: column; gap: .2rem; }
+.provider-toggle input { width: 20px; height: 20px; }
+.payment-save { display: flex; align-items: center; gap: 1rem; margin-top: auto; padding-top: .5rem; }
+@media (max-width: 800px) { .payment-overview { grid-template-columns: 1fr; } .payment-layout { grid-template-columns: 1fr; } .payment-tabs { flex-direction: row; overflow-x: auto; } .payment-tabs button { min-width: 150px; } }

@@ -44,6 +44,7 @@ import { MerchantModule } from './modules/merchant/merchant.module';
 import { StoreModule } from './modules/stores/store.module';
 import { EngineEcomModule } from './ecomEngine/engin.ecom.module';
 import { ShopifyModule } from './modules/shopify/shopify.module';
+import { BillingModule } from './modules/billing/billing.module';
 
 // Only import QueueModule if explicitly enabled to avoid Redis connection errors
 const queueModules: Array<Type | DynamicModule> = [];
@@ -139,6 +140,7 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
           entities: [
             __dirname + '/modules/auth/**/*.entity{.ts,.js}',
             __dirname + '/modules/audit/**/*.entity{.ts,.js}',
+            __dirname + '/modules/billing/**/*.entity{.ts,.js}',
           ],
           // Dedicated migrations dir for the main connection only (must NOT run the
           // data-connection migrations, which target session/webhook/message tables).
@@ -310,6 +312,7 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
     MerchantModule,
     StoreModule,
     ShopifyModule,
+    BillingModule,
     EngineEcomModule,
     ...searchModules, // Global message search (opt-out via SEARCH_ENABLED=false; default ON)
     ...mcpModules, // MCP Streamable-HTTP server (opt-in via MCP_ENABLED=true)

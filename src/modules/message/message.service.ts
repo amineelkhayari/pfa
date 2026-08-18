@@ -20,6 +20,7 @@ import { parseWaId } from '../../engine/identity/wa-id';
 import { resolveFeatureFlags } from '../../config/feature-flags';
 import { LidMappingStoreService } from '../../engine/identity/lid-mapping-store.service';
 import { isUniqueConstraintError } from '../../common/utils/unique-constraint.util';
+import { PlanUsageService } from '../auth/plan-usage.service';
 
 export interface GetMessagesOptions {
   chatId?: string;
@@ -62,6 +63,8 @@ export class MessageService {
     private readonly lidMappingStore: LidMappingStoreService,
     @Optional()
     private readonly configService?: ConfigService,
+    @Optional()
+    private readonly planUsage?: PlanUsageService,
   ) {}
 
   async sendText(sessionId: string, dto: SendTextMessageDto): Promise<MessageResponseDto> {
@@ -124,6 +127,7 @@ export class MessageService {
     error: unknown,
   ): Promise<never> {
     await this.saveFailedMessage(message);
+    await this.planUsage?.releaseOutgoingMessage(sessionId);
     // Sanitize the hook payload: an SSRF block's raw .message names the resolved internal address
     // (a recon/DNS-rebind oracle) — the client-facing throw below already maps it to a generic
     // message via toClientFacingError, and the message:failed hook must not expose more than the
@@ -565,8 +569,13 @@ export class MessageService {
       status?: MessageStatus;
       metadata?: Record<string, unknown>;
     },
+    quotaAlreadyReserved = false,
   ): Promise<Message> {
     const session = await this.sessionService.findOne(sessionId);
+    const reserved = quotaAlreadyReserved || ((await this.planUsage?.reserveOutgoingMessage(sessionId)) ?? true);
+    if (!reserved) {
+      throw new BadRequestException('Monthly outgoing message limit reached. Upgrade or renew your plan to continue.');
+    }
     const message = this.messageRepository.create({
       sessionId,
       // An engine that sent a message but could not read its id back reports an empty id (see the
@@ -586,9 +595,23 @@ export class MessageService {
       status: data.status ?? MessageStatus.PENDING,
       metadata: data.metadata,
     });
-    const saved = await this.messageRepository.save(message);
+    let saved: Message;
+    try {
+      saved = await this.messageRepository.save(message);
+    } catch (error) {
+      if (!quotaAlreadyReserved) await this.planUsage?.releaseOutgoingMessage(sessionId);
+      throw error;
+    }
     this.emitPersisted(sessionId, saved);
     return saved;
+  }
+
+  async reserveOutgoingQuota(sessionId: string): Promise<boolean> {
+    return (await this.planUsage?.reserveOutgoingMessage(sessionId)) ?? true;
+  }
+
+  async releaseOutgoingQuota(sessionId: string): Promise<void> {
+    await this.planUsage?.releaseOutgoingMessage(sessionId);
   }
 
   // Fire-and-forget: a plugin handler must never break the send path. The built-in FTS search provider

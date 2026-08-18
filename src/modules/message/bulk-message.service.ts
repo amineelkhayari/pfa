@@ -373,6 +373,8 @@ export class BulkMessageService implements OnApplicationBootstrap {
     // decision (not a delivery failure) and skips message:failed — matching the single-send path,
     // where a block is a 400 with no failure hook.
     let blockedByPlugin = false;
+    let quotaReserved = false;
+    let messageWasSent = false;
     try {
       // Apply template variables
       content = this.applyVariables(msg.content, msg.variables);
@@ -396,8 +398,18 @@ export class BulkMessageService implements OnApplicationBootstrap {
       // A violation fails just this item (honouring stopOnError) instead of sending it.
       this.assertContentMediaWithinCap(content);
 
+      quotaReserved =
+        typeof this.messageService.reserveOutgoingQuota === 'function'
+          ? await this.messageService.reserveOutgoingQuota(batch.sessionId)
+          : false;
+      const quotaAllowed = quotaReserved || typeof this.messageService.reserveOutgoingQuota !== 'function';
+      if (!quotaAllowed) {
+        throw new BadRequestException('Monthly outgoing message limit reached. Upgrade or renew your plan to continue.');
+      }
+
       // Send message based on type
       const messageResult = await this.sendMessage(engine, msg.chatId, msg.type, content);
+      messageWasSent = true;
 
       result.status = BatchMessageStatus.SENT;
       result.messageId = messageResult.id;
@@ -408,10 +420,13 @@ export class BulkMessageService implements OnApplicationBootstrap {
       // Persist like a single send so the message shows in chat history + stats. The engine echo
       // (onMessageCreate) fires the webhook/WS but does NOT write the DB, so without this the
       // bulk-sent message is invisible to the messages table.
-      await this.persistSentMessage(batch.sessionId, msg.chatId, msg.type, content, messageResult);
+      await this.persistSentMessage(batch.sessionId, msg.chatId, msg.type, content, messageResult, quotaReserved);
 
       this.logger.debug(`Batch ${batch.batchId}: Sent message ${i + 1}/${batch.messages.length} to ${msg.chatId}`);
     } catch (error) {
+      if (quotaReserved && !messageWasSent && typeof this.messageService.releaseOutgoingQuota === 'function') {
+        await this.messageService.releaseOutgoingQuota(batch.sessionId);
+      }
       result.status = BatchMessageStatus.FAILED;
       // Sanitize: an SSRF block names an internal address — never store/return/log it verbatim.
       const sanitized = sanitizeBatchError(error);
@@ -589,12 +604,13 @@ export class BulkMessageService implements OnApplicationBootstrap {
     type: string,
     content: BulkMessageContent,
     result: MessageResult,
+    quotaAlreadyReserved = false,
   ): Promise<void> {
     const media = content.image ?? content.video ?? content.audio ?? content.document;
     // A bulk audio item flagged ptt is a voice note; store it in the 'voice' bucket like inbound PTT.
     const persistType = type === 'audio' && content.audio?.ptt ? 'voice' : type;
     try {
-      await this.messageService.saveOutgoingMessage(sessionId, {
+      const payload = {
         waMessageId: result.id,
         chatId,
         body: content.text ?? content.caption ?? '',
@@ -610,7 +626,9 @@ export class BulkMessageService implements OnApplicationBootstrap {
               },
             }
           : undefined,
-      });
+      };
+      if (quotaAlreadyReserved) await this.messageService.saveOutgoingMessage(sessionId, payload, true);
+      else await this.messageService.saveOutgoingMessage(sessionId, payload);
     } catch (error) {
       this.logger.warn(`Batch message persisted-after-send failed: ${String(error)}`);
     }

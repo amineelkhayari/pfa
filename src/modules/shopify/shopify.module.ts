@@ -21,6 +21,8 @@ import { CredentialEncryptionService } from '../../common/security/credential-en
 import { MessageModule } from '../message/message.module';
 import { ShopifyWebhookController } from './controllers/shopify.webhook.controller';
 import { ShopifyOrderReplyService } from './services/shopify-order-reply.service';
+import { OrderAiConversation } from './entities/order-ai-conversation.entity';
+import { OpenAiOrderAgentService } from './services/openai-order-agent.service';
 
 @Module({
   imports: [
@@ -29,7 +31,7 @@ import { ShopifyOrderReplyService } from './services/shopify-order-reply.service
     EngineEcomModule,
     StoreModule,
     MessageModule,
-    TypeOrmModule.forFeature([Store, Product, Order, ShopifyOAuthState, ShopifyWebhookDelivery], 'data'),
+    TypeOrmModule.forFeature([Store, Product, Order, ShopifyOAuthState, ShopifyWebhookDelivery, OrderAiConversation], 'data'),
   ],
   controllers: [ShopifyController, ShopifyWebhookController],
   providers: [
@@ -38,6 +40,7 @@ import { ShopifyOrderReplyService } from './services/shopify-order-reply.service
     ShopifyProvider,
     CredentialEncryptionService,
     ShopifyOrderReplyService,
+    OpenAiOrderAgentService,
     {
       provide: 'SHOPIFY_PROVIDER_REGISTRATION',
       inject: [ShopifyProvider, IntegrationProviderRegistry],

@@ -24,6 +24,10 @@ const MessageTester = lazy(() => import('./pages/MessageTester').then(m => ({ de
 const Infrastructure = lazy(() => import('./pages/Infrastructure').then(m => ({ default: m.Infrastructure })));
 const Stores = lazy(() => import('./pages/Stores').then(m => ({ default: m.Stores })));
 const Plugins = lazy(() => import('./pages/Plugins'));
+const Account = lazy(() => import('./pages/Account').then(m => ({ default: m.Account })));
+const AdminUsers = lazy(() => import('./pages/AdminUsers').then(m => ({ default: m.AdminUsers })));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const PaymentSettings = lazy(() => import('./pages/PaymentSettings').then(m => ({ default: m.PaymentSettings })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -113,7 +117,7 @@ function AppContent() {
         <Suspense fallback={loadingFallback}>
         <Routes>
           <Route path="/" element={<Layout onLogout={handleLogout} userRole={role} />}>
-            <Route index element={<Dashboard />} />
+            <Route index element={role === 'admin' ? <AdminDashboard /> : <Dashboard />} />
             <Route path="sessions" element={<Sessions />} />
             <Route path="stores" element={<Stores />} />
             <Route path="chats" element={<Chats />} />
@@ -122,6 +126,9 @@ function AppContent() {
             {role === 'admin' && <Route path="api-keys" element={<ApiKeys />} />}
             <Route path="logs" element={<Logs />} />
             <Route path="message-tester" element={<MessageTester />} />
+            <Route path="account" element={<Account />} />
+            {role === 'admin' && <Route path="admin/users" element={<AdminUsers />} />}
+            {role === 'admin' && <Route path="admin/payments" element={<PaymentSettings />} />}
             {role === 'admin' && <Route path="infrastructure" element={<Infrastructure />} />}
             {role === 'admin' && <Route path="plugins" element={<Plugins />} />}
             <Route path="*" element={<Navigate to="/" replace />} />

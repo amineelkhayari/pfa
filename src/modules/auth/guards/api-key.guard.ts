@@ -9,6 +9,11 @@ import { resolveClientIp } from '../../../common/utils/ip';
 import { setRequestActor } from '../../../common/services/request-context';
 import { AuditService } from '../../audit/audit.service';
 import { AuditAction } from '../../audit/entities/audit-log.entity';
+import { UserAuthService } from '../user-auth.service';
+import { UserAccount } from '../entities/user-account.entity';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Session } from '../../session/entities/session.entity';
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
@@ -17,6 +22,8 @@ export class ApiKeyGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly configService: ConfigService,
     private readonly auditService: AuditService,
+    private readonly userAuthService: UserAuthService,
+    @InjectRepository(Session, 'data') private readonly sessionRepository: Repository<Session>,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -60,6 +67,32 @@ export class ApiKeyGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
+
+    if (apiKeyHeader.startsWith('owa_usr_')) {
+      const user = await this.userAuthService.validateToken(apiKeyHeader);
+      if (user.role === ApiKeyRole.ADMIN && !this.isAdminManagementPath(request.path)) {
+        throw new ForbiddenException('Administrator accounts can only access management, billing settings, logs, and totals');
+      }
+      if (requiredRole && !this.hasUserPermission(user, requiredRole)) {
+        throw new ForbiddenException(`Insufficient permissions. Required: ${requiredRole}`);
+      }
+      const userSessionScoped = this.reflector.getAllAndOverride<boolean>(SESSION_SCOPED_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]);
+      const requestedSessionId = (request.params['sessionId'] ||
+        (userSessionScoped ? request.params['id'] : undefined)) as string | undefined;
+      if (
+        requestedSessionId &&
+        user.role !== ApiKeyRole.ADMIN &&
+        !(await this.sessionRepository.existsBy({ id: requestedSessionId, userId: user.id }))
+      ) {
+        throw new ForbiddenException('This WhatsApp session does not belong to your account.');
+      }
+      (request as Request & { user?: UserAccount }).user = user;
+      setRequestActor({ userId: user.id, userRole: user.role, ipAddress: this.getClientIp(request) });
+      return true;
+    }
 
     // Resolve the session id used for the key's allowedSessions scope. `:sessionId` is always a
     // session; the bare `:id` param is only a session on controllers marked @SessionScoped (i.e.
@@ -105,6 +138,22 @@ export class ApiKeyGuard implements CanActivate {
     setRequestActor({ apiKeyId: apiKey.id, apiKeyName: apiKey.name, ipAddress: clientIp });
 
     return true;
+  }
+
+  private hasUserPermission(user: UserAccount, required: ApiKeyRole): boolean {
+    const rank: Record<ApiKeyRole, number> = {
+      [ApiKeyRole.VIEWER]: 1,
+      [ApiKeyRole.OPERATOR]: 2,
+      [ApiKeyRole.ADMIN]: 3,
+    };
+    return rank[user.role] >= rank[required];
+  }
+
+  private isAdminManagementPath(path: string): boolean {
+    const normalized = path.replace(/^\/api(?=\/|$)/, '');
+    return ['/admin', '/audit', '/stats', '/settings', '/health', '/metrics'].some(
+      prefix => normalized === prefix || normalized.startsWith(`${prefix}/`),
+    ) || ['/auth/me', '/auth/logout', '/auth/validate'].includes(normalized);
   }
 
   private extractApiKey(request: Request): string | undefined {

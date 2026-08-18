@@ -17,6 +17,7 @@ import {
   type UpdateInstanceInput,
   storesApi,
   merchantsApi,
+  accountApi,
   type StorePayload,
   type MerchantPayload,
 } from '../services/api';
@@ -43,7 +44,13 @@ export const queryKeys = {
   orderConfirmationSummary: (filters: { days?: number; type?: string }) =>
     ['stores', 'orders', 'confirmation-summary', filters] as const,
   merchants: ['merchants'] as const,
+  accountUsage: ['account', 'usage'] as const,
 };
+
+export function useAccountUsageQuery() {
+  const isUserLogin = sessionStorage.getItem('openwa_api_key')?.startsWith('owa_usr_') ?? false;
+  return useQuery({ queryKey: queryKeys.accountUsage, queryFn: accountApi.usage, enabled: isUserLogin, staleTime: 15_000 });
+}
 
 // ── Session Queries ───────────────────────────────────────────────────
 

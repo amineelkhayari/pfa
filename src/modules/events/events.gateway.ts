@@ -9,13 +9,18 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger, OnModuleDestroy } from '@nestjs/common';
+import { ForbiddenException, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { AuthService } from '../auth/auth.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditAction } from '../audit/entities/audit-log.entity';
 import { resolveCorsPolicy } from '../../config/bootstrap-security';
 import { resolveClientIp as resolveRequestClientIp, type RequestLike } from '../../common/utils/ip';
 import type { ApiKey } from '../auth/entities/api-key.entity';
+import { ApiKeyRole } from '../auth/entities/api-key.entity';
+import { UserAuthService } from '../auth/user-auth.service';
+import { Session } from '../session/entities/session.entity';
 import {
   readWsRateLimitConfig,
   TokenBucketLimiter,
@@ -129,6 +134,8 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   constructor(
     private readonly authService: AuthService,
     private readonly auditService: AuditService,
+    @Optional() private readonly userAuthService?: UserAuthService,
+    @Optional() @InjectRepository(Session, 'data') private readonly sessionRepository?: Repository<Session>,
   ) {
     this.rateLimits = readWsRateLimitConfig();
     this.frameLimiter = new TokenBucketLimiter(this.rateLimits.framePerSecond, this.rateLimits.frameBurst);
@@ -257,7 +264,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
       // path is the catch below — a separate `if (!validKey)` branch here was dead code. The clientIp
       // is passed so an IP-restricted key (allowedIps set) is ENFORCED rather than blanket-rejected
       // for "Client IP could not be determined".
-      const validKey = await this.authService.validateApiKey(apiKey, clientIp);
+      const validKey = await this.validateSocketCredential(apiKey, clientIp);
 
       // Cap simultaneous sockets per key: each socket holds rooms, engine fan-out, and memory,
       // so one key must not open connections without bound. Enough for multi-tab dashboards;
@@ -366,7 +373,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     const clientIp = this.resolveClientIp(client);
     let subscriberKey: { allowedSessions?: string[] | null } | null;
     try {
-      subscriberKey = rawApiKey ? await this.authService.validateApiKey(rawApiKey, clientIp) : null;
+      subscriberKey = rawApiKey ? await this.validateSocketCredential(rawApiKey, clientIp) : null;
     } catch {
       subscriberKey = null;
     }
@@ -416,6 +423,19 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
       requestId,
       timestamp: new Date().toISOString(),
     };
+  }
+
+  private async validateSocketCredential(raw: string, clientIp: string): Promise<ApiKey> {
+    if (!raw.startsWith('owa_usr_')) return this.authService.validateApiKey(raw, clientIp);
+    if (!this.userAuthService || !this.sessionRepository) throw new Error('User WebSocket authentication unavailable');
+    const user = await this.userAuthService.validateToken(raw);
+    if (user.role === ApiKeyRole.ADMIN) throw new ForbiddenException('Administrators cannot access customer WebSocket events');
+    const sessions = await this.sessionRepository.find({ select: { id: true }, where: { userId: user.id } });
+    return {
+      id: `user:${user.id}`, name: user.username, role: user.role,
+      allowedSessions: sessions.length ? sessions.map(session => session.id) : ['__no_owned_sessions__'],
+      allowedIps: null, isActive: true, expiresAt: null,
+    } as ApiKey;
   }
 
   private handleUnsubscribe(client: Socket, message: WSUnsubscribeRequest): WSUnsubscribedResponse {

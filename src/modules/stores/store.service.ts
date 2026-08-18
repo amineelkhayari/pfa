@@ -14,6 +14,8 @@ import { Session } from '../session/entities/session.entity';
 import { Product } from './entities/product.entity';
 import { Order } from './entities/order.entity';
 import { CredentialEncryptionService } from '../../common/security/credential-encryption.service';
+import { getRequestUserScope } from '../../common/services/request-context';
+import { PlanUsageService } from '../auth/plan-usage.service';
 
 @Injectable()
 export class StoreService {
@@ -34,9 +36,12 @@ export class StoreService {
     // private readonly connectionRepository: Repository<IntegrationConnection>,
     private readonly integrationRegistry: IntegrationProviderRegistry,
     private readonly messageService: MessageService,
+    private readonly planUsage: PlanUsageService,
   ) {}
 
   async create(dto: CreateStoreDto): Promise<Store> {
+    const scope = getRequestUserScope();
+    await this.planUsage.assertCanCreateStore();
     // this.messageService.sendText('8e460a4e-2d7e-48fa-b0c6-877131c8afc2',
     //   {
     //     "chatId": "212673518365@c.us",
@@ -47,9 +52,7 @@ export class StoreService {
     //   }
     // );
     const merchant = await this.merchantRepository.findOne({
-      where: {
-        id: dto.merchantId,
-      },
+      where: scope.userId && !scope.isAdmin ? { id: dto.merchantId, userId: scope.userId } : { id: dto.merchantId },
     });
 
     if (!merchant) {
@@ -72,13 +75,16 @@ export class StoreService {
     const store = this.storeRepository.create({
       ...dto,
       settings: dto.settings ? this.credentialEncryption.protectSettings(dto.settings) : undefined,
+      userId: scope.userId ?? null,
     });
 
     return await this.storeRepository.save(store);
   }
 
   async findAll(): Promise<Store[]> {
+    const scope = getRequestUserScope();
     return await this.storeRepository.find({
+      where: scope.userId && !scope.isAdmin ? { userId: scope.userId } : undefined,
       relations: {
         merchant: true,
         session: true,
@@ -91,10 +97,14 @@ export class StoreService {
   }
 
   async getOrderConfirmationSummary(filters?: { days?: number; type?: string }) {
+    const scope = getRequestUserScope();
     const query = this.orderRepository
       .createQueryBuilder('order')
+      .innerJoin(Store, 'store', 'store.id = order.storeId')
       .select('order.confirmationStatus', 'status')
       .addSelect('COUNT(*)', 'count');
+
+    if (scope.userId && !scope.isAdmin) query.andWhere('store.userId = :userId', { userId: scope.userId });
 
     if (filters?.days && filters.days > 0) {
       const since = new Date();
@@ -108,8 +118,12 @@ export class StoreService {
 
     const [rows, totalStores, totalProducts] = await Promise.all([
       query.groupBy('order.confirmationStatus').getRawMany<{ status: string; count: string | number }>(),
-      this.storeRepository.count(),
-      this.productRepository.count(),
+      this.storeRepository.count({ where: scope.userId && !scope.isAdmin ? { userId: scope.userId } : undefined }),
+      this.productRepository
+        .createQueryBuilder('product')
+        .innerJoin(Store, 'store', 'store.id = product.storeId')
+        .where(scope.userId && !scope.isAdmin ? 'store.userId = :userId' : '1=1', { userId: scope.userId })
+        .getCount(),
     ]);
 
     const counts = new Map(rows.map(row => [row.status, Number(row.count)]));
@@ -127,10 +141,9 @@ export class StoreService {
   }
 
   async findOneById(id: string): Promise<Store> {
+    const scope = getRequestUserScope();
     const store = await this.storeRepository.findOne({
-      where: {
-        id,
-      },
+      where: scope.userId && !scope.isAdmin ? { id, userId: scope.userId } : { id },
       relations: {
         merchant: true,
         session: true,
@@ -146,10 +159,9 @@ export class StoreService {
   }
 
   async findByMerchant(merchantId: string): Promise<Store[]> {
+    const scope = getRequestUserScope();
     return await this.storeRepository.find({
-      where: {
-        merchantId,
-      },
+      where: scope.userId && !scope.isAdmin ? { merchantId, userId: scope.userId } : { merchantId },
       // relations: {
       //   integrations: true,
       // },
@@ -213,7 +225,10 @@ export class StoreService {
   }
 
   private async assertSessionAvailable(sessionId: string, currentStoreId?: string): Promise<void> {
-    const session = await this.sessionRepository.findOneBy({ id: sessionId });
+    const scope = getRequestUserScope();
+    const session = await this.sessionRepository.findOneBy(
+      scope.userId && !scope.isAdmin ? { id: sessionId, userId: scope.userId } : { id: sessionId },
+    );
     if (!session) throw new NotFoundException('WhatsApp session not found.');
 
     const linkedStore = await this.storeRepository.findOneBy({ sessionId });

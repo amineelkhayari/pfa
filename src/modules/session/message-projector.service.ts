@@ -33,6 +33,7 @@ import {
   deliveryStatusToAck,
   ackStatusTransitionFrom,
 } from '../message/message-status.util';
+import { PlanUsageService } from '../auth/plan-usage.service';
 
 /**
  * Projects engine message events into the `messages` table and out to webhooks/WebSocket.
@@ -100,6 +101,8 @@ export class MessageProjector {
     private readonly lidResolver: SessionLidResolver,
     @Optional()
     private readonly configService?: ConfigService,
+    @Optional()
+    private readonly planUsage?: PlanUsageService,
   ) {
     this.mutationProjector = new MessageMutationProjector(
       this.messageRepository,
@@ -129,13 +132,14 @@ export class MessageProjector {
     // Convert IncomingMessage to plain object for dispatch
     const messageData = { ...message };
 
-    // Execute hook for message received - plugins can modify or stop processing
-    void this.hookManager
-      .execute('message:received', messageData, {
-        sessionId: id,
-        source: 'Engine',
-      })
-      .then(({ data: finalMessage }) => this.projectInboundMessage(id, engine, finalMessage))
+    void (this.planUsage?.isInboundAutomationAllowed(id) ?? Promise.resolve(true))
+      .then(allowed =>
+        allowed
+          ? this.hookManager
+              .execute('message:received', messageData, { sessionId: id, source: 'Engine' })
+              .then(({ data: finalMessage }) => this.projectInboundMessage(id, engine, finalMessage, true))
+          : this.projectInboundMessage(id, engine, messageData, false),
+      )
       .catch(err => this.logger.error(`onMessage handler failed for ${id}`, String(err)));
   }
 
@@ -194,6 +198,7 @@ export class MessageProjector {
     id: string,
     engine: IWhatsAppEngine,
     finalMessage: InboundMessageData,
+    automationAllowed: boolean,
   ): Promise<void> {
     // `continue: false` is deliberately NOT read here. It means "stop the handler chain", which
     // HookManager has already done — the plugins after the one that returned it never ran. It
@@ -224,7 +229,7 @@ export class MessageProjector {
 
     const outcome = await this.persistInboundMessage(id, engine, incoming);
     if (!outcome) return;
-    this.dispatchInboundMessage(id, finalMessage, outcome);
+    this.dispatchInboundMessage(id, finalMessage, outcome, automationAllowed);
   }
 
   /**
@@ -296,7 +301,12 @@ export class MessageProjector {
   }
 
   /** Fan an accepted inbound message out: `message:persisted` plugin hook, webhook, websocket emit. */
-  private dispatchInboundMessage(id: string, finalMessage: InboundMessageData, outcome: InboundPersistOutcome): void {
+  private dispatchInboundMessage(
+    id: string,
+    finalMessage: InboundMessageData,
+    outcome: InboundPersistOutcome,
+    automationAllowed: boolean,
+  ): void {
     const { dbMessage, persisted } = outcome;
     // Fire-and-forget: a plugin handler must never break the receive path. Both engine adapters
     // (wwjs `message` and Baileys `upsert`) converge on this persist, so one emit covers inbound.
@@ -308,6 +318,7 @@ export class MessageProjector {
     // in the DB. The webhook/WS dispatch below stays fail-open — a real inbound message must
     // never be dropped on a transient DB failure; only the hook requires a durable row.
     if (persisted) {
+      void this.planUsage?.recordIncomingMessage(id).catch(() => undefined);
       void this.hookManager
         .execute(
           'message:persisted',
@@ -318,7 +329,7 @@ export class MessageProjector {
     }
 
     // Dispatch to webhooks with potentially modified message
-    void this.webhookService.dispatch(id, 'message.received', finalMessage);
+    if (automationAllowed) void this.webhookService.dispatch(id, 'message.received', finalMessage);
     // Emit real-time event to WebSocket clients
     this.eventsGateway.emitMessage(id, finalMessage);
   }

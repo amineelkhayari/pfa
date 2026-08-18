@@ -14,6 +14,11 @@ interface LoginProps {
 export function Login({ onLogin }: LoginProps) {
   const { t, i18n } = useTranslation();
   const [apiKey, setApiKey] = useState('');
+  const [mode, setMode] = useState<'signin' | 'signup' | 'apiKey'>('signin');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -25,24 +30,36 @@ export function Login({ onLogin }: LoginProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!apiKey.trim()) {
+    if (mode === 'apiKey' && !apiKey.trim()) {
       setError(t('login.apiKeyRequired'));
+      return;
+    }
+    if (mode !== 'apiKey' && (!username.trim() || !password)) {
+      setError('Username and password are required.');
       return;
     }
     setIsLoading(true);
     setError('');
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/validate`, {
+      const endpoint = mode === 'apiKey' ? 'validate' : mode;
+      const response = await fetch(`${API_BASE_URL}/auth/${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-API-Key': apiKey,
+          ...(mode === 'apiKey' ? { 'X-API-Key': apiKey } : {}),
         },
+        ...(mode !== 'apiKey'
+          ? { body: JSON.stringify(mode === 'signin' ? { identifier: username, password } : { name, email, username, password }) }
+          : {}),
       });
 
       if (response.ok) {
-        onLogin(apiKey);
+        if (mode === 'apiKey') onLogin(apiKey);
+        else {
+          const data = await response.json();
+          onLogin(data.token);
+        }
       } else {
         const errorData = await response.json().catch(() => ({}));
         setError(errorData.message || t('login.invalidKey'));
@@ -80,6 +97,20 @@ export function Login({ onLogin }: LoginProps) {
         </div>
 
         <form onSubmit={handleSubmit} className="login-form">
+          <div className="auth-tabs">
+            <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => setMode('signin')}>Sign in</button>
+            <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>Sign up</button>
+            <button type="button" className={mode === 'apiKey' ? 'active' : ''} onClick={() => setMode('apiKey')}>API key</button>
+          </div>
+          {mode === 'signup' && <>
+            <div className="input-group"><label htmlFor="name">Full name</label><div className="input-wrapper"><input id="name" value={name} onChange={e => setName(e.target.value)} required /></div></div>
+            <div className="input-group"><label htmlFor="email">Email</label><div className="input-wrapper"><input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} required /></div></div>
+          </>}
+          {mode !== 'apiKey' && <>
+            <div className="input-group"><label htmlFor="username">Username or email</label><div className="input-wrapper"><input id="username" value={username} onChange={e => setUsername(e.target.value)} required /></div></div>
+            <div className="input-group"><label htmlFor="password">Password</label><div className="input-wrapper"><input id="password" type={showKey ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} minLength={mode === 'signup' ? 8 : undefined} required /><button type="button" className="toggle-visibility" onClick={() => setShowKey(!showKey)}>{showKey ? <EyeOff size={20} /> : <Eye size={20} />}</button></div></div>
+          </>}
+          {mode === 'apiKey' &&
           <div className="input-group">
             <label htmlFor="apiKey">{t('login.apiKey')}</label>
             <div className="input-wrapper">
@@ -101,10 +132,11 @@ export function Login({ onLogin }: LoginProps) {
               </button>
             </div>
             {error && <span className="error-message">{error}</span>}
-          </div>
+          </div>}
+          {mode !== 'apiKey' && error && <span className="error-message auth-error">{error}</span>}
 
           <button type="submit" className="connect-btn" disabled={isLoading}>
-            {isLoading ? t('login.connecting') : t('login.connect')}
+            {isLoading ? 'Please wait…' : mode === 'signup' ? 'Create free account' : mode === 'signin' ? 'Sign in' : t('login.connect')}
           </button>
         </form>
 

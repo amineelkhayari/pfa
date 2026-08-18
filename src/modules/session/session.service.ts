@@ -25,6 +25,8 @@ import { resolveFeatureFlags } from '../../config/feature-flags';
 import { IWhatsAppEngine, ChatSummary, ChatState } from '../../engine/interfaces/whatsapp-engine.interface';
 import { createLogger } from '../../common/services/logger.service';
 import { HookManager } from '../../core/hooks';
+import { getRequestUserScope } from '../../common/services/request-context';
+import { PlanUsageService } from '../auth/plan-usage.service';
 
 // Re-exported so the existing spec import paths keep working after these moved out.
 export { clampReconnectDelay } from './reconnect-policy';
@@ -72,6 +74,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
     private readonly sessionErrors: SessionErrorStore,
     private readonly hookManager: HookManager,
     private readonly engineLifecycle: SessionEngineLifecycle,
+    private readonly planUsage: PlanUsageService,
     @Optional()
     private readonly configService?: ConfigService,
   ) {}
@@ -153,6 +156,8 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
   }
 
   async create(dto: CreateSessionDto): Promise<Session> {
+    const { userId } = getRequestUserScope();
+    await this.planUsage.assertCanCreateSession();
     // Check if session with same name exists
     const existing = await this.sessionRepository.findOne({
       where: { name: dto.name },
@@ -168,6 +173,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
       proxyUrl: dto.proxyUrl || null,
       proxyType: dto.proxyType || null,
       status: SessionStatus.CREATED,
+      userId: userId ?? null,
     });
 
     // The findOne pre-check above is a fast path for the common case, but it's a check-then-insert
@@ -206,13 +212,19 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
     const options: FindManyOptions<Session> = { order: { createdAt: 'DESC' }, take: limit, skip: offset };
     if (allowedSessions && allowedSessions.length > 0) {
       options.where = { id: In(allowedSessions) };
+    } else {
+      const scope = getRequestUserScope();
+      if (scope.userId && !scope.isAdmin) options.where = { userId: scope.userId };
     }
     const sessions = await this.sessionRepository.find(options);
     return sessions.map(session => this.attachLastError(session));
   }
 
   async findOne(id: string): Promise<Session> {
-    const session = await this.sessionRepository.findOne({ where: { id } });
+    const scope = getRequestUserScope();
+    const session = await this.sessionRepository.findOne({
+      where: scope.userId && !scope.isAdmin ? { id, userId: scope.userId } : { id },
+    });
     if (!session) {
       throw new NotFoundException(`Session with id '${id}' not found`);
     }
@@ -225,7 +237,10 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
   }
 
   async findByName(name: string): Promise<Session> {
-    const session = await this.sessionRepository.findOne({ where: { name } });
+    const scope = getRequestUserScope();
+    const session = await this.sessionRepository.findOne({
+      where: scope.userId && !scope.isAdmin ? { name, userId: scope.userId } : { name },
+    });
     if (!session) {
       throw new NotFoundException(`Session with name '${name}' not found`);
     }

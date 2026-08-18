@@ -6,6 +6,9 @@ export class Merchant {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  userId: string | null;
+
   @Column()
   name: string;
 

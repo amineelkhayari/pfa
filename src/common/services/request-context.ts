@@ -15,6 +15,8 @@ export interface RequestContext {
   apiKeyName?: string;
   /** The real client IP (ProxyAwareThrottlerGuard's notion, honoring TRUSTED_PROXIES). */
   ipAddress?: string;
+  userId?: string;
+  userRole?: string;
 }
 
 const requestContextStorage = new AsyncLocalStorage<RequestContext>();
@@ -35,17 +37,44 @@ export function getRequestId(): string | undefined {
  * action. No-op outside a request scope (e.g. worker/cron), so callers don't need to guard. The
  * guard/middleware call this once they've resolved the key; services never need to.
  */
-export function setRequestActor(actor: { apiKeyId?: string; apiKeyName?: string; ipAddress?: string }): void {
+export function setRequestActor(actor: {
+  apiKeyId?: string;
+  apiKeyName?: string;
+  ipAddress?: string;
+  userId?: string;
+  userRole?: string;
+}): void {
   const store = requestContextStorage.getStore();
   if (!store) return; // not in a request scope — nothing to stamp
   if (actor.apiKeyId !== undefined) store.apiKeyId = actor.apiKeyId;
   if (actor.apiKeyName !== undefined) store.apiKeyName = actor.apiKeyName;
   if (actor.ipAddress !== undefined) store.ipAddress = actor.ipAddress;
+  if (actor.userId !== undefined) store.userId = actor.userId;
+  if (actor.userRole !== undefined) store.userRole = actor.userRole;
 }
 
 /** The active request's resolved actor (API key + IP), or `undefined` outside a request scope. */
-export function getRequestActor(): { apiKeyId?: string; apiKeyName?: string; ipAddress?: string } | undefined {
+export function getRequestActor():
+  | {
+      apiKeyId?: string;
+      apiKeyName?: string;
+      ipAddress?: string;
+      userId?: string;
+      userRole?: string;
+    }
+  | undefined {
   const store = requestContextStorage.getStore();
   if (!store) return undefined;
-  return { apiKeyId: store.apiKeyId, apiKeyName: store.apiKeyName, ipAddress: store.ipAddress };
+  return {
+    apiKeyId: store.apiKeyId,
+    apiKeyName: store.apiKeyName,
+    ipAddress: store.ipAddress,
+    userId: store.userId,
+    userRole: store.userRole,
+  };
+}
+
+export function getRequestUserScope(): { userId?: string; isAdmin: boolean } {
+  const store = requestContextStorage.getStore();
+  return { userId: store?.userId, isAdmin: store?.userRole === 'admin' };
 }

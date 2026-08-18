@@ -1433,3 +1433,59 @@ export const statsApi = {
   getOverview: () => request<OverviewStats>('/stats/overview'),
   getMessages: (period: StatsPeriod) => request<MessageStats>(`/stats/messages?period=${period}`),
 };
+
+export interface AccountUsage {
+  plan: 'free' | 'pro';
+  limits: { sessions: number; stores: number; sentMessages: number; receivedMessages: number };
+  usage: { sessions: number; stores: number; sentMessages: number; receivedMessages: number };
+  periodStart: string;
+}
+
+export interface AccountUser {
+  id: string; name: string; email: string; username: string; role: string; plan: 'free' | 'pro' | null;
+  status: string; settings: Record<string, unknown> | null; sentMessages: number; receivedMessages: number;
+  createdAt: string; updatedAt: string;
+}
+
+export const accountApi = {
+  usage: () => request<AccountUsage>('/auth/usage'),
+  me: () => request<AccountUser>('/auth/me'),
+  update: (body: { name?: string; settings?: Record<string, unknown> }) =>
+    request<AccountUser>('/auth/me', { method: 'PATCH', body: JSON.stringify(body) }),
+};
+
+export const adminUsersApi = {
+  list: () => request<AccountUser[]>('/admin/users'),
+  summary: () => request<{ total: number; active: number; suspended: number; free: number; pro: number }>('/admin/users/summary'),
+  resources: () => request<{ sessions:number; stores:number; products:number; orders:number }>('/admin/users/resources'),
+  details: (id: string) => request<AdminUserDetails>(`/admin/users/${id}/details`),
+  update: (id: string, body: { plan?: 'free' | 'pro'; status?: 'active' | 'suspended' }) =>
+    request<AccountUser>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+};
+
+export interface AdminUserDetails {
+  user: AccountUser;
+  limits: AccountUsage['limits'] | null;
+  usage: AccountUsage['usage'] & { products: number; orders: number };
+  usagePeriodStart: string;
+  subscriptions: BillingSubscription[];
+}
+
+export interface BillingSubscription {
+  id: string; provider: 'stripe' | 'paypal'; status: string; currentPeriodEnd: string | null; cancelAtPeriodEnd: boolean;
+}
+export const billingApi = {
+  status: () => request<BillingSubscription[]>('/billing/status'),
+  stripeCheckout: () => request<{ url: string }>('/billing/stripe/checkout', { method: 'POST' }),
+  stripePortal: () => request<{ url: string }>('/billing/stripe/portal', { method: 'POST' }),
+  paypalSubscription: () => request<{ id: string; url: string }>('/billing/paypal/subscription', { method: 'POST' }),
+};
+
+export interface AdminPaymentSettings {
+  publicAppUrl?: string; stripeEnabled: boolean; paypalEnabled: boolean; paypalEnvironment: 'sandbox' | 'live';
+  configured: Record<string, boolean>;
+}
+export const adminBillingApi = {
+  get: () => request<AdminPaymentSettings>('/admin/billing-settings'),
+  update: (body: Record<string, unknown>) => request<AdminPaymentSettings>('/admin/billing-settings', { method: 'PUT', body: JSON.stringify(body) }),
+};

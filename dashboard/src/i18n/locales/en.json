@@ -66,6 +66,9 @@
     "infrastructure": "Infrastructure",
     "plugins": "Plugins",
     "logs": "Logs"
+    ,"account": "My Account"
+    ,"users": "Users"
+    ,"payments": "Payment Settings"
   },
   "chats": {
     "media": {

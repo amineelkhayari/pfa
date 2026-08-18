@@ -5,11 +5,12 @@ import { ApiKey, ApiKeyRole } from '../auth/entities/api-key.entity';
 import { SearchService } from './search.service';
 import { SearchQueryDto } from './dto/search-query.dto';
 import type { SearchResults } from './search.types';
+import { PlanUsageService } from '../auth/plan-usage.service';
 
 @ApiTags('search')
 @Controller('search')
 export class SearchController {
-  constructor(private readonly searchService: SearchService) {}
+  constructor(private readonly searchService: SearchService, private readonly planUsage: PlanUsageService) {}
 
   @Get()
   @RequireRole(ApiKeyRole.OPERATOR)
@@ -36,6 +37,7 @@ export class SearchController {
     // resolves to undefined → searches all sessions, mirroring GET /webhooks. The DTO carries no
     // `sessionIds` field (the global ValidationPipe's forbidNonWhitelisted would reject it anyway),
     // and SearchService makes scope authoritative by overwriting sessionIds at the provider boundary.
-    return this.searchService.search(dto, apiKey?.allowedSessions ?? undefined);
+    const sessionScope = await this.planUsage.resolveSessionScope(apiKey?.allowedSessions);
+    return this.searchService.search(dto, sessionScope);
   }
 }

@@ -9,6 +9,8 @@ import { Order } from '../../stores/entities/order.entity';
 import { Store } from '../../stores/entities/store.entity';
 import { Platform } from '../../stores/enum/platform.enum';
 import { ShopifyService } from './shopify.service';
+import { OrderAiConversation } from '../entities/order-ai-conversation.entity';
+import { OpenAiOrderAgentService } from './openai-order-agent.service';
 
 interface IncomingReply {
   body?: string;
@@ -28,8 +30,10 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
     private readonly shopify: ShopifyService,
     private readonly messages: MessageService,
     private readonly encryption: CredentialEncryptionService,
+    private readonly ai: OpenAiOrderAgentService,
     @InjectRepository(Store, 'data') private readonly stores: Repository<Store>,
     @InjectRepository(Order, 'data') private readonly orders: Repository<Order>,
+    @InjectRepository(OrderAiConversation, 'data') private readonly conversations: Repository<OrderAiConversation>,
   ) {}
 
   onModuleInit(): void {
@@ -50,7 +54,7 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
 
   private async handleReply(sessionId: string | undefined, message: IncomingReply): Promise<void> {
     const reply = message.body?.trim();
-    if (!sessionId || message.fromMe || (reply !== '1' && reply !== '2')) return;
+    if (!sessionId || message.fromMe || !reply) return;
 
     const store = await this.stores.findOneBy({ sessionId });
     if (!store?.settings || store.provider !== Platform.SHOPIFY) return;
@@ -63,6 +67,11 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
     });
     const order = pending.find(candidate => this.samePhone(sender, this.normalizePhone(candidate.phone)));
     if (!order) return;
+
+    if (reply !== '1' && reply !== '2') {
+      if (this.ai.enabled()) await this.handleAiReply(sessionId, store, order, message, reply);
+      return;
+    }
 
     order.confirmationStatus = 'processing_reply';
     order.confirmationError = null;
@@ -101,6 +110,62 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
       order.confirmationError = reason;
       await this.orders.save(order);
       this.logger.error(`Failed to process Shopify order reply (session=${sessionId}, order=${order.id}): ${reason}`);
+    }
+  }
+
+  private async handleAiReply(
+    sessionId: string,
+    store: Store,
+    order: Order,
+    message: IncomingReply,
+    customerText: string,
+  ): Promise<void> {
+    let conversation = await this.conversations.findOneBy({ orderId: order.id });
+    conversation ??= this.conversations.create({ orderId: order.id, storeId: store.id, status: 'active', turns: [] });
+    const turns = [...(conversation.turns ?? []), { role: 'customer' as const, text: customerText.slice(0, 1000), at: new Date().toISOString() }];
+    const chatId = message.chatId ?? message.from;
+    if (!chatId) return;
+    if (conversation.turnCount >= 8) {
+      conversation.status = 'escalated';
+      conversation.turns = [...turns, { role: 'assistant', text: 'Un conseiller va reprendre cette conversation.', at: new Date().toISOString() }];
+      await this.conversations.save(conversation);
+      await this.messages.sendText(sessionId, { chatId, text: 'Un conseiller va reprendre cette conversation.' });
+      return;
+    }
+    try {
+      const decision = await this.ai.respond(order, store.language, turns);
+      conversation.turnCount += 1;
+      conversation.turns = [...turns, { role: 'assistant', text: decision.reply, at: new Date().toISOString() }];
+      conversation.lastError = null;
+      if (decision.action === 'escalate') conversation.status = 'escalated';
+      if (decision.action === 'confirm' || decision.action === 'cancel') {
+        const settings = this.encryption.revealSettings(store.settings ?? {});
+        const shopDomain = typeof settings.shopDomain === 'string' ? settings.shopDomain : '';
+        const accessToken = typeof settings.accessToken === 'string' ? settings.accessToken : '';
+        if (!shopDomain || !accessToken) throw new Error('Shopify connection is not configured.');
+        order.confirmationStatus = 'processing_reply';
+        await this.orders.save(order);
+        if (decision.action === 'confirm') {
+          await this.shopify.markOrderConfirmed(shopDomain, accessToken, order);
+          order.status = 'confirmed'; order.confirmationStatus = 'confirmed'; conversation.status = 'confirmed';
+        } else {
+          await this.shopify.cancelOrder(shopDomain, accessToken, order.shopifyOrderId);
+          order.status = 'cancelled'; order.confirmationStatus = 'cancelled'; conversation.status = 'cancelled';
+        }
+        await this.orders.save(order);
+      }
+      await this.conversations.save(conversation);
+      await this.messages.sendText(sessionId, { chatId, text: decision.reply });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'AI conversation failed';
+      conversation.lastError = reason;
+      conversation.turns = turns;
+      await this.conversations.save(conversation);
+      if (order.confirmationStatus === 'processing_reply') {
+        order.confirmationStatus = 'pending'; order.confirmationError = reason; await this.orders.save(order);
+      }
+      this.logger.error(`AI order reply failed (order=${order.id}): ${reason}`);
+      await this.messages.sendText(sessionId, { chatId, text: 'Je transfère votre demande à un conseiller. Votre commande reste en attente.' });
     }
   }
 

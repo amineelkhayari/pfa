@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { Merchant } from './entities/merchant.entity';
 import { CreateMerchantDto } from './dto/create-merchant.dto';
 import { UpdateMerchantDto } from './dto/update-merchant.dto';
+import { getRequestUserScope } from '../../common/services/request-context';
 
 @Injectable()
 export class MerchantService {
@@ -14,6 +15,7 @@ export class MerchantService {
   ) {}
 
   async create(dto: CreateMerchantDto): Promise<Merchant> {
+    const scope = getRequestUserScope();
     const exists = await this.merchantRepository.findOne({
       where: {
         email: dto.email,
@@ -24,13 +26,15 @@ export class MerchantService {
       throw new ConflictException('Merchant email already exists.');
     }
 
-    const merchant = this.merchantRepository.create(dto);
+    const merchant = this.merchantRepository.create({ ...dto, userId: scope.userId ?? null });
 
     return await this.merchantRepository.save(merchant);
   }
 
   async findAll(): Promise<Merchant[]> {
+    const scope = getRequestUserScope();
     return await this.merchantRepository.find({
+      where: scope.userId && !scope.isAdmin ? { userId: scope.userId } : undefined,
       order: {
         createdAt: 'DESC',
       },
@@ -41,10 +45,9 @@ export class MerchantService {
   }
 
   async findById(id: string): Promise<Merchant> {
+    const scope = getRequestUserScope();
     const merchant = await this.merchantRepository.findOne({
-      where: {
-        id,
-      },
+      where: scope.userId && !scope.isAdmin ? { id, userId: scope.userId } : { id },
       relations: {
         stores: true,
       },
