@@ -547,6 +547,37 @@ export class SessionEngineLifecycle {
   /** Engine callback body, lifted out of initializeEngine so the wiring table stays readable. */
   private handleEngineReady(id: string, engine: IWhatsAppEngine, phone: string, pushName: string): void {
     if (!this.isLiveEngine(id, engine)) return;
+    void this.finalizeEngineReady(id, engine, phone, pushName).catch(err => {
+      this.logger.error('Failed to finalize authenticated session', undefined, {
+        sessionId: id,
+        error: err instanceof Error ? err.message : String(err),
+        action: 'ready_finalize_failed',
+      });
+    });
+  }
+
+  private async finalizeEngineReady(id: string, engine: IWhatsAppEngine, phone: string, pushName: string): Promise<void> {
+    const normalizedPhone = String(phone).replace(/\D/g, '');
+    const duplicate = normalizedPhone
+      ? await this.sessionRepository.createQueryBuilder('session')
+          .where('session.phone = :phone', { phone: normalizedPhone })
+          .andWhere('session.id != :id', { id })
+          .getOne()
+      : null;
+    if (duplicate) {
+      const reason = `WhatsApp number ${normalizedPhone} is already connected to session "${duplicate.displayName ?? duplicate.name}". Unlink that session before connecting this number again.`;
+      this.logger.warn('Duplicate WhatsApp number rejected', { sessionId: id, duplicateSessionId: duplicate.id, phone: normalizedPhone, action: 'duplicate_phone_rejected' });
+      this.sessionErrors.set(id, reason);
+      this.stoppingSessions.add(id);
+      // Logout removes the newly-created companion link from WhatsApp. destroy() alone would only
+      // stop this process and could leave the duplicate device linked on the customer's account.
+      await this.teardownEngineSafely(id, engine, candidate => candidate.logout(), 'logout');
+      this.engines.deleteIfLive(id, engine);
+      await this.sessionRepository.update(id, { phone: null, pushName: null });
+      await this.updateStatus(id, SessionStatus.ACTION_REQUIRED);
+      return;
+    }
+    if (!this.isLiveEngine(id, engine)) return;
     this.logger.log(`Session ready: ${phone}`, {
       sessionId: id,
       phone,
@@ -582,7 +613,7 @@ export class SessionEngineLifecycle {
     void this.sessionRepository
       .update(id, {
         status: SessionStatus.READY,
-        phone,
+        phone: normalizedPhone || phone,
         pushName,
         connectedAt: new Date(),
         lastActiveAt: new Date(),

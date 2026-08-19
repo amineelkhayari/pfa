@@ -239,19 +239,22 @@ export function Sessions() {
 
   const fetchQR = useCallback(
     async (sessionId: string) => {
-      // Guard: if session is already connected, stop polling immediately. Read the ref (not `sessions`)
-      // so fetchQR keeps a stable identity — otherwise the polling interval is torn down and restarted on
-      // every sessions update.
-      const currentSession = sessionsRef.current.find(s => s.id === sessionId);
-      if (currentSession?.status === 'ready') {
+      // Preflight against the backend before touching /qr. Local state and WebSocket delivery can lag
+      // behind a fast credential restore; using only the cached status caused an unnecessary /qr call
+      // that correctly returned 400 "already authenticated".
+      const authoritative = await sessionApi.get(sessionId).catch(() => null);
+      if (!authoritative) return;
+      sessionsRef.current = replaceSession(sessionsRef.current, authoritative);
+      setSessions(sessionsRef.current);
+      setSelectedSession(current => current?.id === authoritative.id ? authoritative : current);
+      if (authoritative.status === 'ready') {
         setQrData(null);
         currentSessionName.current = '';
         return;
       }
-      // Poll throughout the pairing lifecycle. A WebSocket frame can be missed during subscription
-      // setup, and local status can lag behind the backend's qr_ready transition. Expected early 400s
-      // are handled below; once the engine has a QR this REST fallback displays it reliably.
-      if (currentSession && !['initializing', 'qr_ready', 'authenticating'].includes(currentSession.status)) return;
+      // The engine exposes a QR only in qr_ready. During initializing/authenticating we poll status,
+      // not /qr, so normal lifecycle transitions never generate expected 400 responses.
+      if (authoritative.status !== 'qr_ready') return;
       try {
         const qr = await sessionApi.getQR(sessionId);
         setQrData({ sessionId, sessionName: currentSessionName.current, qrCode: qr.qrCode });
@@ -261,10 +264,8 @@ export function Sessions() {
           fetchSessions();
         }
       } catch {
-        // Keep qrData alive so the polling interval keeps retrying until the QR
-        // is ready. Only stop polling if the session itself has failed. 'authenticating' is included so
-        // the modal (and the pairing-code panel mounted in it) survives the brief post-link handshake
-        // instead of being torn down mid-pairing — it closes on the real 'ready'/'failed' transition.
+        // A narrow status race can still happen between the preflight and /qr. Reconcile once and
+        // close cleanly if authentication completed in that interval.
         const updated = await sessionApi.get(sessionId).catch(() => null);
         const stillInitializing =
           updated && ['initializing', 'qr_ready', 'authenticating'].includes(updated.status);
@@ -432,14 +433,9 @@ export function Sessions() {
     // (the engine hasn't produced one), and the WS session.qr push + gated 5s poll deliver it
     // without spamming the console with expected failures.
     if (session?.status === 'qr_ready') {
-      try {
-        const qr = await sessionApi.getQR(id);
-        setQrData({ sessionId: id, sessionName, qrCode: qr.qrCode });
-      } catch (err) {
-        console.error('Failed to get QR:', err);
-        // Do not clear qrData here — keep the loading modal open so the
-        // polling interval (every 5 s) retries until the QR becomes available.
-      }
+      // Use the same authoritative preflight as polling; cached qr_ready may already be READY on
+      // the server after a fast authentication restore.
+      void fetchQR(id);
     }
   };
 

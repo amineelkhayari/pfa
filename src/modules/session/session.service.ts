@@ -27,6 +27,7 @@ import { createLogger } from '../../common/services/logger.service';
 import { HookManager } from '../../core/hooks';
 import { getRequestUserScope } from '../../common/services/request-context';
 import { PlanUsageService } from '../auth/plan-usage.service';
+import { randomUUID } from 'crypto';
 
 // Re-exported so the existing spec import paths keep working after these moved out.
 export { clampReconnectDelay } from './reconnect-policy';
@@ -158,17 +159,25 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
   async create(dto: CreateSessionDto): Promise<Session> {
     const { userId } = getRequestUserScope();
     await this.planUsage.assertCanCreateSession();
-    // Check if session with same name exists
-    const existing = await this.sessionRepository.findOne({
-      where: { name: dto.name },
-    });
+    // Display names are tenant-scoped. The engine key below is globally unique because it owns an
+    // on-disk authentication directory shared by the whole gateway.
+    const existingQuery = this.sessionRepository.createQueryBuilder('session')
+      .where('(session.displayName = :displayName OR (session.displayName IS NULL AND session.name = :displayName))', { displayName: dto.name });
+    if (userId) existingQuery.andWhere('session.userId = :userId', { userId });
+    else existingQuery.andWhere('session.userId IS NULL');
+    const existing = await existingQuery.getOne();
 
     if (existing) {
       throw new ConflictException(`Session with name '${dto.name}' already exists`);
     }
 
+    const ownerPrefix = userId ? userId.replace(/-/g, '').slice(0, 10) : 'system';
+    // Keep the storage key below the entity's 50-character limit. The customer name is stored
+    // separately in displayName and is never used as a filesystem/auth-directory identifier.
+    const engineName = `u-${ownerPrefix}-${randomUUID().replace(/-/g, '').slice(0, 16)}`;
     const session = this.sessionRepository.create({
-      name: dto.name,
+      name: engineName,
+      displayName: dto.name,
       config: dto.config || {},
       proxyUrl: dto.proxyUrl || null,
       proxyType: dto.proxyType || null,
@@ -177,7 +186,8 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
     });
 
     // The findOne pre-check above is a fast path for the common case, but it's a check-then-insert
-    // TOCTOU: two concurrent same-name creates both pass it, then one hits the name UNIQUE constraint.
+    // TOCTOU: two concurrent same-name creates both pass it, then the tenant/display-name unique
+    // constraint rejects one of them.
     // Translate that violation to a 409 (matching the pre-check) instead of leaking a raw 500.
     let saved: Session;
     try {

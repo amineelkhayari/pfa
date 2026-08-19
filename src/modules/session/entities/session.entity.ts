@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToOne } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToOne, Index } from 'typeorm';
 import { DateTransformer } from '../../../common/transformers/date.transformer';
 import { jsonColumnType, dateColumnType } from '../../../common/utils/column-types';
 import { Store } from '../../stores/entities/store.entity';
@@ -15,6 +15,7 @@ export enum SessionStatus {
 }
 
 @Entity('sessions')
+@Index('UQ_sessions_user_display_name', ['userId', 'displayName'], { unique: true })
 export class Session {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -25,6 +26,10 @@ export class Session {
   @Column({ type: 'varchar', length: 100, unique: true })
   name: string;
 
+  /** Customer-selected label. `name` is the globally unique engine/auth-directory key. */
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  displayName?: string | null;
+
   @Column({
     type: 'varchar',
     length: 50,
@@ -33,6 +38,7 @@ export class Session {
   status: SessionStatus;
 
   @Column({ type: 'varchar', length: 20, nullable: true })
+  @Index('UQ_sessions_phone', { unique: true })
   phone: string | null;
 
   @Column({ type: 'varchar', length: 100, nullable: true })

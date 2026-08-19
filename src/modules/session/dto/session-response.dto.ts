@@ -65,7 +65,7 @@ export class SessionResponseDto {
   static fromEntity(session: Session, engineLoaded: boolean): SessionResponseDto {
     return {
       id: session.id,
-      name: session.name,
+      name: session.displayName ?? session.name,
       status: session.status,
       phone: session.phone,
       pushName: session.pushName,
