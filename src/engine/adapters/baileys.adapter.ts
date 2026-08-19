@@ -313,6 +313,10 @@ export class BaileysAdapter implements IWhatsAppEngine {
     return this.messaging.sendPollMessage(chatId, poll);
   }
 
+  async sendButtonsMessage(chatId: string, input: import('../interfaces/whatsapp-engine.interface').ButtonInput): Promise<MessageResult> {
+    return this.messaging.sendButtonsMessage(chatId, input);
+  }
+
   async replyToMessage(chatId: string, quotedMsgId: string, text: string): Promise<MessageResult> {
     return this.messaging.replyToMessage(chatId, quotedMsgId, text);
   }

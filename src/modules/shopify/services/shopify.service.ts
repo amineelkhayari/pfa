@@ -72,6 +72,37 @@ export class ShopifyService {
     if (isAxiosError(error)) return error.response?.data ?? error.message;
     return error instanceof Error ? error.message : fallback;
   }
+
+  async createConfirmedChatOrder(shopDomain: string, accessToken: string, input: {
+    variantId: string; quantity: number; phone: string; customerName: string;
+    address1: string; city: string; postalCode?: string | null; country: string;
+  }): Promise<{ orderId: string; orderName: string | null }> {
+    const graphql = async (query: string, variables: Record<string, unknown>) => {
+      const response = await firstValueFrom(this.http.post<any>(`${this.getBaseUrl(shopDomain)}/graphql.json`, { query, variables }, { headers: this.getHeaders(accessToken) }));
+      if (response.data.errors?.length) throw new BadRequestException(response.data.errors.map((item: any) => item.message).join('; '));
+      return response.data.data;
+    };
+    try {
+      const created = await graphql(`mutation CreateChatDraft($input: DraftOrderInput!) {
+        draftOrderCreate(input: $input) { draftOrder { id } userErrors { field message } }
+      }`, { input: {
+        lineItems: [{ variantId: input.variantId, quantity: input.quantity }], phone: input.phone,
+        shippingAddress: { firstName: input.customerName, address1: input.address1, city: input.city, zip: input.postalCode || undefined, country: input.country },
+        billingAddress: { firstName: input.customerName, address1: input.address1, city: input.city, zip: input.postalCode || undefined, country: input.country },
+        tags: ['whatsapp-bot', 'whatsapp-bot-confirmed'], note: 'Confirmed by customer through WhatsApp', sourceName: 'whatsapp',
+      } });
+      const createResult = created.draftOrderCreate;
+      if (createResult.userErrors?.length || !createResult.draftOrder?.id) throw new BadRequestException(createResult.userErrors?.map((item: any) => item.message).join('; ') || 'Shopify did not create the draft order');
+      const completed = await graphql(`mutation CompleteChatDraft($id: ID!) {
+        draftOrderComplete(id: $id) { draftOrder { order { id name } } userErrors { field message } }
+      }`, { id: createResult.draftOrder.id });
+      const completeResult = completed.draftOrderComplete;
+      if (completeResult.userErrors?.length || !completeResult.draftOrder?.order?.id) throw new BadRequestException(completeResult.userErrors?.map((item: any) => item.message).join('; ') || 'Shopify did not complete the draft order');
+      return { orderId: completeResult.draftOrder.order.id, orderName: completeResult.draftOrder.order.name ?? null };
+    } catch (error) {
+      throw new BadRequestException(this.errorDetails(error, 'Unable to create the Shopify order.'));
+    }
+  }
   getAuthorizationUrl(
     shopDomain: string,
     clientId: string,

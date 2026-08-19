@@ -62,6 +62,14 @@ export class ShopifyWebhookController {
     try {
       const order = await this.shopify.importOrderPayload(payload, context.store.id);
       if (!order.phone) throw new Error('Order has no customer phone number.');
+      if ((order.tags ?? []).includes('whatsapp-bot-confirmed')) {
+        order.status = 'confirmed';
+        order.confirmationStatus = 'confirmed';
+        order.confirmationSentAt = new Date();
+        await this.orders.save(order);
+        await this.deliveries.update({ webhookId }, { status: 'completed', error: null });
+        return { received: true, alreadyConfirmedByCustomer: true };
+      }
 
       // One Shopify order can contain many line items and can also arrive through simultaneous
       // webhook deliveries. Atomically claim the ORDER before sending so neither case can produce

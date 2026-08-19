@@ -40,6 +40,7 @@ export function mapBaileysMessageType(contentType: string | undefined, isPtt = f
       return 'poll';
     case 'interactiveMessage':
     case 'buttonsMessage':
+    case 'buttonsResponseMessage':
     case 'templateMessage':
     case 'interactiveResponseMessage':
       // WhatsApp Business interactive shapes (OTP/verification codes, button/template prompts). They
@@ -71,11 +72,15 @@ export interface BaileysBodyContent {
   documentMessage?: { caption?: string | null } | null;
   interactiveMessage?: { body?: { text?: string | null } | null } | null;
   buttonsMessage?: { contentText?: string | null } | null;
+  buttonsResponseMessage?: { selectedDisplayText?: string | null; selectedButtonId?: string | null } | null;
   templateMessage?: {
     hydratedTemplate?: { hydratedContentText?: string | null } | null;
     hydratedFourRowTemplate?: { hydratedContentText?: string | null } | null;
   } | null;
-  interactiveResponseMessage?: { body?: { text?: string | null } | null } | null;
+  interactiveResponseMessage?: {
+    body?: { text?: string | null } | null;
+    nativeFlowResponseMessage?: { paramsJson?: string | null } | null;
+  } | null;
 }
 
 /**
@@ -86,6 +91,14 @@ export interface BaileysBodyContent {
  * content (ephemeral/viewOnce/documentWithCaption wrappers already unwrapped), as the adapter does.
  */
 export function extractBaileysBody(content: BaileysBodyContent): string {
+  const nativeParams = content.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson;
+  let nativeSelection = '';
+  if (nativeParams) {
+    try {
+      const parsed = JSON.parse(nativeParams) as { id?: string; display_text?: string };
+      nativeSelection = parsed.id ?? parsed.display_text ?? '';
+    } catch { /* Ignore malformed third-party interactive data. */ }
+  }
   return (
     content.conversation ??
     content.extendedTextMessage?.text ??
@@ -94,9 +107,12 @@ export function extractBaileysBody(content: BaileysBodyContent): string {
     content.documentMessage?.caption ??
     content.interactiveMessage?.body?.text ??
     content.buttonsMessage?.contentText ??
+    content.buttonsResponseMessage?.selectedDisplayText ??
+    content.buttonsResponseMessage?.selectedButtonId ??
     content.templateMessage?.hydratedTemplate?.hydratedContentText ??
     content.templateMessage?.hydratedFourRowTemplate?.hydratedContentText ??
     content.interactiveResponseMessage?.body?.text ??
+    nativeSelection ??
     ''
   );
 }

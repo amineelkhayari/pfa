@@ -25,6 +25,7 @@ import { OrderAiConversation } from './entities/order-ai-conversation.entity';
 import { OpenAiOrderAgentService } from './services/openai-order-agent.service';
 import { BillingModule } from '../billing/billing.module';
 import { AdminAiTestController, UserAiTestController } from './controllers/admin-ai-test.controller';
+import { StoreOrderCart } from './entities/store-order-cart.entity';
 
 @Module({
   imports: [
@@ -34,7 +35,7 @@ import { AdminAiTestController, UserAiTestController } from './controllers/admin
     StoreModule,
     MessageModule,
     BillingModule,
-    TypeOrmModule.forFeature([Store, Product, Order, ShopifyOAuthState, ShopifyWebhookDelivery, OrderAiConversation], 'data'),
+    TypeOrmModule.forFeature([Store, Product, Order, ShopifyOAuthState, ShopifyWebhookDelivery, OrderAiConversation, StoreOrderCart], 'data'),
   ],
   controllers: [ShopifyController, ShopifyWebhookController, AdminAiTestController, UserAiTestController],
   providers: [

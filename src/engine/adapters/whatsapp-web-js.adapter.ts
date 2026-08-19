@@ -1323,6 +1323,10 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     return this.messaging.sendPollMessage(chatId, poll);
   }
 
+  sendButtonsMessage(chatId: string, input: import('../interfaces/whatsapp-engine.interface').ButtonInput): Promise<MessageResult> {
+    return this.messaging.sendButtonsMessage(chatId, input);
+  }
+
   replyToMessage(chatId: string, quotedMsgId: string, text: string): Promise<MessageResult> {
     return this.messaging.replyToMessage(chatId, quotedMsgId, text);
   }

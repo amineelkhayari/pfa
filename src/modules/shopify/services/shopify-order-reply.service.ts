@@ -12,6 +12,7 @@ import { Platform } from '../../stores/enum/platform.enum';
 import { ShopifyService } from './shopify.service';
 import { OrderAiConversation } from '../entities/order-ai-conversation.entity';
 import { OpenAiOrderAgentService } from './openai-order-agent.service';
+import { StoreOrderCart } from '../entities/store-order-cart.entity';
 
 interface IncomingReply {
   body?: string;
@@ -36,6 +37,7 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
     @InjectRepository(Order, 'data') private readonly orders: Repository<Order>,
     @InjectRepository(Product, 'data') private readonly products: Repository<Product>,
     @InjectRepository(OrderAiConversation, 'data') private readonly conversations: Repository<OrderAiConversation>,
+    @InjectRepository(StoreOrderCart, 'data') private readonly carts: Repository<StoreOrderCart>,
   ) {}
 
   onModuleInit(): void {
@@ -63,6 +65,8 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
 
     const sender = this.normalizePhone(message.senderPhone ?? message.from ?? message.chatId);
     if (!sender) return;
+    const catalog = await this.storeProducts(store.id);
+    if (await this.handleNewOrder(sessionId, store, message, reply, sender, catalog)) return;
     const recentOrders = await this.orders.find({
       where: { storeId: store.id },
       order: { createdAt: 'DESC' },
@@ -80,6 +84,10 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
       await this.orders.save(referencedOrder);
     }
     const actionableReferenced = referencedOrder?.confirmationStatus === 'pending' ? referencedOrder : undefined;
+    if (!referencedOrder && this.isGeneralOrderQuery(reply)) {
+      await this.handleCatalogQuestion(sessionId, store, message, reply, customerOrders);
+      return;
+    }
     if (!pending.length && !actionableReferenced) {
       await this.handleCatalogQuestion(sessionId, store, message, reply, customerOrders);
       return;
@@ -176,8 +184,8 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     try {
-      const catalog = await this.storeProducts(store.id);
-      const decision = await this.ai.respond(order, store.language, turns, { name: store.name, products: catalog });
+      const catalog = this.relevantProducts(await this.storeProducts(store.id), customerText, order);
+      const decision = await this.ai.respond(order, store.language, turns.slice(-8), { name: store.name, products: catalog });
       conversation.turnCount = (conversation.turnCount ?? 0) + 1;
       conversation.turns = [...turns, { role: 'assistant', text: decision.reply, at: new Date().toISOString() }];
       conversation.lastError = null;
@@ -223,9 +231,21 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
     const chatId = message.chatId ?? message.from;
     if (!chatId) return;
     try {
-      const products = await this.storeProducts(store.id);
+      const products = this.relevantProducts(await this.storeProducts(store.id), text);
+      const history = await this.messages.getMessages(sessionId, { chatId, limit: 10 });
+      const turns = history.messages
+        .filter(item => item.type === 'text' && Boolean(item.body?.trim()))
+        .reverse()
+        .map(item => ({
+          role: item.direction === 'incoming' ? 'customer' as const : 'assistant' as const,
+          text: String(item.body).slice(0, 1000),
+          at: item.createdAt?.toISOString?.() ?? new Date().toISOString(),
+        }));
+      if (!turns.length || turns[turns.length - 1].role !== 'customer' || turns[turns.length - 1].text !== text) {
+        turns.push({ role: 'customer', text: text.slice(0, 1000), at: new Date().toISOString() });
+      }
       const answer = await this.ai.chat(
-        [{ role: 'customer', text: text.slice(0, 1000), at: new Date().toISOString() }],
+        turns,
         { name: store.name, language: store.language, products, orders: customerOrders },
       );
       await this.messages.sendText(sessionId, { chatId, text: answer.slice(0, 1500) });
@@ -236,6 +256,117 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
 
   private async storeProducts(storeId: string): Promise<Product[]> {
     return this.products.find({ where: { storeId, status: 'active' }, order: { shopifyUpdatedAt: 'DESC' }, take: 40 });
+  }
+
+  private relevantProducts(products: Product[], text: string, order?: Order): Product[] {
+    const terms = `${text} ${(order?.lineItems ?? []).map(item => item.title ?? item.name ?? '').join(' ')}`.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(term => term.length > 2);
+    const scored = products.map(product => {
+      const haystack = `${product.title} ${product.productType ?? ''} ${product.vendor ?? ''} ${(product.tags ?? []).join(' ')}`.toLowerCase();
+      return { product, score: terms.reduce((sum, term) => sum + (haystack.includes(term) ? 1 : 0), 0) };
+    }).sort((a, b) => b.score - a.score);
+    const matched = scored.filter(item => item.score > 0).slice(0, 8).map(item => item.product);
+    return matched.length ? matched : scored.slice(0, 10).map(item => item.product);
+  }
+
+  private async handleNewOrder(sessionId: string, store: Store, message: IncomingReply, text: string, phone: string, products: Product[]): Promise<boolean> {
+    const chatId = message.chatId ?? message.from;
+    if (!chatId) return false;
+    let cart = await this.carts.findOneBy({ storeId: store.id, phone });
+    if (!cart && !this.hasPurchaseIntent(text)) return false;
+    cart ??= this.carts.create({ storeId: store.id, phone, step: 'product', quantity: 1, country: 'Morocco' });
+    const cancel = /\b(cancel|annul|stop|ncancel|ma bghit|la ma bghitch)\w*\b|إلغاء|الغاء|لا أريد/i.test(text);
+    if (cancel) {
+      if (cart.id) await this.carts.delete(cart.id);
+      await this.messages.sendText(sessionId, { chatId, text: 'D’accord, la nouvelle commande a été annulée.' });
+      return true;
+    }
+    if (cart.step === 'product') {
+      const selectedNumber = this.choiceNumber(text, products.length);
+      const product = selectedNumber ? products[selectedNumber - 1] : this.matchProduct(text, products);
+      if (!product) {
+        await this.carts.save(cart);
+        const choices = products.slice(0, 10).map((item, index) => `${index + 1}. ${item.title} — ${item.price} ${store.currency}`).join('\n');
+        await this.messages.sendText(sessionId, { chatId, text: `Quel produit souhaitez-vous commander ? Répondez avec le numéro :\n${choices}` });
+        return true;
+      }
+      cart.productId = product.id;
+      const variants = product.variants ?? [];
+      if (variants.length > 1) {
+        cart.step = 'variant'; await this.carts.save(cart);
+        await this.messages.sendText(sessionId, { chatId, text: `Choisissez une option pour ${product.title}. Répondez avec le numéro :\n${variants.slice(0, 10).map((item, index) => `${index + 1}. ${item.title} — ${item.price ?? product.price} ${store.currency}`).join('\n')}` });
+      } else {
+        const variant = variants[0];
+        cart.variantId = String(variant?.admin_graphql_api_id ?? (variant?.id ? `gid://shopify/ProductVariant/${variant.id}` : ''));
+        cart.variantTitle = String(variant?.title ?? 'Default Title'); cart.step = 'quantity'; await this.carts.save(cart);
+        await this.messages.sendText(sessionId, { chatId, text: `Combien d’unités de ${product.title} souhaitez-vous ?` });
+      }
+      return true;
+    }
+    const product = products.find(item => item.id === cart.productId);
+    if (!product) { await this.carts.delete(cart.id); return false; }
+    if (cart.step === 'variant') {
+      const variants = product.variants ?? [];
+      const selectedNumber = this.choiceNumber(text, variants.length);
+      const variant = selectedNumber ? variants[selectedNumber - 1] : variants.find(item => text.toLowerCase().includes(String(item.title ?? '').toLowerCase()));
+      if (!variant) { await this.messages.sendText(sessionId, { chatId, text: `Je n’ai pas reconnu l’option. Répondez avec un numéro :\n${variants.slice(0, 10).map((item, index) => `${index + 1}. ${item.title}`).join('\n')}` }); return true; }
+      cart.variantId = String(variant.admin_graphql_api_id ?? `gid://shopify/ProductVariant/${variant.id}`); cart.variantTitle = String(variant.title); cart.step = 'quantity'; await this.carts.save(cart);
+      await this.messages.sendText(sessionId, { chatId, text: 'Quelle quantité souhaitez-vous ?' }); return true;
+    }
+    if (cart.step === 'quantity') {
+      const quantity = Number(text.match(/\d+/)?.[0]);
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) { await this.messages.sendText(sessionId, { chatId, text: 'Indiquez une quantité entre 1 et 99.' }); return true; }
+      cart.quantity = quantity; cart.step = 'name'; await this.carts.save(cart);
+      await this.messages.sendText(sessionId, { chatId, text: 'Quel est votre nom complet pour la livraison ?' }); return true;
+    }
+    if (cart.step === 'name') { cart.customerName = text.slice(0, 150); cart.step = 'address'; await this.carts.save(cart); await this.messages.sendText(sessionId, { chatId, text: 'Quelle est votre adresse de livraison (rue, numéro et quartier) ?' }); return true; }
+    if (cart.step === 'address') { cart.address1 = text.slice(0, 300); cart.step = 'city'; await this.carts.save(cart); await this.messages.sendText(sessionId, { chatId, text: 'Dans quelle ville ?' }); return true; }
+    if (cart.step === 'city') {
+      cart.city = text.slice(0, 100); cart.step = 'confirm'; await this.carts.save(cart);
+      const variant = (product.variants ?? []).find(item => String(item.admin_graphql_api_id ?? `gid://shopify/ProductVariant/${item.id}`) === cart.variantId);
+      const unitPrice = Number(variant?.price ?? product.price);
+      const summary = `Résumé de votre nouvelle commande :\n• ${product.title}${cart.variantTitle && cart.variantTitle !== 'Default Title' ? ` — ${cart.variantTitle}` : ''}\n• Quantité : ${cart.quantity}\n• Total produits : ${(unitPrice * cart.quantity).toFixed(2)} ${store.currency}\n• Livraison : ${cart.customerName}, ${cart.address1}, ${cart.city}\n• Téléphone : +${phone}`;
+      await this.messages.sendText(sessionId, {
+        chatId,
+        text: `${summary}\n\n✅ Répondez *CONFIRMER* pour créer la commande.\n❌ Répondez *ANNULER* pour arrêter.`,
+      });
+      return true;
+    }
+    if (cart.step === 'confirm') {
+      if (!/\b(confirm|confirmer|confirme|nconfirm|yes|oui|wakha)\w*\b|تأكيد|أؤكد|اؤكد|نعم/i.test(text)) { await this.messages.sendText(sessionId, { chatId, text: 'Répondez CONFIRMER pour créer la commande, ou ANNULER pour arrêter.' }); return true; }
+      const settings = this.encryption.revealSettings(store.settings ?? {});
+      try {
+        const result = await this.shopify.createConfirmedChatOrder(String(settings.shopDomain ?? ''), String(settings.accessToken ?? ''), {
+          variantId: String(cart.variantId), quantity: cart.quantity, phone: `+${phone}`, customerName: String(cart.customerName), address1: String(cart.address1), city: String(cart.city), postalCode: cart.postalCode, country: cart.country,
+        });
+        await this.carts.delete(cart.id);
+        await this.messages.sendText(sessionId, { chatId, text: `Votre commande ${result.orderName ?? ''} a été créée et confirmée avec succès ✅` });
+      } catch (error) {
+        this.logger.error(`Chat order creation failed (store=${store.id}, customer=${phone.slice(-4)}): ${error instanceof Error ? error.message : 'unknown error'}`);
+        await this.messages.sendText(sessionId, { chatId, text: 'Je n’ai pas pu créer la commande dans Shopify pour le moment. Vos informations sont conservées; répondez CONFIRMER pour réessayer ou ANNULER.' });
+      }
+      return true;
+    }
+    return false;
+  }
+
+  private hasPurchaseIntent(text: string): boolean {
+    return /\b(buy|purchase|order|commander|acheter|achète|bghit|nakhod|nchri)\b|بغيت|نشتري|شراء|أريد/i.test(text);
+  }
+
+  private matchProduct(text: string, products: Product[]): Product | undefined {
+    const normalized = text.toLowerCase();
+    const exact = [...products].sort((a, b) => b.title.length - a.title.length).find(product => normalized.includes(product.title.toLowerCase()));
+    if (exact) return exact;
+    const terms = normalized.split(/[^\p{L}\p{N}]+/u).filter(term => term.length > 2);
+    const ranked = products.map(product => ({ product, score: terms.filter(term => product.title.toLowerCase().includes(term)).length })).sort((a, b) => b.score - a.score);
+    return ranked[0]?.score > 0 && ranked[0].score > (ranked[1]?.score ?? -1) ? ranked[0].product : undefined;
+  }
+
+  private choiceNumber(text: string, maximum: number): number | null {
+    const match = text.trim().match(/^(?:option\s*)?(\d{1,2})[.)]?$/i);
+    if (!match) return null;
+    const value = Number(match[1]);
+    return value >= 1 && value <= Math.min(maximum, 10) ? value : null;
   }
 
   private async confirmationMessage(store: Store, order: Order, aiReply?: string): Promise<string> {
@@ -273,6 +404,12 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
 
   private renderTemplate(template: string, values: Record<string, string>): string {
     return template.replace(/{{\s*([a-zA-Z]+)\s*}}/g, (match, key: string) => values[key] ?? match).trim();
+  }
+
+  private isGeneralOrderQuery(text: string): boolean {
+    const normalized = text.toLowerCase();
+    return /(?:orders?|commandes?|talabat|طلباتي|الطلبات)/i.test(normalized)
+      && /(?:all|list|show|give|mes|my|dyali|3ndi|عندي|ديالي|كل)/i.test(normalized);
   }
 
   private normalizePhone(value: string | null | undefined): string {

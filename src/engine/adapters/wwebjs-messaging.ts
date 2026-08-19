@@ -1,4 +1,4 @@
-import { MessageMedia, MessageTypes, type Client, type Message } from 'whatsapp-web.js';
+import { Buttons, MessageMedia, MessageTypes, type Client, type Message } from 'whatsapp-web.js';
 import {
   IncomingMessage,
   LocationInput,
@@ -8,6 +8,7 @@ import {
   MessageReaction,
   MessageResult,
   PollInput,
+  ButtonInput,
 } from '../interfaces/whatsapp-engine.interface';
 import { MessageWithReactions, SerializedWid } from '../types/whatsapp-web-js.types';
 import { MessageNotFoundError } from '../../common/errors/message-not-found.error';
@@ -396,6 +397,13 @@ export class WwebjsMessaging {
       this.client().sendMessage(to, new Poll(poll.name, poll.options, pollOptions)),
     );
     return toMessageResult(msg);
+  }
+
+  async sendButtonsMessage(chatId: string, input: ButtonInput): Promise<MessageResult> {
+    this.host.ensureReady();
+    const message = new Buttons(input.text, input.buttons.map(button => ({ id: button.id, body: button.label })), undefined, input.footer);
+    const msg = await this.sendResolved(chatId, to => this.client().sendMessage(to, message));
+    return { id: msg.id._serialized, timestamp: msg.timestamp };
   }
 
   async replyToMessage(chatId: string, quotedMsgId: string, text: string): Promise<MessageResult> {

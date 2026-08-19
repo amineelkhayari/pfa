@@ -606,6 +606,22 @@ export class MessageService {
     return saved;
   }
 
+  async sendButtons(
+    sessionId: string,
+    dto: { chatId: string; text: string; footer?: string; buttons: Array<{ id: string; label: string }> },
+  ): Promise<MessageResponseDto> {
+    const finalDto = await this.applySendingGate(sessionId, 'buttons', dto);
+    const engine = this.getEngine(sessionId);
+    const message = await this.saveOutgoingMessage(sessionId, { chatId: finalDto.chatId, body: finalDto.text, type: 'buttons' });
+    let result: MessageResult;
+    try {
+      result = await engine.sendButtonsMessage(finalDto.chatId, { text: finalDto.text, footer: finalDto.footer, buttons: finalDto.buttons });
+    } catch (error) {
+      return this.failSend(sessionId, 'buttons', message, finalDto, error);
+    }
+    return this.persistSentState(message, result);
+  }
+
   async reserveOutgoingQuota(sessionId: string): Promise<boolean> {
     return (await this.planUsage?.reserveOutgoingMessage(sessionId)) ?? true;
   }

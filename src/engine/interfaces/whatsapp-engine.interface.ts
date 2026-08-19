@@ -252,6 +252,12 @@ export interface PollInput {
   allowMultipleAnswers?: boolean;
 }
 
+export interface ButtonInput {
+  text: string;
+  footer?: string;
+  buttons: Array<{ id: string; label: string }>;
+}
+
 export interface ReactionSender {
   senderId: string;
   emoji: string;
@@ -625,6 +631,7 @@ export interface IWhatsAppEngine {
   sendContactMessage(chatId: string, contact: ContactCard): Promise<MessageResult>;
   sendStickerMessage(chatId: string, media: MediaInput): Promise<MessageResult>;
   sendPollMessage(chatId: string, poll: PollInput): Promise<MessageResult>;
+  sendButtonsMessage(chatId: string, input: ButtonInput): Promise<MessageResult>;
 
   // Reply & Forward
   replyToMessage(chatId: string, quotedMsgId: string, text: string): Promise<MessageResult>;
