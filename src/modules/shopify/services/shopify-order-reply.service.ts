@@ -13,6 +13,7 @@ import { ShopifyService } from './shopify.service';
 import { OrderAiConversation } from '../entities/order-ai-conversation.entity';
 import { OpenAiOrderAgentService } from './openai-order-agent.service';
 import { StoreOrderCart } from '../entities/store-order-cart.entity';
+import { WooCommerceService, WooCredentials } from '../../woocommerce/services/woocommerce.service';
 
 interface IncomingReply {
   body?: string;
@@ -30,6 +31,7 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly hooks: HookManager,
     private readonly shopify: ShopifyService,
+    private readonly woocommerce: WooCommerceService,
     private readonly messages: MessageService,
     private readonly encryption: CredentialEncryptionService,
     private readonly ai: OpenAiOrderAgentService,
@@ -61,12 +63,12 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
     if (!sessionId || message.fromMe || !reply) return;
 
     const store = await this.stores.findOneBy({ sessionId });
-    if (!store?.settings || store.provider !== Platform.SHOPIFY) return;
+    if (!store?.settings || ![Platform.SHOPIFY, Platform.WOOCOMMERCE].includes(store.provider)) return;
 
     const sender = this.normalizePhone(message.senderPhone ?? message.from ?? message.chatId);
     if (!sender) return;
     const catalog = await this.storeProducts(store.id);
-    if (await this.handleNewOrder(sessionId, store, message, reply, sender, catalog)) return;
+    if (store.provider === Platform.SHOPIFY && await this.handleNewOrder(sessionId, store, message, reply, sender, catalog)) return;
     const recentOrders = await this.orders.find({
       where: { storeId: store.id },
       order: { createdAt: 'DESC' },
@@ -114,16 +116,12 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const settings = this.encryption.revealSettings(store.settings);
-      const shopDomain = typeof settings.shopDomain === 'string' ? settings.shopDomain : '';
-      const accessToken = typeof settings.accessToken === 'string' ? settings.accessToken : '';
-      if (!shopDomain || !accessToken) throw new Error('Shopify connection is not configured.');
-
       if (reply === '1') {
-        await this.shopify.markOrderConfirmed(shopDomain, accessToken, order);
+        await this.updateProviderOrder(store, settings, order, 'confirm');
         order.status = 'confirmed';
         order.confirmationStatus = 'confirmed';
       } else {
-        await this.shopify.cancelOrder(shopDomain, accessToken, order.shopifyOrderId);
+        await this.updateProviderOrder(store, settings, order, 'cancel');
         order.status = 'cancelled';
         order.confirmationStatus = 'cancelled';
       }
@@ -144,7 +142,7 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
       order.confirmationStatus = 'pending';
       order.confirmationError = reason;
       await this.orders.save(order);
-      this.logger.error(`Failed to process Shopify order reply (session=${sessionId}, order=${order.id}): ${reason}`);
+      this.logger.error(`Failed to process ${store.provider} order reply (session=${sessionId}, order=${order.id}): ${reason}`);
     }
   }
 
@@ -192,16 +190,13 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
       if (decision.action === 'escalate') conversation.status = 'escalated';
       if (decision.action === 'confirm' || decision.action === 'cancel') {
         const settings = this.encryption.revealSettings(store.settings ?? {});
-        const shopDomain = typeof settings.shopDomain === 'string' ? settings.shopDomain : '';
-        const accessToken = typeof settings.accessToken === 'string' ? settings.accessToken : '';
-        if (!shopDomain || !accessToken) throw new Error('Shopify connection is not configured.');
         order.confirmationStatus = 'processing_reply';
         await this.orders.save(order);
         if (decision.action === 'confirm') {
-          await this.shopify.markOrderConfirmed(shopDomain, accessToken, order);
+          await this.updateProviderOrder(store, settings, order, 'confirm');
           order.status = 'confirmed'; order.confirmationStatus = 'confirmed'; conversation.status = 'confirmed';
         } else {
-          await this.shopify.cancelOrder(shopDomain, accessToken, order.shopifyOrderId);
+          await this.updateProviderOrder(store, settings, order, 'cancel');
           order.status = 'cancelled'; order.confirmationStatus = 'cancelled'; conversation.status = 'cancelled';
         }
         await this.orders.save(order);
@@ -222,6 +217,21 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(`AI order reply failed (order=${order.id}): ${reason}`);
       await this.messages.sendText(sessionId, { chatId, text: 'Je transfère votre demande à un conseiller. Votre commande reste en attente.' });
     }
+  }
+
+  private async updateProviderOrder(store: Store, settings: Record<string, any>, order: Order, action: 'confirm' | 'cancel'): Promise<void> {
+    if (store.provider === Platform.WOOCOMMERCE) {
+      const credentials = settings as WooCredentials;
+      if (!credentials.siteUrl || !credentials.consumerKey || !credentials.consumerSecret) throw new Error('WooCommerce connection is not configured.');
+      if (action === 'confirm') await this.woocommerce.confirmOrder(credentials, order.shopifyOrderId);
+      else await this.woocommerce.cancelOrder(credentials, order.shopifyOrderId);
+      return;
+    }
+    const shopDomain = typeof settings.shopDomain === 'string' ? settings.shopDomain : '';
+    const accessToken = typeof settings.accessToken === 'string' ? settings.accessToken : '';
+    if (!shopDomain || !accessToken) throw new Error('Shopify connection is not configured.');
+    if (action === 'confirm') await this.shopify.markOrderConfirmed(shopDomain, accessToken, order);
+    else await this.shopify.cancelOrder(shopDomain, accessToken, order.shopifyOrderId);
   }
 
   private async handleCatalogQuestion(sessionId: string, store: Store, message: IncomingReply, text: string, customerOrders: Order[] = []): Promise<void> {

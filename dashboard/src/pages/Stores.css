@@ -7,7 +7,7 @@
 
 /* store create/edit modal: roomier than the default 480px (filters need width). */
 .stores-page .modal:not(.modal-sm) {
-  max-width: 640px;
+  max-width: 760px;
 }
 
 /* Consistent vertical rhythm between top-level form blocks in the store modals.
@@ -124,6 +124,8 @@
   .store-form-grid {
     grid-template-columns: 1fr;
   }
+  .provider-options { grid-template-columns: 1fr; }
+  .field-heading { align-items: flex-start; flex-direction: column; gap: .2rem; }
 }
 
 .store-data-modal {
@@ -217,6 +219,33 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
+.store-form-full { grid-column: 1 / -1; }
+.field-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: .55rem; color: var(--text-primary); font-size: .85rem; font-weight: 700; }
+.field-heading small { color: var(--text-muted); font-weight: 500; }
+.provider-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.provider-option { display: flex; align-items: center; gap: .75rem; padding: .85rem; text-align: left; background: var(--bg-light); border: 1px solid var(--border); border-radius: 10px; color: var(--text-primary); cursor: pointer; transition: .18s ease; }
+.provider-option:hover { border-color: var(--text-muted); transform: translateY(-1px); }
+.provider-option.selected { border-color: var(--primary); background: rgba(37, 211, 102, .08); box-shadow: 0 0 0 2px rgba(37, 211, 102, .08); }
+.provider-option > span:nth-child(2) { display: flex; flex: 1; flex-direction: column; gap: .15rem; }
+.provider-option small { color: var(--text-muted); }
+.provider-option > svg { color: var(--primary); }
+.provider-mark { width: 38px; height: 38px; display: grid; place-items: center; flex: 0 0 38px; border-radius: 9px; background: var(--bg-white); border: 1px solid var(--border); color: var(--primary); font-weight: 800; }
+.store-connect-guide { padding: 1rem; border: 1px solid rgba(59, 130, 246, .24); border-radius: 12px; background: rgba(59, 130, 246, .055); }
+.guide-title { display: flex; align-items: flex-start; gap: .65rem; color: #3b82f6; }
+.guide-title > div { display: flex; flex-direction: column; gap: .15rem; }
+.guide-title span { color: var(--text-muted); font-size: .75rem; font-weight: 500; }
+.store-connect-guide ol { list-style: none; padding: 0; margin: .9rem 0; display: grid; gap: .65rem; }
+.store-connect-guide li { display: flex; gap: .65rem; align-items: flex-start; }
+.store-connect-guide li > span { width: 23px; height: 23px; flex: 0 0 23px; display: grid; place-items: center; border-radius: 50%; background: #3b82f6; color: white; font-size: .68rem; font-weight: 800; }
+.store-connect-guide li > div { display: flex; flex-direction: column; gap: .12rem; }
+.store-connect-guide li strong { font-size: .78rem; color: var(--text-primary); }
+.store-connect-guide li small { color: var(--text-muted); line-height: 1.4; }
+.guide-security { display: flex; align-items: center; gap: .45rem; padding-top: .7rem; border-top: 1px solid rgba(59, 130, 246, .18); color: var(--text-secondary); font-size: .72rem; }
+.guide-security svg { color: var(--primary); flex-shrink: 0; }
+.connection-checks { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .75rem; }
+.connection-checks span { display: inline-flex; align-items: center; gap: .3rem; padding: .32rem .55rem; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-white); color: var(--text-muted); font-size: .68rem; font-weight: 650; }
+.connection-checks span.ready { color: #16a34a; border-color: rgba(22, 163, 74, .28); background: rgba(22, 163, 74, .07); }
+.store-form-grid label > small { display: flex; align-items: center; gap: .3rem; color: var(--text-muted); font-size: .7rem; font-weight: 500; line-height: 1.35; }
 .ai-order-transcript { margin-top: .65rem; display: grid; gap: .4rem; max-width: 650px; }
 .ai-order-transcript p { margin: 0; padding: .55rem .7rem; border-radius: 8px; font-size: .8rem; line-height: 1.4; background: var(--bg-light); }
 .ai-order-transcript p.assistant { border-left: 3px solid var(--primary); }

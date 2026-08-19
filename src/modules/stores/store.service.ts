@@ -17,6 +17,7 @@ import { CredentialEncryptionService } from '../../common/security/credential-en
 import { getRequestUserScope } from '../../common/services/request-context';
 import { PlanUsageService } from '../auth/plan-usage.service';
 import { OrderAiConversation } from '../shopify/entities/order-ai-conversation.entity';
+import { Message } from '../message/entities/message.entity';
 
 @Injectable()
 export class StoreService {
@@ -34,6 +35,8 @@ export class StoreService {
     private readonly orderRepository: Repository<Order>,
     @InjectRepository(OrderAiConversation, 'data')
     private readonly conversationRepository: Repository<OrderAiConversation>,
+    @InjectRepository(Message, 'data')
+    private readonly messageRepository: Repository<Message>,
     private readonly credentialEncryption: CredentialEncryptionService,
     // @InjectRepository(IntegrationConnection, 'data')
     // private readonly connectionRepository: Repository<IntegrationConnection>,
@@ -101,6 +104,11 @@ export class StoreService {
 
   async getOrderConfirmationSummary(filters?: { days?: number; type?: string }) {
     const scope = getRequestUserScope();
+    const sessionWhere = scope.userId && !scope.isAdmin ? { userId: scope.userId } : undefined;
+    const storeWhere = scope.userId && !scope.isAdmin ? { userId: scope.userId } : undefined;
+    const since = filters?.days && filters.days > 0
+      ? new Date(Date.now() - filters.days * 24 * 60 * 60 * 1000)
+      : undefined;
     const query = this.orderRepository
       .createQueryBuilder('order')
       .innerJoin(Store, 'store', 'store.id = order.storeId')
@@ -109,9 +117,7 @@ export class StoreService {
 
     if (scope.userId && !scope.isAdmin) query.andWhere('store.userId = :userId', { userId: scope.userId });
 
-    if (filters?.days && filters.days > 0) {
-      const since = new Date();
-      since.setDate(since.getDate() - filters.days);
+    if (since) {
       query.andWhere('order.shopifyCreatedAt >= :since', { since });
     }
     if (filters?.type && filters.type !== 'all') {
@@ -119,18 +125,121 @@ export class StoreService {
       query.andWhere('order.confirmationStatus IN (:...statuses)', { statuses });
     }
 
-    const [rows, totalStores, totalProducts] = await Promise.all([
+    const sessions = await this.sessionRepository.find({ where: sessionWhere, order: { createdAt: 'DESC' } });
+    const stores = await this.storeRepository.find({ where: storeWhere, relations: { session: true }, order: { createdAt: 'DESC' } });
+    const sessionIds = sessions.map(session => session.id);
+    const storeIds = stores.map(store => store.id);
+
+    const messageQuery = this.messageRepository
+      .createQueryBuilder('message')
+      .select('message.sessionId', 'sessionId')
+      .addSelect("SUM(CASE WHEN message.direction = 'outgoing' THEN 1 ELSE 0 END)", 'sent')
+      .addSelect("SUM(CASE WHEN message.direction = 'incoming' THEN 1 ELSE 0 END)", 'received')
+      .addSelect("SUM(CASE WHEN message.status = 'failed' THEN 1 ELSE 0 END)", 'failed')
+      .addSelect('MAX(message.createdAt)', 'lastMessageAt')
+      .groupBy('message.sessionId');
+    if (sessionIds.length) messageQuery.where('message.sessionId IN (:...sessionIds)', { sessionIds });
+    else messageQuery.where('1 = 0');
+    if (since) messageQuery.andWhere('message.createdAt >= :messageSince', { messageSince: since });
+
+    const orderByStoreQuery = this.orderRepository
+      .createQueryBuilder('order')
+      .select('order.storeId', 'storeId')
+      .addSelect('order.confirmationStatus', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .addSelect('MAX(order.shopifyCreatedAt)', 'lastOrderAt')
+      .groupBy('order.storeId')
+      .addGroupBy('order.confirmationStatus');
+    if (storeIds.length) orderByStoreQuery.where('order.storeId IN (:...storeIds)', { storeIds });
+    else orderByStoreQuery.where('1 = 0');
+    if (since) orderByStoreQuery.andWhere('order.shopifyCreatedAt >= :orderSince', { orderSince: since });
+    if (filters?.type && filters.type !== 'all') {
+      const statuses = filters.type === 'pending' ? ['pending', 'sending', 'processing_reply'] : [filters.type];
+      orderByStoreQuery.andWhere('order.confirmationStatus IN (:...storeStatuses)', { storeStatuses: statuses });
+    }
+
+    const productQuery = this.productRepository
+      .createQueryBuilder('product')
+      .select('product.storeId', 'storeId')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('product.storeId');
+    if (storeIds.length) productQuery.where('product.storeId IN (:...storeIds)', { storeIds });
+    else productQuery.where('1 = 0');
+
+    const aiQuery = this.conversationRepository
+      .createQueryBuilder('conversation')
+      .select('conversation.storeId', 'storeId')
+      .addSelect('conversation.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('conversation.storeId')
+      .addGroupBy('conversation.status');
+    if (storeIds.length) aiQuery.where('conversation.storeId IN (:...storeIds)', { storeIds });
+    else aiQuery.where('1 = 0');
+    if (since) aiQuery.andWhere('conversation.updatedAt >= :aiSince', { aiSince: since });
+
+    const [rows, totalProducts, messageRows, orderStoreRows, productRows, aiRows] = await Promise.all([
       query.groupBy('order.confirmationStatus').getRawMany<{ status: string; count: string | number }>(),
-      this.storeRepository.count({ where: scope.userId && !scope.isAdmin ? { userId: scope.userId } : undefined }),
       this.productRepository
         .createQueryBuilder('product')
         .innerJoin(Store, 'store', 'store.id = product.storeId')
         .where(scope.userId && !scope.isAdmin ? 'store.userId = :userId' : '1=1', { userId: scope.userId })
         .getCount(),
+      messageQuery.getRawMany<{ sessionId: string; sent: string; received: string; failed: string; lastMessageAt: string | null }>(),
+      orderByStoreQuery.getRawMany<{ storeId: string; status: string; count: string; lastOrderAt: string | null }>(),
+      productQuery.getRawMany<{ storeId: string; count: string }>(),
+      aiQuery.getRawMany<{ storeId: string; status: string; count: string }>(),
     ]);
 
     const counts = new Map(rows.map(row => [row.status, Number(row.count)]));
     const value = (status: string) => counts.get(status) ?? 0;
+    const messageBySession = new Map(messageRows.map(row => [row.sessionId, row]));
+    const productByStore = new Map(productRows.map(row => [row.storeId, Number(row.count)]));
+    const ordersByStore = new Map<string, Record<string, number | string | null>>();
+    for (const row of orderStoreRows) {
+      const current = ordersByStore.get(row.storeId) ?? { total: 0, lastOrderAt: null };
+      current.total = Number(current.total) + Number(row.count);
+      current[row.status] = Number(row.count);
+      if (row.lastOrderAt && (!current.lastOrderAt || row.lastOrderAt > String(current.lastOrderAt))) current.lastOrderAt = row.lastOrderAt;
+      ordersByStore.set(row.storeId, current);
+    }
+    const aiByStore = new Map<string, Record<string, number>>();
+    for (const row of aiRows) {
+      const current = aiByStore.get(row.storeId) ?? {};
+      current[row.status] = Number(row.count);
+      aiByStore.set(row.storeId, current);
+    }
+    const storeMetrics = stores.map(store => {
+      const messages = messageBySession.get(store.sessionId);
+      const orders = ordersByStore.get(store.id) ?? { total: 0 };
+      const ai = aiByStore.get(store.id) ?? {};
+      return {
+        id: store.id, name: store.name, provider: store.provider, status: store.status,
+        sessionId: store.sessionId, sessionName: store.session?.name ?? null,
+        sessionStatus: store.session?.status ?? 'disconnected',
+        products: productByStore.get(store.id) ?? 0,
+        orders: Number(orders.total ?? 0),
+        pending: Number(orders.pending ?? 0) + Number(orders.sending ?? 0) + Number(orders.processing_reply ?? 0),
+        confirmed: Number(orders.confirmed ?? 0), cancelled: Number(orders.cancelled ?? 0),
+        confirmationFailed: Number(orders.failed ?? 0), notSent: Number(orders.not_sent ?? 0),
+        sent: Number(messages?.sent ?? 0), received: Number(messages?.received ?? 0), failed: Number(messages?.failed ?? 0),
+        aiActive: Number(ai.active ?? 0), aiEscalated: Number(ai.escalated ?? 0),
+        lastOrderAt: orders.lastOrderAt ?? null, lastMessageAt: messages?.lastMessageAt ?? null,
+      };
+    });
+    const storesBySession = new Map(storeMetrics.map(store => [store.sessionId, store]));
+    const sessionMetrics = sessions.map(session => {
+      const messages = messageBySession.get(session.id);
+      const store = storesBySession.get(session.id);
+      return {
+        id: session.id, name: session.name, phone: session.phone, status: session.status,
+        lastActiveAt: session.lastActiveAt, sent: Number(messages?.sent ?? 0), received: Number(messages?.received ?? 0),
+        failed: Number(messages?.failed ?? 0), lastMessageAt: messages?.lastMessageAt ?? null,
+        storeId: store?.id ?? null, storeName: store?.name ?? null, products: store?.products ?? 0,
+        orders: store?.orders ?? 0, pending: store?.pending ?? 0, confirmed: store?.confirmed ?? 0,
+        cancelled: store?.cancelled ?? 0, confirmationFailed: store?.confirmationFailed ?? 0,
+        aiActive: store?.aiActive ?? 0, aiEscalated: store?.aiEscalated ?? 0,
+      };
+    });
     return {
       total: rows.reduce((sum, row) => sum + Number(row.count), 0),
       pending: value('pending') + value('sending') + value('processing_reply'),
@@ -138,8 +247,16 @@ export class StoreService {
       cancelled: value('cancelled'),
       failed: value('failed'),
       notSent: value('not_sent'),
-      totalStores,
+      totalStores: stores.length,
       totalProducts,
+      periodDays: filters?.days ?? null,
+      sessions: sessionMetrics,
+      stores: storeMetrics,
+      messageTotals: sessionMetrics.reduce((total, session) => ({
+        sent: total.sent + session.sent,
+        received: total.received + session.received,
+        failed: total.failed + session.failed,
+      }), { sent: 0, received: 0, failed: 0 }),
     };
   }
 

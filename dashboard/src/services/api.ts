@@ -113,6 +113,12 @@ export interface Store {
     scopes?: string;
     redirectUri?: string;
     webhookBaseUrl?: string;
+    siteUrl?: string;
+    consumerKey?: string;
+    consumerSecret?: string;
+    consumerSecretConfigured?: boolean;
+    webhookSecret?: string;
+    webhookSecretConfigured?: boolean;
     catalogAssistantEnabled?: boolean;
     confirmationSuccessTemplate?: string;
     relatedProductsTemplate?: string;
@@ -221,6 +227,22 @@ export interface OrderConfirmationSummary {
   notSent: number;
   totalStores: number;
   totalProducts: number;
+  periodDays: number | null;
+  messageTotals: { sent: number; received: number; failed: number };
+  sessions: Array<{
+    id: string; name: string; phone: string | null; status: string; lastActiveAt: string | null;
+    sent: number; received: number; failed: number; lastMessageAt: string | null;
+    storeId: string | null; storeName: string | null; products: number; orders: number;
+    pending: number; confirmed: number; cancelled: number; confirmationFailed: number;
+    aiActive: number; aiEscalated: number;
+  }>;
+  stores: Array<{
+    id: string; name: string; provider: string; status: string; sessionId: string;
+    sessionName: string | null; sessionStatus: string; products: number; orders: number;
+    pending: number; confirmed: number; cancelled: number; confirmationFailed: number; notSent: number;
+    sent: number; received: number; failed: number; aiActive: number; aiEscalated: number;
+    lastOrderAt: string | null; lastMessageAt: string | null;
+  }>;
 }
 
 export interface TemplatePayload {
@@ -1456,6 +1478,11 @@ export interface MessageStats {
 export const statsApi = {
   getOverview: () => request<OverviewStats>('/stats/overview'),
   getMessages: (period: StatsPeriod) => request<MessageStats>(`/stats/messages?period=${period}`),
+};
+
+export const woocommerceApi = {
+  connect: (storeId: string) => request<{ products: number; orders: number; webhooks: number; connected: boolean }>(`/woocommerce/${storeId}/connect`, { method: 'POST' }),
+  sync: (storeId: string) => request<{ products: number; orders: number }>(`/woocommerce/${storeId}/sync`, { method: 'POST' }),
 };
 
 export interface AccountUsage {

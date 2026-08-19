@@ -14,13 +14,17 @@ export class StoreController {
 
   private publicStore(store: Awaited<ReturnType<StoreService['findOneById']>>) {
     const settings = (store.settings ?? {}) as Record<string, unknown>;
-    const { clientSecret, accessToken, ...publicSettings } = settings;
+    const { clientSecret, accessToken, consumerSecret, webhookSecret, ...publicSettings } = settings;
     return {
       ...store,
       settings: {
         ...publicSettings,
         clientSecretConfigured: typeof clientSecret === 'string' && clientSecret.length > 0,
-        connected: typeof accessToken === 'string' && accessToken.length > 0,
+        consumerSecretConfigured: typeof consumerSecret === 'string' && consumerSecret.length > 0,
+        webhookSecretConfigured: typeof webhookSecret === 'string' && webhookSecret.length > 0,
+        connected: store.provider === 'woocommerce'
+          ? typeof settings.consumerKey === 'string' && settings.consumerKey.length > 0 && typeof consumerSecret === 'string' && consumerSecret.length > 0 && settings.connected === true
+          : typeof accessToken === 'string' && accessToken.length > 0,
       },
     };
   }

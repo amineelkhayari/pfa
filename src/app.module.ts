@@ -45,6 +45,7 @@ import { StoreModule } from './modules/stores/store.module';
 import { EngineEcomModule } from './ecomEngine/engin.ecom.module';
 import { ShopifyModule } from './modules/shopify/shopify.module';
 import { BillingModule } from './modules/billing/billing.module';
+import { WooCommerceModule } from './modules/woocommerce/woocommerce.module';
 
 // Only import QueueModule if explicitly enabled to avoid Redis connection errors
 const queueModules: Array<Type | DynamicModule> = [];
@@ -172,6 +173,7 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
             __dirname + '/modules/merchant/**/*.entity{.ts,.js}',
             __dirname + '/modules/stores/**/*.entity{.ts,.js}',
             __dirname + '/modules/shopify/**/*.entity{.ts,.js}',
+            __dirname + '/modules/woocommerce/**/*.entity{.ts,.js}',
 
             // __dirname + '/modules/stores/**/*.entity{.ts,.js}',
           ],
@@ -312,6 +314,7 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
     MerchantModule,
     StoreModule,
     ShopifyModule,
+    WooCommerceModule,
     BillingModule,
     EngineEcomModule,
     ...searchModules, // Global message search (opt-out via SEARCH_ENABLED=false; default ON)

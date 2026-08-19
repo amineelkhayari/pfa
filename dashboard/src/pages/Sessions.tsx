@@ -65,11 +65,17 @@ export function Sessions() {
   const [killConfirmId, setKillConfirmId] = useState<string | null>(null);
   const [unlinkConfirmId, setUnlinkConfirmId] = useState<string | null>(null);
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
+  const [startingId, setStartingId] = useState<string | null>(null);
+
+  // Synchronous mirror used by lifecycle callbacks and socket handlers. Updating it at the API
+  // boundary prevents an awaited refresh from returning while callbacks still see the old render.
+  const sessionsRef = useRef<Session[]>([]);
 
   const fetchSessions = useCallback(async (): Promise<Session[]> => {
     try {
       setLoading(true);
       const data = await sessionApi.list();
+      sessionsRef.current = data;
       setSessions(data);
       // Keep the shared React Query cache (read by the Dashboard via useSessionsQuery /
       // useSessionStatsQuery) in sync after this page's mutations reload local state — otherwise the
@@ -91,7 +97,6 @@ export function Sessions() {
   // Mirror the latest sessions in a ref so the WS handler can compare against the current status without
   // depending on `sessions` (which would churn the callback identity and re-subscribe the socket). Kept
   // in sync with every state update (fetch / create / delete / WS) via the effect below.
-  const sessionsRef = useRef<Session[]>([]);
   useEffect(() => {
     sessionsRef.current = sessions;
   }, [sessions]);
@@ -125,9 +130,17 @@ export function Sessions() {
 
   const { isConnected, subscribe } = useWebSocket({
     onQRCode: useCallback((event: { sessionId: string; qrCode: string }) => {
-      // Fill the open QR modal straight from the push — the REST endpoint 400s BY DESIGN until a QR
-      // exists, so fetching it eagerly just spams the console with expected failures.
-      setQrData(prev => (prev && prev.sessionId === event.sessionId ? { ...prev, qrCode: event.qrCode } : prev));
+      // A QR event is authoritative and must be visible even when it arrives before the Start
+      // request finishes updating modal state (or after a socket reconnect). Previously the event
+      // was discarded unless the modal already existed, leaving the backend at qr_ready while the
+      // page showed nothing.
+      const session = sessionsRef.current.find(item => item.id === event.sessionId);
+      if (session?.status === 'ready') return;
+      const sessionName = session?.name ?? '';
+      currentSessionName.current = sessionName;
+      setQrData(prev => prev?.sessionId === event.sessionId
+        ? { ...prev, qrCode: event.qrCode }
+        : { sessionId: event.sessionId, sessionName, qrCode: event.qrCode });
     }, []),
     onSessionStatus: useCallback(
       (event: { sessionId: string; status: string }) => {
@@ -153,6 +166,12 @@ export function Sessions() {
         // does not re-invalidate on duplicate envelopes).
         void invalidateSessionQueries(queryClient, queryKeys.sessions);
         if (event.status === 'ready') {
+          // A persisted session may jump from initializing straight to READY without ever needing a
+          // QR. Close any pairing surface immediately so the card shows the connected state instead
+          // of leaving a stale "generating QR" modal on screen until the next polling tick.
+          setQrData(current => (current?.sessionId === event.sessionId ? null : current));
+          setPairingCode(null);
+          setPairingError(null);
           toast.success(t('sessions.toasts.readyTitle'), t('sessions.toasts.readyDesc'));
         } else if (event.status === 'disconnected') {
           // Refresh so the card picks up `engineLoaded` from the API. `disconnected` is the one status
@@ -229,9 +248,10 @@ export function Sessions() {
         currentSessionName.current = '';
         return;
       }
-      // Poll only while a QR actually exists to refresh (qr_ready): before that the endpoint 400s
-      // by design (the engine hasn't produced one), and the WS session.qr push covers first display.
-      if (currentSession?.status !== 'qr_ready') return;
+      // Poll throughout the pairing lifecycle. A WebSocket frame can be missed during subscription
+      // setup, and local status can lag behind the backend's qr_ready transition. Expected early 400s
+      // are handled below; once the engine has a QR this REST fallback displays it reliably.
+      if (currentSession && !['initializing', 'qr_ready', 'authenticating'].includes(currentSession.status)) return;
       try {
         const qr = await sessionApi.getQR(sessionId);
         setQrData({ sessionId, sessionName: currentSessionName.current, qrCode: qr.qrCode });
@@ -342,21 +362,34 @@ export function Sessions() {
   };
 
   const handleStart = async (id: string) => {
-    const session = sessions.find(s => s.id === id);
+    if (startingId) return;
+    const session = sessionsRef.current.find(s => s.id === id);
     if (session && ['initializing', 'qr_ready'].includes(session.status)) {
       handleShowQR(id);
       return;
     }
 
     try {
+      setStartingId(id);
+      // Open one pairing surface from the same Start click. If stored credentials restore the
+      // session, the READY event closes it; if pairing is required, the first QR push fills it.
+      handleShowQR(id);
       // Use the authoritative response instead of fabricating a status. The old code wrote a local
       // `status: 'connecting'` — a value the gateway never emits — while keeping every other field
       // from before the start, which now includes `engineLoaded` and would leave the card offering
       // Start for a session that just acquired an engine.
       const started = await sessionApi.start(id);
       setSessions(current => replaceSession(current, started));
-      await fetchSessions();
-      handleShowQR(id);
+      const fresh = await fetchSessions();
+      const current = fresh.find(item => item.id === id);
+      if (current?.status === 'ready') {
+        setQrData(value => (value?.sessionId === id ? null : value));
+      } else if (current && ['initializing', 'qr_ready', 'authenticating'].includes(current.status)) {
+        handleShowQR(id);
+        // Do not wait for the five-second refresh interval for the first attempt. If the backend
+        // already logged qr_generated, this immediately calls /qr and paints it.
+        void fetchQR(id);
+      }
     } catch (err) {
       console.error('Failed to start:', err);
       // A credential teardown for this name is still settling — the backend fails closed with 409 +
@@ -373,11 +406,15 @@ export function Sessions() {
       const fresh = await fetchSessions();
       const current = fresh.find(s => s.id === id);
       if (current?.status !== 'ready') handleShowQR(id);
+    } finally {
+      setStartingId(null);
     }
   };
 
   const handleShowQR = async (id: string) => {
-    const session = sessions.find(s => s.id === id);
+    // Always read the current ref. Calling this after an awaited start/refetch with the render-time
+    // `sessions` closure was the source of the stale QR modal on already-restored sessions.
+    const session = sessionsRef.current.find(s => s.id === id);
     // Nothing to show for an already-connected session.
     if (session?.status === 'ready') return;
     const sessionName = session?.name || '';
@@ -940,14 +977,14 @@ export function Sessions() {
                   </button>
                 ) : canWrite &&
                   (session.status === 'created' || session.status === 'disconnected') ? (
-                  <button className="btn-action" onClick={() => handleStart(session.id)}>
-                    <Play size={16} />
-                    {t('sessions.actions.start')}
+                  <button className="btn-action" onClick={() => handleStart(session.id)} disabled={startingId === session.id}>
+                    {startingId === session.id ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                    {startingId === session.id ? t('sessions.qr.loading') : t('sessions.actions.start')}
                   </button>
                 ) : canWrite ? (
-                  <button className="btn-action" onClick={() => handleStart(session.id)}>
-                    <RefreshCw size={16} />
-                    {t('sessions.actions.reconnect')}
+                  <button className="btn-action" onClick={() => handleStart(session.id)} disabled={startingId === session.id}>
+                    {startingId === session.id ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                    {startingId === session.id ? t('sessions.qr.loading') : t('sessions.actions.reconnect')}
                   </button>
                 ) : null}
                 {canUnlinkSession(session, canWrite) && (

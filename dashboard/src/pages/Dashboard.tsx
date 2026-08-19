@@ -15,6 +15,9 @@ import {
   TriangleAlert,
   Store,
   Package,
+  Bot,
+  ArrowUpRight,
+  ArrowDownLeft,
 } from 'lucide-react';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import {
@@ -37,7 +40,7 @@ export function Dashboard() {
   const { t } = useTranslation();
   useDocumentTitle(t('dashboard.title'));
   const navigate = useNavigate();
-  const { data: sessions = [], isLoading: loadingSessions, error: sessionsError } = useSessionsQuery();
+  const { isLoading: loadingSessions, error: sessionsError } = useSessionsQuery();
   const { data: stats } = useSessionStatsQuery();
   const { data: webhooks = [] } = useWebhooksQuery();
   // /stats/overview is ADMIN-only; for a non-admin key it 403s → overview stays undefined and the
@@ -230,51 +233,40 @@ export function Dashboard() {
         <DashboardCharts />
       </Suspense>
 
-      <section className="sessions-section">
+      <section className="operations-section">
         <div className="section-header">
-          <h2>{t('dashboard.sessionsOverview')}</h2>
-          <span className="section-subtitle">
-            {t('dashboard.showingSessions', { shown: sessions.length, total: stats?.total ?? 0 })}
-          </span>
+          <div><h2>WhatsApp session performance</h2><span className="section-subtitle">Messages and order outcomes for the selected date range</span></div>
+          <span className="section-subtitle">{orderSummary?.sessions.length ?? 0} sessions</span>
         </div>
+        <div className="operations-grid">
+          {(orderSummary?.sessions ?? []).map(session => {
+            const handled = session.confirmed + session.cancelled;
+            const rate = handled ? Math.round((session.confirmed / handled) * 100) : 0;
+            return <article className="operation-card" key={session.id}>
+              <div className="operation-card-head"><div><strong>{session.name}</strong><small>{session.phone || 'No phone'} · {session.storeName || 'No store linked'}</small></div><span className={`status-pill ${session.status}`}>{formatStatus(session.status)}</span></div>
+              <div className="metric-row"><span><ArrowUpRight size={14}/> Sent <b>{session.sent.toLocaleString()}</b></span><span><ArrowDownLeft size={14}/> Received <b>{session.received.toLocaleString()}</b></span><span className={session.failed ? 'metric-danger' : ''}>Failed <b>{session.failed}</b></span></div>
+              <div className="outcome-row"><span>Orders <b>{session.orders}</b></span><span>Pending <b>{session.pending}</b></span><span>Confirmed <b>{session.confirmed}</b></span><span>AI active <b>{session.aiActive}</b></span></div>
+              <div className="success-line"><div><span>Confirmation success</span><b>{rate}%</b></div><div className="usage-track"><span style={{width: `${rate}%`}} /></div></div>
+              <div className="operation-footer"><span>Last activity: {formatLastActive(session.lastMessageAt || session.lastActiveAt)}</span><div><button className="btn-sm" onClick={() => navigate('/sessions')}>Manage</button>{['ready','initializing','qr_ready'].includes(session.status) && <button className="btn-sm danger" onClick={() => handleDisconnect(session.id)}>Disconnect</button>}</div></div>
+            </article>;
+          })}
+          {!orderSummary?.sessions.length && <div className="operation-empty">No WhatsApp sessions found.</div>}
+        </div>
+      </section>
 
-        <div className="sessions-table">
-          <div className="table-header">
-            <span>{t('dashboard.columns.sessionId')}</span>
-            <span>{t('dashboard.columns.phone')}</span>
-            <span>{t('dashboard.columns.status')}</span>
-            <span>{t('dashboard.columns.lastActive')}</span>
-            <span>{t('dashboard.columns.actions')}</span>
-          </div>
-          {sessions.length === 0 ? (
-            <div className="table-row" style={{ justifyContent: 'center', color: 'var(--text-muted)' }}>
-              {t('dashboard.noSessions')}
-            </div>
-          ) : (
-            sessions.map(session => (
-              <div key={session.id} className="table-row">
-                <div className="session-info-cell">
-                  <span className="session-id">{session.id.substring(0, 12)}</span>
-                  <span className="session-name" title={session.name}>
-                    {session.name}
-                  </span>
-                </div>
-                <span className="phone">{session.phone || '—'}</span>
-                <span className={`status-pill ${session.status}`}>{formatStatus(session.status)}</span>
-                <span className="last-active">{formatLastActive(session.lastActive)}</span>
-                <div className="actions">
-                  <button className="btn-sm" onClick={() => navigate('/sessions')}>
-                    {t('dashboard.view')}
-                  </button>
-                  {['ready', 'initializing', 'qr_ready'].includes(session.status) && (
-                    <button className="btn-sm danger" onClick={() => handleDisconnect(session.id)}>
-                      {t('dashboard.disconnect')}
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
+      <section className="operations-section">
+        <div className="section-header"><div><h2>Store performance</h2><span className="section-subtitle">Commerce, WhatsApp and AI health grouped by store</span></div><button className="btn-sm" onClick={() => navigate('/stores')}>Manage stores</button></div>
+        <div className="store-operations-table">
+          <div className="store-operation-header"><span>Store</span><span>Catalog</span><span>Messages</span><span>Confirmations</span><span>AI</span><span>Health</span></div>
+          {(orderSummary?.stores ?? []).map(store => <div className="store-operation-row" key={store.id}>
+            <div><strong>{store.name}</strong><small>{store.provider} · {store.sessionName || 'No session'}</small></div>
+            <div><b>{store.products}</b><small>products · {store.orders} orders</small></div>
+            <div><b>{store.sent} ↑ · {store.received} ↓</b><small className={store.failed ? 'metric-danger' : ''}>{store.failed} failed</small></div>
+            <div><b className="confirmed-text">{store.confirmed} confirmed</b><small>{store.pending} pending · {store.cancelled} cancelled</small></div>
+            <div><b><Bot size={14}/> {store.aiActive} active</b><small>{store.aiEscalated} handoffs</small></div>
+            <div><span className={`status-pill ${store.sessionStatus}`}>{formatStatus(store.sessionStatus)}</span><small>{formatLastActive(store.lastOrderAt || store.lastMessageAt)}</small></div>
+          </div>)}
+          {!orderSummary?.stores.length && <div className="operation-empty">No stores found.</div>}
         </div>
       </section>
     </div>
