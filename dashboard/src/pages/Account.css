@@ -34,3 +34,7 @@
 .provider-toggle input { width: 20px; height: 20px; }
 .payment-save { display: flex; align-items: center; gap: 1rem; margin-top: auto; padding-top: .5rem; }
 @media (max-width: 800px) { .payment-overview { grid-template-columns: 1fr; } .payment-layout { grid-template-columns: 1fr; } .payment-tabs { flex-direction: row; overflow-x: auto; } .payment-tabs button { min-width: 150px; } }
+.ai-settings-panel { max-width: 760px; }
+.ai-number-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.ai-number-grid label > span { display: inline-flex; align-items: center; gap: .35rem; }
+@media (max-width: 650px) { .ai-number-grid { grid-template-columns: 1fr; } }

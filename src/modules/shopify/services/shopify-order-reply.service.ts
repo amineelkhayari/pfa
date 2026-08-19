@@ -7,6 +7,7 @@ import { CredentialEncryptionService } from '../../../common/security/credential
 import { MessageService } from '../../message/message.service';
 import { Order } from '../../stores/entities/order.entity';
 import { Store } from '../../stores/entities/store.entity';
+import { Product } from '../../stores/entities/product.entity';
 import { Platform } from '../../stores/enum/platform.enum';
 import { ShopifyService } from './shopify.service';
 import { OrderAiConversation } from '../entities/order-ai-conversation.entity';
@@ -33,6 +34,7 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
     private readonly ai: OpenAiOrderAgentService,
     @InjectRepository(Store, 'data') private readonly stores: Repository<Store>,
     @InjectRepository(Order, 'data') private readonly orders: Repository<Order>,
+    @InjectRepository(Product, 'data') private readonly products: Repository<Product>,
     @InjectRepository(OrderAiConversation, 'data') private readonly conversations: Repository<OrderAiConversation>,
   ) {}
 
@@ -61,11 +63,36 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
 
     const sender = this.normalizePhone(message.senderPhone ?? message.from ?? message.chatId);
     if (!sender) return;
-    const pending = await this.orders.find({
-      where: { storeId: store.id, confirmationStatus: 'pending' },
+    const recentOrders = await this.orders.find({
+      where: { storeId: store.id },
       order: { createdAt: 'DESC' },
+      take: 50,
     });
-    const order = pending.find(candidate => this.samePhone(sender, this.normalizePhone(candidate.phone)));
+    const customerOrders = recentOrders.filter(candidate => this.samePhone(sender, this.normalizePhone(candidate.phone)));
+    const pending = customerOrders.filter(candidate => candidate.confirmationStatus === 'pending');
+    const referencedOrder = customerOrders.find(candidate => {
+      const number = String(candidate.orderNumber ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+      return number.length > 0 && reply.replace(/[^a-z0-9]/gi, '').toLowerCase().includes(number);
+    });
+    if (referencedOrder && ['not_sent', 'failed'].includes(referencedOrder.confirmationStatus) && referencedOrder.status === 'open') {
+      referencedOrder.confirmationStatus = 'pending';
+      referencedOrder.confirmationError = null;
+      await this.orders.save(referencedOrder);
+    }
+    const actionableReferenced = referencedOrder?.confirmationStatus === 'pending' ? referencedOrder : undefined;
+    if (!pending.length && !actionableReferenced) {
+      await this.handleCatalogQuestion(sessionId, store, message, reply, customerOrders);
+      return;
+    }
+    if (pending.length > 1 && !actionableReferenced) {
+      const chatId = message.chatId ?? message.from;
+      if (chatId) {
+      const choices = pending.slice(0, 5).map(candidate => `• ${candidate.orderNumber ?? candidate.shopifyOrderId} — ${candidate.totalPrice} ${candidate.currency}`).join('\n');
+        await this.messages.sendText(sessionId, { chatId, text: `Vous avez plusieurs commandes en attente. Indiquez le numéro de la commande concernée :\n${choices}` });
+      }
+      return;
+    }
+    const order = actionableReferenced ?? pending[0];
     if (!order) return;
 
     if (reply !== '1' && reply !== '2') {
@@ -100,7 +127,7 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
           chatId,
           text:
             reply === '1'
-              ? `Merci, votre commande ${order.orderNumber ?? ''} est confirmée ✅`
+              ? await this.confirmationMessage(store, order)
               : `Votre commande ${order.orderNumber ?? ''} a été annulée.`,
         });
       }
@@ -121,11 +148,27 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
     customerText: string,
   ): Promise<void> {
     let conversation = await this.conversations.findOneBy({ orderId: order.id });
-    conversation ??= this.conversations.create({ orderId: order.id, storeId: store.id, status: 'active', turns: [] });
+    conversation ??= this.conversations.create({
+      orderId: order.id,
+      storeId: store.id,
+      status: 'active',
+      turnCount: 0,
+      turns: [],
+    });
     const turns = [...(conversation.turns ?? []), { role: 'customer' as const, text: customerText.slice(0, 1000), at: new Date().toISOString() }];
     const chatId = message.chatId ?? message.from;
     if (!chatId) return;
-    if (conversation.turnCount >= 8) {
+    if (conversation.status === 'escalated') return;
+    const timeoutHours = this.ai.timeoutHours();
+    if (conversation.createdAt && Date.now() - new Date(conversation.updatedAt).getTime() > timeoutHours * 60 * 60 * 1000) {
+      conversation.status = 'expired';
+      conversation.turns = [...turns, { role: 'assistant', text: 'Cette conversation a expiré. Un conseiller va reprendre votre demande.', at: new Date().toISOString() }];
+      await this.conversations.save(conversation);
+      await this.messages.sendText(sessionId, { chatId, text: 'Cette conversation a expiré. Un conseiller va reprendre votre demande.' });
+      return;
+    }
+    const maxTurns = this.ai.maxTurns();
+    if (conversation.turnCount >= maxTurns) {
       conversation.status = 'escalated';
       conversation.turns = [...turns, { role: 'assistant', text: 'Un conseiller va reprendre cette conversation.', at: new Date().toISOString() }];
       await this.conversations.save(conversation);
@@ -133,8 +176,9 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     try {
-      const decision = await this.ai.respond(order, store.language, turns);
-      conversation.turnCount += 1;
+      const catalog = await this.storeProducts(store.id);
+      const decision = await this.ai.respond(order, store.language, turns, { name: store.name, products: catalog });
+      conversation.turnCount = (conversation.turnCount ?? 0) + 1;
       conversation.turns = [...turns, { role: 'assistant', text: decision.reply, at: new Date().toISOString() }];
       conversation.lastError = null;
       if (decision.action === 'escalate') conversation.status = 'escalated';
@@ -155,7 +199,10 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
         await this.orders.save(order);
       }
       await this.conversations.save(conversation);
-      await this.messages.sendText(sessionId, { chatId, text: decision.reply });
+      const text = decision.action === 'confirm'
+        ? await this.confirmationMessage(store, order, decision.reply)
+        : decision.reply;
+      await this.messages.sendText(sessionId, { chatId, text });
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'AI conversation failed';
       conversation.lastError = reason;
@@ -167,6 +214,65 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(`AI order reply failed (order=${order.id}): ${reason}`);
       await this.messages.sendText(sessionId, { chatId, text: 'Je transfère votre demande à un conseiller. Votre commande reste en attente.' });
     }
+  }
+
+  private async handleCatalogQuestion(sessionId: string, store: Store, message: IncomingReply, text: string, customerOrders: Order[] = []): Promise<void> {
+    if (!this.ai.enabled()) return;
+    const settings = this.encryption.revealSettings(store.settings ?? {});
+    if (settings.catalogAssistantEnabled === false) return;
+    const chatId = message.chatId ?? message.from;
+    if (!chatId) return;
+    try {
+      const products = await this.storeProducts(store.id);
+      const answer = await this.ai.chat(
+        [{ role: 'customer', text: text.slice(0, 1000), at: new Date().toISOString() }],
+        { name: store.name, language: store.language, products, orders: customerOrders },
+      );
+      await this.messages.sendText(sessionId, { chatId, text: answer.slice(0, 1500) });
+    } catch (error) {
+      this.logger.error(`AI catalog reply failed (store=${store.id}): ${error instanceof Error ? error.message : 'unknown error'}`);
+    }
+  }
+
+  private async storeProducts(storeId: string): Promise<Product[]> {
+    return this.products.find({ where: { storeId, status: 'active' }, order: { shopifyUpdatedAt: 'DESC' }, take: 40 });
+  }
+
+  private async confirmationMessage(store: Store, order: Order, aiReply?: string): Promise<string> {
+    const settings = this.encryption.revealSettings(store.settings ?? {});
+    const confirmationTemplate = typeof settings.confirmationSuccessTemplate === 'string' && settings.confirmationSuccessTemplate.trim()
+      ? settings.confirmationSuccessTemplate
+      : 'Merci {{customerName}}, votre commande {{orderNumber}} est confirmée ✅';
+    const base = aiReply?.trim() || this.renderTemplate(confirmationTemplate, {
+      customerName: order.customerName ?? '', orderNumber: order.orderNumber ?? order.shopifyOrderId, storeName: store.name,
+    });
+    const related = this.relatedProducts(order, await this.storeProducts(store.id));
+    if (!related.length) return base;
+    const lines = related.map(product => `• ${product.title} — ${product.price} ${order.currency || store.currency}`).join('\n');
+    const recommendationTemplate = typeof settings.relatedProductsTemplate === 'string' && settings.relatedProductsTemplate.trim()
+      ? settings.relatedProductsTemplate
+      : 'Vous pourriez aussi aimer :\n{{products}}\n\nRépondez avec le nom du produit pour plus d’informations.';
+    return `${base}\n\n${this.renderTemplate(recommendationTemplate, { products: lines, storeName: store.name, orderNumber: order.orderNumber ?? order.shopifyOrderId })}`;
+  }
+
+  private relatedProducts(order: Order, products: Product[]): Product[] {
+    const orderedTitles = new Set((order.lineItems ?? []).map(item => String(item.title ?? item.name ?? '').trim().toLowerCase()).filter(Boolean));
+    const orderedProducts = products.filter(product => orderedTitles.has(product.title.trim().toLowerCase()));
+    const tags = new Set(orderedProducts.flatMap(product => product.tags ?? []).map(tag => tag.toLowerCase()));
+    return products
+      .filter(product => !orderedTitles.has(product.title.trim().toLowerCase()))
+      .map(product => ({ product, score:
+        (orderedProducts.some(source => source.productType && source.productType === product.productType) ? 3 : 0)
+        + (orderedProducts.some(source => source.vendor && source.vendor === product.vendor) ? 2 : 0)
+        + (product.tags ?? []).filter(tag => tags.has(tag.toLowerCase())).length,
+      }))
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 3)
+      .map(item => item.product);
+  }
+
+  private renderTemplate(template: string, values: Record<string, string>): string {
+    return template.replace(/{{\s*([a-zA-Z]+)\s*}}/g, (match, key: string) => values[key] ?? match).trim();
   }
 
   private normalizePhone(value: string | null | undefined): string {

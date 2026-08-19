@@ -23,6 +23,8 @@ import { ShopifyWebhookController } from './controllers/shopify.webhook.controll
 import { ShopifyOrderReplyService } from './services/shopify-order-reply.service';
 import { OrderAiConversation } from './entities/order-ai-conversation.entity';
 import { OpenAiOrderAgentService } from './services/openai-order-agent.service';
+import { BillingModule } from '../billing/billing.module';
+import { AdminAiTestController, UserAiTestController } from './controllers/admin-ai-test.controller';
 
 @Module({
   imports: [
@@ -31,9 +33,10 @@ import { OpenAiOrderAgentService } from './services/openai-order-agent.service';
     EngineEcomModule,
     StoreModule,
     MessageModule,
+    BillingModule,
     TypeOrmModule.forFeature([Store, Product, Order, ShopifyOAuthState, ShopifyWebhookDelivery, OrderAiConversation], 'data'),
   ],
-  controllers: [ShopifyController, ShopifyWebhookController],
+  controllers: [ShopifyController, ShopifyWebhookController, AdminAiTestController, UserAiTestController],
   providers: [
     ShopifyService,
     ShopifyOAuthService,

@@ -13,6 +13,7 @@ import { Product } from './entities/product.entity';
 import { Order } from './entities/order.entity';
 import { Session } from '../session/entities/session.entity';
 import { CredentialEncryptionService } from '../../common/security/credential-encryption.service';
+import { OrderAiConversation } from '../shopify/entities/order-ai-conversation.entity';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { CredentialEncryptionService } from '../../common/security/credential-en
         Product,
         Order,
         Session,
+        OrderAiConversation,
         // IntegrationConnection
       ],
       'data',

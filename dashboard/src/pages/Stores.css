@@ -217,6 +217,11 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
+.ai-order-transcript { margin-top: .65rem; display: grid; gap: .4rem; max-width: 650px; }
+.ai-order-transcript p { margin: 0; padding: .55rem .7rem; border-radius: 8px; font-size: .8rem; line-height: 1.4; background: var(--bg-light); }
+.ai-order-transcript p.assistant { border-left: 3px solid var(--primary); }
+.ai-order-transcript p.customer { border-left: 3px solid var(--text-secondary); }
+.store-data-detail dd > .btn-secondary + .btn-secondary { margin-left: .5rem; }
 
 @media (max-width: 720px) {
   .store-card-actions {

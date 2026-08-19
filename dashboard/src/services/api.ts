@@ -113,6 +113,9 @@ export interface Store {
     scopes?: string;
     redirectUri?: string;
     webhookBaseUrl?: string;
+    catalogAssistantEnabled?: boolean;
+    confirmationSuccessTemplate?: string;
+    relatedProductsTemplate?: string;
     connected?: boolean;
     clientSecretConfigured?: boolean;
     importedProducts?: number;
@@ -195,6 +198,18 @@ export interface StoreOrder {
   whatsappMessageId?: string | null;
   confirmationSentAt?: string | null;
   confirmationError?: string | null;
+}
+
+export interface OrderAiConversation {
+  id: string;
+  orderId: string;
+  storeId: string;
+  status: 'active' | 'escalated' | 'expired' | 'confirmed' | 'cancelled';
+  turnCount: number;
+  turns: Array<{ role: 'customer' | 'assistant'; text: string; at: string }> | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface OrderConfirmationSummary {
@@ -892,8 +907,17 @@ export const storesApi = {
   delete: (id: string) => request<void>(`/stores/${id}`, { method: 'DELETE' }),
   products: (id: string) => request<StoreProduct[]>(`/stores/${id}/products`),
   orders: (id: string) => request<StoreOrder[]>(`/stores/${id}/orders`),
+  orderConversations: (storeId: string) =>
+    request<Record<string, OrderAiConversation>>(`/stores/${storeId}/order-conversations`),
   remindOrder: (storeId: string, orderId: string) =>
     request<StoreOrder>(`/stores/${storeId}/orders/${orderId}/remind`, { method: 'POST' }),
+  orderConversation: (storeId: string, orderId: string) =>
+    request<OrderAiConversation | null>(`/stores/${storeId}/orders/${orderId}/conversation`),
+  setOrderHandoff: (storeId: string, orderId: string, handoff: boolean) =>
+    request<OrderAiConversation>(`/stores/${storeId}/orders/${orderId}/handoff`, {
+      method: 'POST',
+      body: JSON.stringify({ handoff }),
+    }),
 };
 
 export const merchantsApi = {
@@ -1488,4 +1512,29 @@ export interface AdminPaymentSettings {
 export const adminBillingApi = {
   get: () => request<AdminPaymentSettings>('/admin/billing-settings'),
   update: (body: Record<string, unknown>) => request<AdminPaymentSettings>('/admin/billing-settings', { method: 'PUT', body: JSON.stringify(body) }),
+};
+
+export interface AdminAiSettings {
+  enabled: boolean;
+  provider: 'openai' | 'openrouter' | 'gemini' | 'custom';
+  baseUrl: string;
+  model: string;
+  maxTurns: number;
+  conversationTimeoutHours: number;
+  apiKeyConfigured: boolean;
+}
+export const adminAiApi = {
+  get: () => request<AdminAiSettings>('/admin/ai-settings'),
+  update: (body: { enabled?: boolean; provider?: 'openai' | 'openrouter' | 'gemini' | 'custom'; baseUrl?: string; apiKey?: string; model?: string; maxTurns?: number; conversationTimeoutHours?: number }) =>
+    request<AdminAiSettings>('/admin/ai-settings', { method: 'PUT', body: JSON.stringify(body) }),
+};
+
+export interface AiTestResult {
+  provider: string;
+  model: string;
+  reply: string;
+}
+export const aiTestApi = {
+  chat: (message: string, history: Array<{ role: 'customer' | 'assistant'; text: string }>) =>
+    request<AiTestResult>('/ai/test-chat', { method: 'POST', body: JSON.stringify({ message, history }) }),
 };

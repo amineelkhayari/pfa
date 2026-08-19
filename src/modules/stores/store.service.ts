@@ -16,6 +16,7 @@ import { Order } from './entities/order.entity';
 import { CredentialEncryptionService } from '../../common/security/credential-encryption.service';
 import { getRequestUserScope } from '../../common/services/request-context';
 import { PlanUsageService } from '../auth/plan-usage.service';
+import { OrderAiConversation } from '../shopify/entities/order-ai-conversation.entity';
 
 @Injectable()
 export class StoreService {
@@ -31,6 +32,8 @@ export class StoreService {
     private readonly productRepository: Repository<Product>,
     @InjectRepository(Order, 'data')
     private readonly orderRepository: Repository<Order>,
+    @InjectRepository(OrderAiConversation, 'data')
+    private readonly conversationRepository: Repository<OrderAiConversation>,
     private readonly credentialEncryption: CredentialEncryptionService,
     // @InjectRepository(IntegrationConnection, 'data')
     // private readonly connectionRepository: Repository<IntegrationConnection>,
@@ -181,12 +184,39 @@ export class StoreService {
     return this.orderRepository.find({ where: { storeId }, order: { shopifyCreatedAt: 'DESC' } });
   }
 
+  async getOrderConversation(storeId: string, orderId: string) {
+    await this.findOneById(storeId);
+    const order = await this.orderRepository.findOneBy({ id: orderId, storeId });
+    if (!order) throw new NotFoundException('Order not found.');
+    return this.conversationRepository.findOneBy({ orderId });
+  }
+
+  async getOrderConversations(storeId: string) {
+    await this.findOneById(storeId);
+    const rows = await this.conversationRepository.find({ where: { storeId } });
+    return Object.fromEntries(rows.map(row => [row.orderId, row]));
+  }
+
+  async setOrderConversationHandoff(storeId: string, orderId: string, handoff: boolean) {
+    await this.findOneById(storeId);
+    const order = await this.orderRepository.findOneBy({ id: orderId, storeId });
+    if (!order) throw new NotFoundException('Order not found.');
+    let conversation = await this.conversationRepository.findOneBy({ orderId });
+    conversation ??= this.conversationRepository.create({ orderId, storeId, status: 'active', turnCount: 0, turns: [] });
+    if (!['pending', 'processing_reply'].includes(order.confirmationStatus)) {
+      throw new BadRequestException('Only an order awaiting confirmation can change AI handoff state.');
+    }
+    conversation.status = handoff ? 'escalated' : 'active';
+    conversation.lastError = null;
+    return this.conversationRepository.save(conversation);
+  }
+
   async sendOrderReminder(storeId: string, orderId: string): Promise<Order> {
     const store = await this.findOneById(storeId);
     const order = await this.orderRepository.findOneBy({ id: orderId, storeId });
     if (!order) throw new NotFoundException('Order not found.');
-    if (order.confirmationStatus !== 'pending') {
-      throw new BadRequestException('Only pending orders can receive a confirmation reminder.');
+    if (!['pending', 'not_sent', 'failed'].includes(order.confirmationStatus)) {
+      throw new BadRequestException('Only orders awaiting confirmation can receive a confirmation message.');
     }
     if (!order.phone) throw new BadRequestException('Order has no customer phone number.');
 
@@ -201,6 +231,7 @@ export class StoreService {
     order.whatsappMessageId = result.messageId;
     order.confirmationSentAt = new Date();
     order.confirmationError = null;
+    order.confirmationStatus = 'pending';
     return this.orderRepository.save(order);
   }
 

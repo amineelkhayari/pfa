@@ -103,6 +103,22 @@ export class StoreController {
     return this.storeService.findOrders(id);
   }
 
+  @Get(':id/order-conversations')
+  getOrderConversations(@Param('id', ParseUUIDPipe) id: string) {
+    return this.storeService.getOrderConversations(id);
+  }
+
+  @Get(':id/orders/:orderId/conversation')
+  getOrderConversation(@Param('id', ParseUUIDPipe) id: string, @Param('orderId', ParseUUIDPipe) orderId: string) {
+    return this.storeService.getOrderConversation(id, orderId);
+  }
+
+  @Post(':id/orders/:orderId/handoff')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  setOrderHandoff(@Param('id', ParseUUIDPipe) id: string, @Param('orderId', ParseUUIDPipe) orderId: string, @Body() body: { handoff: boolean }) {
+    return this.storeService.setOrderConversationHandoff(id, orderId, body.handoff !== false);
+  }
+
   @Post(':id/orders/:orderId/remind')
   @RequireRole(ApiKeyRole.OPERATOR)
   @ApiOperation({ summary: 'Send a WhatsApp reminder for a pending order confirmation' })

@@ -34,6 +34,7 @@ import {
   storesApi,
   type Store,
   type StoreOrder,
+  type OrderAiConversation,
   type StorePayload,
   type StoreProduct,
 } from '../services/api';
@@ -58,6 +59,9 @@ const emptyForm: StorePayload = {
     scopes: 'read_orders,write_orders,read_products',
     redirectUri: 'http://localhost:2785/api/shopify/oauth/callback',
     webhookBaseUrl: '',
+    catalogAssistantEnabled: true,
+    confirmationSuccessTemplate: 'Merci {{customerName}}, votre commande {{orderNumber}} est confirmée ✅',
+    relatedProductsTemplate: 'Vous pourriez aussi aimer :\n{{products}}\n\nRépondez avec le nom du produit pour plus d’informations.',
   },
 };
 
@@ -86,6 +90,8 @@ export function Stores() {
   const [orders, setOrders] = useState<StoreOrder[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [remindingOrderId, setRemindingOrderId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<Record<string, OrderAiConversation | null>>({});
+  const [handoffOrderId, setHandoffOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -204,6 +210,7 @@ export function Stores() {
       ]);
       setProducts(storeProducts);
       setOrders(storeOrders);
+      setConversations(await storesApi.orderConversations(store.id));
     } catch (error) {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'Unable to load imported data.' });
     } finally {
@@ -222,6 +229,27 @@ export function Stores() {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'Unable to send reminder.' });
     } finally {
       setRemindingOrderId(null);
+    }
+  };
+
+  const toggleHandoff = async (order: StoreOrder) => {
+    if (!detailStore) return;
+    setHandoffOrderId(order.id);
+    try {
+      const updated = await storesApi.setOrderHandoff(
+        detailStore.id,
+        order.id,
+        conversations[order.id]?.status !== 'escalated',
+      );
+      setConversations(current => ({ ...current, [order.id]: updated }));
+      setToast({
+        type: 'success',
+        message: updated.status === 'escalated' ? 'Conversation assigned to a human agent.' : 'AI conversation resumed.',
+      });
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Unable to update handoff.' });
+    } finally {
+      setHandoffOrderId(null);
     }
   };
 
@@ -515,6 +543,42 @@ export function Stores() {
               />
             </label>
           )}
+          {form.provider === 'shopify' && (
+            <label>
+              AI catalog assistant
+              <select
+                value={form.settings?.catalogAssistantEnabled === false ? 'false' : 'true'}
+                onChange={e => setField('settings', { ...form.settings, catalogAssistantEnabled: e.target.value === 'true' })}
+              >
+                <option value="true">Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+            </label>
+          )}
+          {form.provider === 'shopify' && (
+            <label className="store-form-full">
+              Confirmation message template
+              <textarea
+                rows={3}
+                value={form.settings?.confirmationSuccessTemplate ?? ''}
+                onChange={e => setField('settings', { ...form.settings, confirmationSuccessTemplate: e.target.value })}
+                placeholder="Merci {{customerName}}, votre commande {{orderNumber}} est confirmée ✅"
+              />
+              <small>Available: {'{{customerName}}'}, {'{{orderNumber}}'}, {'{{storeName}}'}</small>
+            </label>
+          )}
+          {form.provider === 'shopify' && (
+            <label className="store-form-full">
+              Related products template
+              <textarea
+                rows={4}
+                value={form.settings?.relatedProductsTemplate ?? ''}
+                onChange={e => setField('settings', { ...form.settings, relatedProductsTemplate: e.target.value })}
+                placeholder={'Vous pourriez aussi aimer :\n{{products}}'}
+              />
+              <small>Available: {'{{products}}'}, {'{{orderNumber}}'}, {'{{storeName}}'}</small>
+            </label>
+          )}
           <label>
             Owner name
             <input value={form.ownerName} onChange={e => setField('ownerName', e.target.value)} />
@@ -645,7 +709,22 @@ export function Stores() {
                           <dd>{order.confirmationError}</dd>
                         </>
                       )}
-                      {canWrite && order.confirmationStatus === 'pending' && (
+                      <dt>AI conversation</dt>
+                      <dd>
+                        <span className={`status-badge ${conversations[order.id]?.status ?? 'not-started'}`}>
+                          {conversations[order.id]?.status ?? 'not started'}
+                        </span>
+                        {conversations[order.id]?.turns?.length ? (
+                          <div className="ai-order-transcript">
+                            {conversations[order.id]!.turns!.slice(-6).map((turn, index) => (
+                              <p key={`${turn.at}-${index}`} className={turn.role}>
+                                <strong>{turn.role === 'customer' ? 'Customer' : 'AI'}:</strong> {turn.text}
+                              </p>
+                            ))}
+                          </div>
+                        ) : null}
+                      </dd>
+                      {canWrite && ['pending', 'not_sent', 'failed'].includes(order.confirmationStatus) && (
                         <>
                           <dt>Action</dt>
                           <dd>
@@ -660,6 +739,14 @@ export function Stores() {
                                 <Bell size={15} />
                               )}
                               Send reminder
+                            </button>
+                            <button
+                              className="btn-secondary"
+                              disabled={handoffOrderId === order.id}
+                              onClick={() => toggleHandoff(order)}
+                            >
+                              {handoffOrderId === order.id && <Loader2 className="animate-spin" size={15} />}
+                              {conversations[order.id]?.status === 'escalated' ? 'Resume AI' : 'Human handoff'}
                             </button>
                           </dd>
                         </>

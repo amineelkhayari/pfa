@@ -28,6 +28,8 @@ const Account = lazy(() => import('./pages/Account').then(m => ({ default: m.Acc
 const AdminUsers = lazy(() => import('./pages/AdminUsers').then(m => ({ default: m.AdminUsers })));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
 const PaymentSettings = lazy(() => import('./pages/PaymentSettings').then(m => ({ default: m.PaymentSettings })));
+const AiSettings = lazy(() => import('./pages/AiSettings').then(m => ({ default: m.AiSettings })));
+const AiTestChat = lazy(() => import('./pages/AiTestChat').then(m => ({ default: m.AiTestChat })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -127,8 +129,10 @@ function AppContent() {
             <Route path="logs" element={<Logs />} />
             <Route path="message-tester" element={<MessageTester />} />
             <Route path="account" element={<Account />} />
+            {role !== 'admin' && <Route path="ai-test" element={<AiTestChat />} />}
             {role === 'admin' && <Route path="admin/users" element={<AdminUsers />} />}
             {role === 'admin' && <Route path="admin/payments" element={<PaymentSettings />} />}
+            {role === 'admin' && <Route path="admin/ai" element={<AiSettings />} />}
             {role === 'admin' && <Route path="infrastructure" element={<Infrastructure />} />}
             {role === 'admin' && <Route path="plugins" element={<Plugins />} />}
             <Route path="*" element={<Navigate to="/" replace />} />

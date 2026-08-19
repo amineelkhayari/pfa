@@ -24,6 +24,7 @@ import {
   UserRound,
   UsersRound,
   CreditCard,
+  Bot,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { type UserRole } from '../hooks/useRole';
@@ -51,8 +52,10 @@ const allNavItems = [
   { to: '/plugins', icon: Puzzle, key: 'plugins' as const, adminOnly: true },
   { to: '/logs', icon: FileText, key: 'logs' as const, adminOnly: false },
   { to: '/account', icon: UserRound, key: 'account' as const, adminOnly: false },
+  { to: '/ai-test', icon: Bot, key: 'aiTest' as const, adminOnly: false },
   { to: '/admin/users', icon: UsersRound, key: 'users' as const, adminOnly: true },
   { to: '/admin/payments', icon: CreditCard, key: 'payments' as const, adminOnly: true },
+  { to: '/admin/ai', icon: Bot, key: 'aiSettings' as const, adminOnly: true },
 ];
 
 const themeIcons = { light: Sun, dark: Moon, system: Monitor };
@@ -63,7 +66,7 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
   const ThemeIcon = themeIcons[theme];
   const themeLabel = t(`theme.${theme}`);
 
-  const adminPaths = new Set(['/', '/admin/users', '/admin/payments', '/logs']);
+  const adminPaths = new Set(['/', '/admin/users', '/admin/payments', '/admin/ai', '/logs']);
   const navItems = allNavItems.filter(item =>
     userRole === 'admin' ? adminPaths.has(item.to) : !item.adminOnly,
   );
@@ -197,7 +200,7 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
 
         <nav className="sidebar-nav">
           {navItems.map(({ to, icon: Icon, key }) => {
-            const label = t(`nav.${key}`, { defaultValue: key === 'account' ? 'My Account' : key === 'users' ? 'Users' : key === 'payments' ? 'Payment Settings' : key });
+            const label = t(`nav.${key}`, { defaultValue: key === 'account' ? 'My Account' : key === 'users' ? 'Users' : key === 'payments' ? 'Payment Settings' : key === 'aiSettings' ? 'AI Settings' : key === 'aiTest' ? 'Test AI Agent' : key });
             return (
               <NavLink
                 key={to}
