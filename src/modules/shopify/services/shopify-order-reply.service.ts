@@ -68,13 +68,20 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
     const sender = this.normalizePhone(message.senderPhone ?? message.from ?? message.chatId);
     if (!sender) return;
     const catalog = await this.storeProducts(store.id);
-    if (store.provider === Platform.SHOPIFY && await this.handleNewOrder(sessionId, store, message, reply, sender, catalog)) return;
     const recentOrders = await this.orders.find({
       where: { storeId: store.id },
       order: { createdAt: 'DESC' },
       take: 50,
     });
     const customerOrders = recentOrders.filter(candidate => this.samePhone(sender, this.normalizePhone(candidate.phone)));
+    // Looking up an existing order is never a request to create a new one. Previously the bare word
+    // "order" started a cart before this distinction was made, trapping all later messages in the
+    // numbered product menu.
+    if (
+      store.provider === Platform.SHOPIFY
+      && !this.isGeneralOrderQuery(reply)
+      && await this.handleNewOrder(sessionId, store, message, reply, sender, catalog, customerOrders)
+    ) return;
     const pending = customerOrders.filter(candidate => candidate.confirmationStatus === 'pending');
     const referencedOrder = customerOrders.find(candidate => {
       const number = String(candidate.orderNumber ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase();
@@ -86,6 +93,12 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
       await this.orders.save(referencedOrder);
     }
     const actionableReferenced = referencedOrder?.confirmationStatus === 'pending' ? referencedOrder : undefined;
+    // A referenced completed/cancelled order is informational, never silently replaced with a
+    // different pending order. Let the assistant explain its real current status.
+    if (referencedOrder && !actionableReferenced) {
+      await this.handleCatalogQuestion(sessionId, store, message, reply, customerOrders);
+      return;
+    }
     if (!referencedOrder && this.isGeneralOrderQuery(reply)) {
       await this.handleCatalogQuestion(sessionId, store, message, reply, customerOrders);
       return;
@@ -95,9 +108,17 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     if (pending.length > 1 && !actionableReferenced) {
+      // Multiple pending orders should not turn the bot into a static menu. Normal greetings,
+      // product questions and order enquiries still belong to the conversational assistant. Ask
+      // the customer to choose an order only when they are attempting a state-changing action
+      // without naming the order (or when AI is disabled and cannot disambiguate naturally).
+      if (this.ai.enabled() && !this.hasOrderActionIntent(reply)) {
+        await this.handleCatalogQuestion(sessionId, store, message, reply, customerOrders);
+        return;
+      }
       const chatId = message.chatId ?? message.from;
       if (chatId) {
-      const choices = pending.slice(0, 5).map(candidate => `• ${candidate.orderNumber ?? candidate.shopifyOrderId} — ${candidate.totalPrice} ${candidate.currency}`).join('\n');
+        const choices = pending.slice(0, 5).map(candidate => `• ${candidate.orderNumber ?? candidate.shopifyOrderId} — ${candidate.totalPrice} ${candidate.currency}`).join('\n');
         await this.messages.sendText(sessionId, { chatId, text: `Vous avez plusieurs commandes en attente. Indiquez le numéro de la commande concernée :\n${choices}` });
       }
       return;
@@ -105,7 +126,8 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
     const order = actionableReferenced ?? pending[0];
     if (!order) return;
 
-    if (reply !== '1' && reply !== '2') {
+    const directAction = reply === '1' ? 'confirm' : reply === '2' ? 'cancel' : this.directOrderAction(reply);
+    if (!directAction) {
       if (this.ai.enabled()) await this.handleAiReply(sessionId, store, order, message, reply);
       return;
     }
@@ -116,7 +138,7 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const settings = this.encryption.revealSettings(store.settings);
-      if (reply === '1') {
+      if (directAction === 'confirm') {
         await this.updateProviderOrder(store, settings, order, 'confirm');
         order.status = 'confirmed';
         order.confirmationStatus = 'confirmed';
@@ -132,7 +154,7 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
         await this.messages.sendText(sessionId, {
           chatId,
           text:
-            reply === '1'
+            directAction === 'confirm'
               ? await this.confirmationMessage(store, order)
               : `Votre commande ${order.orderNumber ?? ''} a été annulée.`,
         });
@@ -278,7 +300,15 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
     return matched.length ? matched : scored.slice(0, 10).map(item => item.product);
   }
 
-  private async handleNewOrder(sessionId: string, store: Store, message: IncomingReply, text: string, phone: string, products: Product[]): Promise<boolean> {
+  private async handleNewOrder(
+    sessionId: string,
+    store: Store,
+    message: IncomingReply,
+    text: string,
+    phone: string,
+    products: Product[],
+    customerOrders: Order[],
+  ): Promise<boolean> {
     const chatId = message.chatId ?? message.from;
     if (!chatId) return false;
     let cart = await this.carts.findOneBy({ storeId: store.id, phone });
@@ -292,9 +322,19 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
     }
     if (cart.step === 'product') {
       const selectedNumber = this.choiceNumber(text, products.length);
-      const product = selectedNumber ? products[selectedNumber - 1] : this.matchProduct(text, products);
+      let product = selectedNumber ? products[selectedNumber - 1] : this.matchProduct(text, products);
+      // Darija often refers back to the previously discussed product ("bghit nakhdo" / "بغيت
+      // ناخدو") without repeating its long catalog name. Resolve that reference only when one
+      // unique product was mentioned in a recent message; never guess from a multi-product list.
+      if (!product && this.hasReferentialPurchaseIntent(text)) {
+        product = await this.recentlyMentionedProduct(sessionId, chatId, products);
+      }
       if (!product) {
         await this.carts.save(cart);
+        if (this.ai.enabled()) {
+          await this.handleCatalogQuestion(sessionId, store, message, text, customerOrders);
+          return true;
+        }
         const choices = products.slice(0, 10).map((item, index) => `${index + 1}. ${item.title} — ${item.price} ${store.currency}`).join('\n');
         await this.messages.sendText(sessionId, { chatId, text: `Quel produit souhaitez-vous commander ? Répondez avec le numéro :\n${choices}` });
         return true;
@@ -323,7 +363,8 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
       await this.messages.sendText(sessionId, { chatId, text: 'Quelle quantité souhaitez-vous ?' }); return true;
     }
     if (cart.step === 'quantity') {
-      const quantity = Number(text.match(/\d+/)?.[0]);
+      const affirmative = /^(?:yes|oui|نعم|اه|آه|wakha|واخا)$/i.test(text.trim());
+      const quantity = affirmative ? 1 : Number(text.match(/\d+/)?.[0]);
       if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) { await this.messages.sendText(sessionId, { chatId, text: 'Indiquez une quantité entre 1 et 99.' }); return true; }
       cart.quantity = quantity; cart.step = 'name'; await this.carts.save(cart);
       await this.messages.sendText(sessionId, { chatId, text: 'Quel est votre nom complet pour la livraison ?' }); return true;
@@ -360,7 +401,23 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
   }
 
   private hasPurchaseIntent(text: string): boolean {
-    return /\b(buy|purchase|order|commander|acheter|achète|bghit|nakhod|nchri)\b|بغيت|نشتري|شراء|أريد/i.test(text);
+    // Require a clear creation/buying verb. A bare "order/commande/طلب" is commonly an existing
+    // order enquiry and must remain conversational.
+    return /\b(?:buy|purchase|commander|acheter|achete|nchri|nakhod|nakhdo|nakhdoh|ncommandi)\b|\b(?:i want|i need|want to|would like to)\s+(?:buy|purchase|order)\b|\b(?:je veux|je voudrais)\s+(?:commander|acheter)\b|\bbghit\s+(?:nchri|nakhod|nakhdo|nakhdoh|ncommandi)\b|(?:بغيت|أريد)\s+(?:نشتري|نطلب|شراء|ناخد|ناخدو|ناخذه)/i.test(text);
+  }
+
+  private hasReferentialPurchaseIntent(text: string): boolean {
+    return /\b(?:nakhod|nakhdo|nakhdoh|take it|buy it|this one)\b|(?:ناخد|ناخدو|ناخذه|هذا|هادا)/i.test(text);
+  }
+
+  private async recentlyMentionedProduct(sessionId: string, chatId: string, products: Product[]): Promise<Product | undefined> {
+    const history = await this.messages.getMessages(sessionId, { chatId, limit: 10 });
+    for (const message of history.messages) {
+      const body = String(message.body ?? '').toLowerCase();
+      const matches = products.filter(product => body.includes(product.title.toLowerCase()));
+      if (matches.length === 1) return matches[0];
+    }
+    return undefined;
   }
 
   private matchProduct(text: string, products: Product[]): Product | undefined {
@@ -420,6 +477,21 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
     const normalized = text.toLowerCase();
     return /(?:orders?|commandes?|talabat|طلباتي|الطلبات)/i.test(normalized)
       && /(?:all|list|show|give|mes|my|dyali|3ndi|عندي|ديالي|كل)/i.test(normalized);
+  }
+
+  private hasOrderActionIntent(text: string): boolean {
+    const normalized = text.toLowerCase().replace(/[’']/g, '').replace(/\s+/g, ' ').trim();
+    if (normalized === '1' || normalized === '2') return true;
+    return /\b(confirm|confirmed|confirmer|confirme|cancel|cancelled|annul|annuler|annule|ma bghit|la ma bghitch)\w*\b|تأكيد|أؤكد|اؤكد|إلغاء|الغاء|ألغي|لا أريد/.test(normalized);
+  }
+
+  /** Strong, explicit mutations bypass AI formatting/escalation and execute deterministically. */
+  private directOrderAction(text: string): 'confirm' | 'cancel' | null {
+    const normalized = text.toLowerCase().replace(/[’']/g, '').replace(/\s+/g, ' ').trim();
+    const cancel = /\b(?:cancel|cancelled|annuler|annule|je veux annuler|bghit ncancel|ma bghit|la ma bghitch)\w*\b|إلغاء|الغاء|ألغي|لا أريد/.test(normalized);
+    if (cancel) return 'cancel';
+    const confirm = /\b(?:confirm|confirmed|confirmer|confirme|je confirme|yes confirm|oui je confirme|bghit nconfirm|wakha confirm)\w*\b|أؤكد|اؤكد|تأكيد|نعم أؤكد/.test(normalized);
+    return confirm ? 'confirm' : null;
   }
 
   private normalizePhone(value: string | null | undefined): string {

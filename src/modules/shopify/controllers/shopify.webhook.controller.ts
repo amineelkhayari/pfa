@@ -9,7 +9,7 @@ import { Order } from '../../stores/entities/order.entity';
 import { CredentialEncryptionService } from '../../../common/security/credential-encryption.service';
 import { ShopifyOAuthService } from '../services/shopify-oauth.service';
 import { ShopifyService } from '../services/shopify.service';
-import type { ShopifyOrderPayload } from '../services/shopify.service';
+import { hasShopifyWhatsAppConfirmation, type ShopifyOrderPayload } from '../services/shopify.service';
 import { ShopifyWebhookDelivery } from '../entities/shopify-webhook-delivery.entity';
 
 @Controller('shopify/webhooks')
@@ -62,7 +62,7 @@ export class ShopifyWebhookController {
     try {
       const order = await this.shopify.importOrderPayload(payload, context.store.id);
       if (!order.phone) throw new Error('Order has no customer phone number.');
-      if ((order.tags ?? []).includes('whatsapp-bot-confirmed')) {
+      if (hasShopifyWhatsAppConfirmation(order.tags)) {
         order.status = 'confirmed';
         order.confirmationStatus = 'confirmed';
         order.confirmationSentAt = new Date();

@@ -43,6 +43,16 @@ export interface ShopifyOrderPayload {
   created_at?: string;
 }
 
+export const SHOPIFY_WHATSAPP_CONFIRMED_TAG = 'whatsapp-bot-confirmed';
+
+export function hasShopifyWhatsAppConfirmation(tags: string | string[] | null | undefined): boolean {
+  const values = Array.isArray(tags) ? tags : String(tags ?? '').split(',');
+  return values.some(tag => {
+    const normalized = tag.trim().toLowerCase();
+    return normalized === SHOPIFY_WHATSAPP_CONFIRMED_TAG || normalized === 'whatsapp confirmed';
+  });
+}
+
 @Injectable()
 export class ShopifyService {
   private readonly apiVersion = '2025-10';
@@ -261,7 +271,7 @@ export class ShopifyService {
   }
 
   async markOrderConfirmed(shopDomain: string, accessToken: string, order: Order): Promise<void> {
-    const tags = Array.from(new Set([...(order.tags ?? []), 'WhatsApp Confirmed']));
+    const tags = Array.from(new Set([...(order.tags ?? []), SHOPIFY_WHATSAPP_CONFIRMED_TAG]));
     const remote = await this.get<{
       order?: { note_attributes?: Array<{ name: string; value: string }> };
     }>(shopDomain, accessToken, `orders/${order.shopifyOrderId}.json?fields=id,note_attributes`);
@@ -371,6 +381,7 @@ export class ShopifyService {
       order.shipping_address?.name ??
       [order.customer?.first_name, order.customer?.last_name].filter(Boolean).join(' ') ??
       null;
+    const confirmedByWhatsApp = hasShopifyWhatsAppConfirmation(order.tags);
     return {
       storeId,
       shopifyOrderId: String(order.id),
@@ -391,7 +402,8 @@ export class ShopifyService {
             .map(tag => tag.trim())
             .filter(Boolean)
         : null,
-      status: order.cancelled_at ? 'cancelled' : 'open',
+      status: order.cancelled_at ? 'cancelled' : confirmedByWhatsApp ? 'confirmed' : 'open',
+      ...(confirmedByWhatsApp ? { confirmationStatus: 'confirmed' } : {}),
       shopifyCreatedAt: order.created_at ? new Date(order.created_at) : new Date(),
     };
   }
