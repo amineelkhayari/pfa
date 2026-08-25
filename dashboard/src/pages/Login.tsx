@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Eye, EyeOff, Languages } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Languages } from 'lucide-react';
 import { GithubIcon } from '../components/GithubIcon';
 import { CustomSelect } from '../components/CustomSelect';
 import { languageOptions, resolveSupportedLanguage, type SupportedLanguage } from '../i18n';
@@ -9,12 +9,14 @@ import './Login.css';
 
 interface LoginProps {
   onLogin: (apiKey: string) => void;
+  initialMode?: 'signin' | 'signup';
+  onBack?: () => void;
 }
 
-export function Login({ onLogin }: LoginProps) {
+export function Login({ onLogin, initialMode = 'signin', onBack }: LoginProps) {
   const { t, i18n } = useTranslation();
   const [apiKey, setApiKey] = useState('');
-  const [mode, setMode] = useState<'signin' | 'signup' | 'apiKey'>('signin');
+  const [mode, setMode] = useState<'signin' | 'signup' | 'apiKey'>(initialMode);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -50,7 +52,11 @@ export function Login({ onLogin }: LoginProps) {
           ...(mode === 'apiKey' ? { 'X-API-Key': apiKey } : {}),
         },
         ...(mode !== 'apiKey'
-          ? { body: JSON.stringify(mode === 'signin' ? { identifier: username, password } : { name, email, username, password }) }
+          ? {
+              body: JSON.stringify(
+                mode === 'signin' ? { identifier: username, password } : { name, email, username, password },
+              ),
+            }
           : {}),
       });
 
@@ -73,6 +79,11 @@ export function Login({ onLogin }: LoginProps) {
 
   return (
     <div className="login-container">
+      {onBack && (
+        <button type="button" className="login-back" onClick={onBack}>
+          <ArrowLeft size={18} /> Back to website
+        </button>
+      )}
       <div className="login-card">
         <div className="login-logo">
           <img src="/openwa_logo.webp" alt="OpenWA" className="logo-icon" />
@@ -98,45 +109,92 @@ export function Login({ onLogin }: LoginProps) {
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="auth-tabs">
-            <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => setMode('signin')}>Sign in</button>
-            <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>Sign up</button>
-            <button type="button" className={mode === 'apiKey' ? 'active' : ''} onClick={() => setMode('apiKey')}>API key</button>
+            <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => setMode('signin')}>
+              Sign in
+            </button>
+            <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>
+              Sign up
+            </button>
+            <button type="button" className={mode === 'apiKey' ? 'active' : ''} onClick={() => setMode('apiKey')}>
+              API key
+            </button>
           </div>
-          {mode === 'signup' && <>
-            <div className="input-group"><label htmlFor="name">Full name</label><div className="input-wrapper"><input id="name" value={name} onChange={e => setName(e.target.value)} required /></div></div>
-            <div className="input-group"><label htmlFor="email">Email</label><div className="input-wrapper"><input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} required /></div></div>
-          </>}
-          {mode !== 'apiKey' && <>
-            <div className="input-group"><label htmlFor="username">Username or email</label><div className="input-wrapper"><input id="username" value={username} onChange={e => setUsername(e.target.value)} required /></div></div>
-            <div className="input-group"><label htmlFor="password">Password</label><div className="input-wrapper"><input id="password" type={showKey ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} minLength={mode === 'signup' ? 8 : undefined} required /><button type="button" className="toggle-visibility" onClick={() => setShowKey(!showKey)}>{showKey ? <EyeOff size={20} /> : <Eye size={20} />}</button></div></div>
-          </>}
-          {mode === 'apiKey' &&
-          <div className="input-group">
-            <label htmlFor="apiKey">{t('login.apiKey')}</label>
-            <div className="input-wrapper">
-              <input
-                id="apiKey"
-                type={showKey ? 'text' : 'password'}
-                value={apiKey}
-                onChange={e => setApiKey(e.target.value)}
-                placeholder={t('login.apiKeyPlaceholder')}
-                className={error ? 'error' : ''}
-              />
-              <button
-                type="button"
-                className="toggle-visibility"
-                onClick={() => setShowKey(!showKey)}
-                aria-label={showKey ? t('common.hideApiKey') : t('common.showApiKey')}
-              >
-                {showKey ? <EyeOff size={20} /> : <Eye size={20} />}
-              </button>
+          {mode === 'signup' && (
+            <>
+              <div className="input-group">
+                <label htmlFor="name">Full name</label>
+                <div className="input-wrapper">
+                  <input id="name" value={name} onChange={e => setName(e.target.value)} required />
+                </div>
+              </div>
+              <div className="input-group">
+                <label htmlFor="email">Email</label>
+                <div className="input-wrapper">
+                  <input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+                </div>
+              </div>
+            </>
+          )}
+          {mode !== 'apiKey' && (
+            <>
+              <div className="input-group">
+                <label htmlFor="username">Username or email</label>
+                <div className="input-wrapper">
+                  <input id="username" value={username} onChange={e => setUsername(e.target.value)} required />
+                </div>
+              </div>
+              <div className="input-group">
+                <label htmlFor="password">Password</label>
+                <div className="input-wrapper">
+                  <input
+                    id="password"
+                    type={showKey ? 'text' : 'password'}
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    minLength={mode === 'signup' ? 8 : undefined}
+                    required
+                  />
+                  <button type="button" className="toggle-visibility" onClick={() => setShowKey(!showKey)}>
+                    {showKey ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+          {mode === 'apiKey' && (
+            <div className="input-group">
+              <label htmlFor="apiKey">{t('login.apiKey')}</label>
+              <div className="input-wrapper">
+                <input
+                  id="apiKey"
+                  type={showKey ? 'text' : 'password'}
+                  value={apiKey}
+                  onChange={e => setApiKey(e.target.value)}
+                  placeholder={t('login.apiKeyPlaceholder')}
+                  className={error ? 'error' : ''}
+                />
+                <button
+                  type="button"
+                  className="toggle-visibility"
+                  onClick={() => setShowKey(!showKey)}
+                  aria-label={showKey ? t('common.hideApiKey') : t('common.showApiKey')}
+                >
+                  {showKey ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
+              {error && <span className="error-message">{error}</span>}
             </div>
-            {error && <span className="error-message">{error}</span>}
-          </div>}
+          )}
           {mode !== 'apiKey' && error && <span className="error-message auth-error">{error}</span>}
 
           <button type="submit" className="connect-btn" disabled={isLoading}>
-            {isLoading ? 'Please wait…' : mode === 'signup' ? 'Create free account' : mode === 'signin' ? 'Sign in' : t('login.connect')}
+            {isLoading
+              ? 'Please wait…'
+              : mode === 'signup'
+                ? 'Create free account'
+                : mode === 'signin'
+                  ? 'Sign in'
+                  : t('login.connect')}
           </button>
         </form>
 

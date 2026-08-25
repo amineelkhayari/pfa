@@ -46,6 +46,7 @@ import { EngineEcomModule } from './ecomEngine/engin.ecom.module';
 import { ShopifyModule } from './modules/shopify/shopify.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { WooCommerceModule } from './modules/woocommerce/woocommerce.module';
+import { CampaignModule } from './modules/campaign/campaign.module';
 
 // Only import QueueModule if explicitly enabled to avoid Redis connection errors
 const queueModules: Array<Type | DynamicModule> = [];
@@ -174,6 +175,7 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
             __dirname + '/modules/stores/**/*.entity{.ts,.js}',
             __dirname + '/modules/shopify/**/*.entity{.ts,.js}',
             __dirname + '/modules/woocommerce/**/*.entity{.ts,.js}',
+            __dirname + '/modules/campaign/**/*.entity{.ts,.js}',
 
             // __dirname + '/modules/stores/**/*.entity{.ts,.js}',
           ],
@@ -316,6 +318,7 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
     ShopifyModule,
     WooCommerceModule,
     BillingModule,
+    CampaignModule,
     EngineEcomModule,
     ...searchModules, // Global message search (opt-out via SEARCH_ENABLED=false; default ON)
     ...mcpModules, // MCP Streamable-HTTP server (opt-in via MCP_ENABLED=true)

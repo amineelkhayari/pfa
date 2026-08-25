@@ -15,6 +15,7 @@ interface ChatSidebarProps {
   searchQuery: string;
   onSearchQueryChange: (query: string) => void;
   onComposeStatus: () => void;
+  onNewChat: () => void;
   formatChatTime: (timestamp?: number) => string;
   chatsTab: {
     loading: boolean;
@@ -51,6 +52,7 @@ function ChatSidebar({
   searchQuery,
   onSearchQueryChange,
   onComposeStatus,
+  onNewChat,
   formatChatTime,
   chatsTab,
   channelsTab,
@@ -66,7 +68,11 @@ function ChatSidebar({
   const renderChatRow = (chat: Chat) => {
     const isActive = chatsTab.activeChatId === chat.id;
     return (
-      <div key={chat.id} className={`chat-item-card ${isActive ? 'active' : ''}`} onClick={() => chatsTab.onSelectChat(chat)}>
+      <div
+        key={chat.id}
+        className={`chat-item-card ${isActive ? 'active' : ''}`}
+        onClick={() => chatsTab.onSelectChat(chat)}
+      >
         <ChatAvatar pictureUrl={chatsTab.pictures?.[chat.id]} kind={chat.kind} />
 
         <div className="chat-item-info">
@@ -171,6 +177,13 @@ function ChatSidebar({
           ) : (
             chatsTab.chats.map(renderChatRow)
           )}
+        </div>
+      )}
+      {activeTab === 'chats' && (
+        <div className="new-chat-footer">
+          <button type="button" className="new-chat-trigger" onClick={onNewChat}>
+            <Plus size={18} /> {t('chats.newChat')}
+          </button>
         </div>
       )}
 

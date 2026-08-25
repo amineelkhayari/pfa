@@ -106,9 +106,8 @@ export class StoreService {
     const scope = getRequestUserScope();
     const sessionWhere = scope.userId && !scope.isAdmin ? { userId: scope.userId } : undefined;
     const storeWhere = scope.userId && !scope.isAdmin ? { userId: scope.userId } : undefined;
-    const since = filters?.days && filters.days > 0
-      ? new Date(Date.now() - filters.days * 24 * 60 * 60 * 1000)
-      : undefined;
+    const since =
+      filters?.days && filters.days > 0 ? new Date(Date.now() - filters.days * 24 * 60 * 60 * 1000) : undefined;
     const query = this.orderRepository
       .createQueryBuilder('order')
       .innerJoin(Store, 'store', 'store.id = order.storeId')
@@ -126,7 +125,11 @@ export class StoreService {
     }
 
     const sessions = await this.sessionRepository.find({ where: sessionWhere, order: { createdAt: 'DESC' } });
-    const stores = await this.storeRepository.find({ where: storeWhere, relations: { session: true }, order: { createdAt: 'DESC' } });
+    const stores = await this.storeRepository.find({
+      where: storeWhere,
+      relations: { session: true },
+      order: { createdAt: 'DESC' },
+    });
     const sessionIds = sessions.map(session => session.id);
     const storeIds = stores.map(store => store.id);
 
@@ -184,7 +187,13 @@ export class StoreService {
         .innerJoin(Store, 'store', 'store.id = product.storeId')
         .where(scope.userId && !scope.isAdmin ? 'store.userId = :userId' : '1=1', { userId: scope.userId })
         .getCount(),
-      messageQuery.getRawMany<{ sessionId: string; sent: string; received: string; failed: string; lastMessageAt: string | null }>(),
+      messageQuery.getRawMany<{
+        sessionId: string;
+        sent: string;
+        received: string;
+        failed: string;
+        lastMessageAt: string | null;
+      }>(),
       orderByStoreQuery.getRawMany<{ storeId: string; status: string; count: string; lastOrderAt: string | null }>(),
       productQuery.getRawMany<{ storeId: string; count: string }>(),
       aiQuery.getRawMany<{ storeId: string; status: string; count: string }>(),
@@ -199,7 +208,8 @@ export class StoreService {
       const current = ordersByStore.get(row.storeId) ?? { total: 0, lastOrderAt: null };
       current.total = Number(current.total) + Number(row.count);
       current[row.status] = Number(row.count);
-      if (row.lastOrderAt && (!current.lastOrderAt || row.lastOrderAt > String(current.lastOrderAt))) current.lastOrderAt = row.lastOrderAt;
+      if (row.lastOrderAt && (!current.lastOrderAt || row.lastOrderAt > String(current.lastOrderAt)))
+        current.lastOrderAt = row.lastOrderAt;
       ordersByStore.set(row.storeId, current);
     }
     const aiByStore = new Map<string, Record<string, number>>();
@@ -213,17 +223,27 @@ export class StoreService {
       const orders = ordersByStore.get(store.id) ?? { total: 0 };
       const ai = aiByStore.get(store.id) ?? {};
       return {
-        id: store.id, name: store.name, provider: store.provider, status: store.status,
-        sessionId: store.sessionId, sessionName: store.session?.name ?? null,
+        id: store.id,
+        name: store.name,
+        provider: store.provider,
+        status: store.status,
+        sessionId: store.sessionId,
+        sessionName: store.session?.name ?? null,
         sessionStatus: store.session?.status ?? 'disconnected',
         products: productByStore.get(store.id) ?? 0,
         orders: Number(orders.total ?? 0),
         pending: Number(orders.pending ?? 0) + Number(orders.sending ?? 0) + Number(orders.processing_reply ?? 0),
-        confirmed: Number(orders.confirmed ?? 0), cancelled: Number(orders.cancelled ?? 0),
-        confirmationFailed: Number(orders.failed ?? 0), notSent: Number(orders.not_sent ?? 0),
-        sent: Number(messages?.sent ?? 0), received: Number(messages?.received ?? 0), failed: Number(messages?.failed ?? 0),
-        aiActive: Number(ai.active ?? 0), aiEscalated: Number(ai.escalated ?? 0),
-        lastOrderAt: orders.lastOrderAt ?? null, lastMessageAt: messages?.lastMessageAt ?? null,
+        confirmed: Number(orders.confirmed ?? 0),
+        cancelled: Number(orders.cancelled ?? 0),
+        confirmationFailed: Number(orders.failed ?? 0),
+        notSent: Number(orders.not_sent ?? 0),
+        sent: Number(messages?.sent ?? 0),
+        received: Number(messages?.received ?? 0),
+        failed: Number(messages?.failed ?? 0),
+        aiActive: Number(ai.active ?? 0),
+        aiEscalated: Number(ai.escalated ?? 0),
+        lastOrderAt: orders.lastOrderAt ?? null,
+        lastMessageAt: messages?.lastMessageAt ?? null,
       };
     });
     const storesBySession = new Map(storeMetrics.map(store => [store.sessionId, store]));
@@ -231,13 +251,25 @@ export class StoreService {
       const messages = messageBySession.get(session.id);
       const store = storesBySession.get(session.id);
       return {
-        id: session.id, name: session.name, phone: session.phone, status: session.status,
-        lastActiveAt: session.lastActiveAt, sent: Number(messages?.sent ?? 0), received: Number(messages?.received ?? 0),
-        failed: Number(messages?.failed ?? 0), lastMessageAt: messages?.lastMessageAt ?? null,
-        storeId: store?.id ?? null, storeName: store?.name ?? null, products: store?.products ?? 0,
-        orders: store?.orders ?? 0, pending: store?.pending ?? 0, confirmed: store?.confirmed ?? 0,
-        cancelled: store?.cancelled ?? 0, confirmationFailed: store?.confirmationFailed ?? 0,
-        aiActive: store?.aiActive ?? 0, aiEscalated: store?.aiEscalated ?? 0,
+        id: session.id,
+        name: session.name,
+        phone: session.phone,
+        status: session.status,
+        lastActiveAt: session.lastActiveAt,
+        sent: Number(messages?.sent ?? 0),
+        received: Number(messages?.received ?? 0),
+        failed: Number(messages?.failed ?? 0),
+        lastMessageAt: messages?.lastMessageAt ?? null,
+        storeId: store?.id ?? null,
+        storeName: store?.name ?? null,
+        products: store?.products ?? 0,
+        orders: store?.orders ?? 0,
+        pending: store?.pending ?? 0,
+        confirmed: store?.confirmed ?? 0,
+        cancelled: store?.cancelled ?? 0,
+        confirmationFailed: store?.confirmationFailed ?? 0,
+        aiActive: store?.aiActive ?? 0,
+        aiEscalated: store?.aiEscalated ?? 0,
       };
     });
     return {
@@ -252,11 +284,14 @@ export class StoreService {
       periodDays: filters?.days ?? null,
       sessions: sessionMetrics,
       stores: storeMetrics,
-      messageTotals: sessionMetrics.reduce((total, session) => ({
-        sent: total.sent + session.sent,
-        received: total.received + session.received,
-        failed: total.failed + session.failed,
-      }), { sent: 0, received: 0, failed: 0 }),
+      messageTotals: sessionMetrics.reduce(
+        (total, session) => ({
+          sent: total.sent + session.sent,
+          received: total.received + session.received,
+          failed: total.failed + session.failed,
+        }),
+        { sent: 0, received: 0, failed: 0 },
+      ),
     };
   }
 
@@ -314,12 +349,44 @@ export class StoreService {
     return Object.fromEntries(rows.map(row => [row.orderId, row]));
   }
 
+  async getConversationOwnership(sessionId: string, chatId: string) {
+    const phone = chatId.split('@')[0].replace(/\D/g, '');
+    if (!phone) return { locked: false };
+    const stores = await this.findAll();
+    const storeIds = stores.filter(store => store.sessionId === sessionId).map(store => store.id);
+    if (!storeIds.length) return { locked: false };
+    const candidates = await this.orderRepository
+      .createQueryBuilder('order')
+      .where('order.storeId IN (:...storeIds)', { storeIds })
+      .andWhere('order.confirmationStatus IN (:...statuses)', { statuses: ['pending', 'processing_reply'] })
+      .orderBy('order.shopifyCreatedAt', 'DESC')
+      .getMany();
+    const order = candidates.find(candidate => candidate.phone?.replace(/\D/g, '') === phone);
+    if (!order) return { locked: false };
+    const conversation = await this.conversationRepository.findOneBy({ orderId: order.id });
+    const locked = conversation?.status !== 'escalated';
+    return {
+      locked,
+      storeId: order.storeId,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      automation: conversation ? 'ai' : 'confirmation',
+      status: conversation?.status ?? 'active',
+    };
+  }
+
   async setOrderConversationHandoff(storeId: string, orderId: string, handoff: boolean) {
     await this.findOneById(storeId);
     const order = await this.orderRepository.findOneBy({ id: orderId, storeId });
     if (!order) throw new NotFoundException('Order not found.');
     let conversation = await this.conversationRepository.findOneBy({ orderId });
-    conversation ??= this.conversationRepository.create({ orderId, storeId, status: 'active', turnCount: 0, turns: [] });
+    conversation ??= this.conversationRepository.create({
+      orderId,
+      storeId,
+      status: 'active',
+      turnCount: 0,
+      turns: [],
+    });
     if (!['pending', 'processing_reply'].includes(order.confirmationStatus)) {
       throw new BadRequestException('Only an order awaiting confirmation can change AI handoff state.');
     }

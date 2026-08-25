@@ -25,6 +25,8 @@ import {
   UsersRound,
   CreditCard,
   Bot,
+  Megaphone,
+  ContactRound,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { type UserRole } from '../hooks/useRole';
@@ -43,8 +45,10 @@ const allNavItems = [
   { to: '/stores', icon: Smartphone, key: 'stores' as const, adminOnly: false },
 
   { to: '/chats', icon: MessageSquare, key: 'chats' as const, adminOnly: false },
+  { to: '/contacts', icon: ContactRound, key: 'contacts' as const, adminOnly: false },
   { to: '/webhooks', icon: Webhook, key: 'webhooks' as const, adminOnly: false },
   { to: '/templates', icon: ClipboardList, key: 'templates' as const, adminOnly: false },
+  { to: '/campaigns', icon: Megaphone, key: 'campaigns' as const, adminOnly: false },
   { to: '/api-keys', icon: Key, key: 'apiKeys' as const, adminOnly: true },
   { to: '/message-tester', icon: Send, key: 'messageTester' as const, adminOnly: false },
   // Backend /infra/* is ADMIN-only; hide the nav item from non-admins (UX + defense-in-depth).
@@ -67,9 +71,7 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
   const themeLabel = t(`theme.${theme}`);
 
   const adminPaths = new Set(['/', '/admin/users', '/admin/payments', '/admin/ai', '/logs']);
-  const navItems = allNavItems.filter(item =>
-    userRole === 'admin' ? adminPaths.has(item.to) : !item.adminOnly,
-  );
+  const navItems = allNavItems.filter(item => (userRole === 'admin' ? adminPaths.has(item.to) : !item.adminOnly));
 
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -200,7 +202,24 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
 
         <nav className="sidebar-nav">
           {navItems.map(({ to, icon: Icon, key }) => {
-            const label = t(`nav.${key}`, { defaultValue: key === 'account' ? 'My Account' : key === 'users' ? 'Users' : key === 'payments' ? 'Payment Settings' : key === 'aiSettings' ? 'AI Settings' : key === 'aiTest' ? 'Test AI Agent' : key });
+            const label = t(`nav.${key}`, {
+              defaultValue:
+                key === 'contacts'
+                  ? 'Contacts'
+                  : key === 'campaigns'
+                    ? 'Campaigns & Report'
+                    : key === 'account'
+                      ? 'My Account'
+                      : key === 'users'
+                        ? 'Users'
+                        : key === 'payments'
+                          ? 'Payment Settings'
+                          : key === 'aiSettings'
+                            ? 'AI Settings'
+                            : key === 'aiTest'
+                              ? 'Test AI Agent'
+                              : key,
+            });
             return (
               <NavLink
                 key={to}

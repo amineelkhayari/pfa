@@ -15,6 +15,7 @@ import {
   ReactMessageDto,
   DeleteMessageDto,
   EditMessageDto,
+  SendButtonsDto,
 } from './dto/message-actions.dto';
 import { RequireRole } from '../auth/decorators/auth.decorators';
 import { ApiKeyRole } from '../auth/entities/api-key.entity';
@@ -232,6 +233,13 @@ export class MessageController {
   })
   async sendPoll(@Param('sessionId') sessionId: string, @Body() dto: SendPollDto): Promise<MessageResponseDto> {
     return this.messageService.sendPoll(sessionId, dto);
+  }
+
+  @Post('send-buttons')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @ApiOperation({ summary: 'Send an interactive quick-reply button message' })
+  async sendButtons(@Param('sessionId') sessionId: string, @Body() dto: SendButtonsDto): Promise<MessageResponseDto> {
+    return this.messageService.sendButtons(sessionId, dto);
   }
 
   @Post('reply')

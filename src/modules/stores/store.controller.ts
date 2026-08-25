@@ -22,9 +22,14 @@ export class StoreController {
         clientSecretConfigured: typeof clientSecret === 'string' && clientSecret.length > 0,
         consumerSecretConfigured: typeof consumerSecret === 'string' && consumerSecret.length > 0,
         webhookSecretConfigured: typeof webhookSecret === 'string' && webhookSecret.length > 0,
-        connected: store.provider === 'woocommerce'
-          ? typeof settings.consumerKey === 'string' && settings.consumerKey.length > 0 && typeof consumerSecret === 'string' && consumerSecret.length > 0 && settings.connected === true
-          : typeof accessToken === 'string' && accessToken.length > 0,
+        connected:
+          store.provider === 'woocommerce'
+            ? typeof settings.consumerKey === 'string' &&
+              settings.consumerKey.length > 0 &&
+              typeof consumerSecret === 'string' &&
+              consumerSecret.length > 0 &&
+              settings.connected === true
+            : typeof accessToken === 'string' && accessToken.length > 0,
       },
     };
   }
@@ -107,6 +112,11 @@ export class StoreController {
     return this.storeService.findOrders(id);
   }
 
+  @Get('conversation-ownership/current')
+  getConversationOwnership(@Query('sessionId') sessionId: string, @Query('chatId') chatId: string) {
+    return this.storeService.getConversationOwnership(sessionId, chatId);
+  }
+
   @Get(':id/order-conversations')
   getOrderConversations(@Param('id', ParseUUIDPipe) id: string) {
     return this.storeService.getOrderConversations(id);
@@ -119,7 +129,11 @@ export class StoreController {
 
   @Post(':id/orders/:orderId/handoff')
   @RequireRole(ApiKeyRole.OPERATOR)
-  setOrderHandoff(@Param('id', ParseUUIDPipe) id: string, @Param('orderId', ParseUUIDPipe) orderId: string, @Body() body: { handoff: boolean }) {
+  setOrderHandoff(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Body() body: { handoff: boolean },
+  ) {
     return this.storeService.setOrderConversationHandoff(id, orderId, body.handoff !== false);
   }
 

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Loader2, Paperclip, Send, Smile, X } from 'lucide-react';
-import { messageApi, type Chat, type MessageType } from '../../services/api';
+import { ChevronDown, Loader2, Paperclip, Send, Smile, X } from 'lucide-react';
+import { contactApi, messageApi, type Chat, type MessageType } from '../../services/api';
 import { mergeOrAppend, type ChatMessageView } from '../../utils/chatMessages';
 import { promoteChatWithSnippet } from '../../utils/chatList';
 import { messagesQueryKey, useChatMessagesActions } from '../../hooks/useChatMessages';
@@ -17,6 +17,42 @@ const messageTypeFromMime = (mimetype: string): MessageType => {
   if (mimetype.startsWith('video/')) return 'video';
   if (mimetype.startsWith('audio/')) return 'audio';
   return 'document';
+};
+
+type ComposerType =
+  | 'text'
+  | 'image'
+  | 'video'
+  | 'audio'
+  | 'document'
+  | 'location'
+  | 'contact'
+  | 'sticker'
+  | 'poll'
+  | 'buttons'
+  | 'orderConfirmation'
+  | 'forward';
+const composerTypes: ComposerType[] = [
+  'text',
+  'image',
+  'video',
+  'audio',
+  'document',
+  'location',
+  'contact',
+  'sticker',
+  'poll',
+  'buttons',
+  'orderConfirmation',
+  'forward',
+];
+const fileComposerTypes: ComposerType[] = ['image', 'video', 'audio', 'document', 'sticker'];
+const mediaAccept: Partial<Record<ComposerType, string>> = {
+  image: 'image/*',
+  video: 'video/*',
+  audio: 'audio/*',
+  document: '*/*',
+  sticker: 'image/webp,image/png,image/jpeg',
 };
 
 /** A picked-but-unsent file, staged until send, removal, or a move to another chat. */
@@ -40,6 +76,7 @@ interface ChatComposerProps {
   setAttachment: Dispatch<SetStateAction<StagedAttachment | null>>;
   previewUrl: string | null;
   setPreviewUrl: Dispatch<SetStateAction<string | null>>;
+  automationLocked?: boolean;
 }
 
 // The composer half of the chat room: attachment preview, emoji panel, reply banner, and the input
@@ -59,14 +96,24 @@ function ChatComposer({
   setAttachment,
   previewUrl,
   setPreviewUrl,
+  automationLocked = false,
 }: ChatComposerProps) {
   const { t } = useTranslation();
   const { canWrite } = useRole();
   const { error: showErrorToast } = useToast();
   const { appendMessage, updateMessage } = useChatMessagesActions();
   const queryClient = useQueryClient();
+  const canCompose = canWrite && !automationLocked;
 
   const [sending, setSending] = useState<boolean>(false);
+  const [composerType, setComposerType] = useState<ComposerType>('text');
+  const [showTypes, setShowTypes] = useState(false);
+  const [specialValues, setSpecialValues] = useState<string[]>(['', '', '']);
+  const [pollOptions, setPollOptions] = useState(['', '']);
+  const typeLabel = (type: ComposerType) =>
+    type === 'buttons' || type === 'orderConfirmation'
+      ? t(`chats.messageTypes.${type}`)
+      : t(`messageTester.types.${type}`);
 
   const [showEmojiPicker, setShowEmojiPicker] = useState<boolean>(false);
   // Monotonic token invalidating an in-flight attachment FileReader: picking a second file (or
@@ -142,18 +189,48 @@ function ChatComposer({
     fileInputRef.current?.click();
   };
 
+  const selectComposerType = (type: ComposerType) => {
+    setComposerType(type);
+    setShowTypes(false);
+    setSpecialValues(['', '', '']);
+    setPollOptions(['', '']);
+    handleRemoveAttachment();
+    if (fileComposerTypes.includes(type)) setTimeout(() => fileInputRef.current?.click(), 0);
+  };
+
   const handleEmojiClick = (emoji: string) => {
     setMessageInput(prev => prev + emoji);
     setShowEmojiPicker(false);
   };
 
+  const canSendSpecial =
+    (composerType === 'location' && specialValues[0] !== '' && specialValues[1] !== '') ||
+    (composerType === 'contact' && !!specialValues[0].trim() && !!specialValues[1].trim()) ||
+    (composerType === 'poll' && !!specialValues[0].trim() && pollOptions.filter(option => option.trim()).length >= 2) ||
+    (composerType === 'buttons' && !!messageInput.trim() && pollOptions.some(option => option.trim())) ||
+    (composerType === 'orderConfirmation' && !!messageInput.trim()) ||
+    (composerType === 'forward' && !!specialValues[0].trim() && !!specialValues[1].trim());
+
   // 7. Handle sending a message / media
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!selectedSessionId || !activeChat || sending) return;
+    if (!selectedSessionId || !activeChat || sending || !canCompose) return;
 
     const textToSend = messageInput.trim();
-    if (!textToSend && !attachment) return;
+    const filledPollOptions = pollOptions.map(option => option.trim()).filter(Boolean);
+    const specialValid =
+      (composerType === 'location' &&
+        specialValues[0] !== '' &&
+        specialValues[1] !== '' &&
+        Number.isFinite(Number(specialValues[0])) &&
+        Number.isFinite(Number(specialValues[1]))) ||
+      (composerType === 'contact' && !!specialValues[0].trim() && !!specialValues[1].trim()) ||
+      (composerType === 'poll' && !!specialValues[0].trim() && filledPollOptions.length >= 2) ||
+      (composerType === 'buttons' && !!textToSend && filledPollOptions.length >= 1) ||
+      (composerType === 'orderConfirmation' && !!textToSend) ||
+      (composerType === 'forward' && !!specialValues[0].trim() && !!specialValues[1].trim());
+    if (fileComposerTypes.includes(composerType) && !attachment) return;
+    if (!textToSend && !attachment && !specialValid) return;
 
     setMessageInput('');
     setSending(true);
@@ -164,14 +241,30 @@ function ChatComposer({
       chatId: activeChat.id,
       from: 'me',
       to: activeChat.id,
-      body: attachment
-        ? attachment.mimetype.startsWith('image/') ||
-          attachment.mimetype.startsWith('video/') ||
-          attachment.mimetype.startsWith('audio/')
-          ? textToSend
-          : attachment.filename
-        : textToSend,
-      type: attachment ? messageTypeFromMime(attachment.mimetype) : 'text',
+      body:
+        composerType === 'location'
+          ? `📍 ${specialValues[0]}, ${specialValues[1]}`
+          : composerType === 'contact'
+            ? `👤 ${specialValues[0]}`
+            : composerType === 'poll'
+              ? `📊 ${specialValues[0]}`
+              : composerType === 'buttons' || composerType === 'orderConfirmation'
+                ? textToSend
+                : composerType === 'forward'
+                  ? `↪ ${specialValues[0]}`
+                  : attachment
+                    ? attachment.mimetype.startsWith('image/') ||
+                      attachment.mimetype.startsWith('video/') ||
+                      attachment.mimetype.startsWith('audio/')
+                      ? textToSend
+                      : attachment.filename
+                    : textToSend,
+      type:
+        composerType === 'sticker'
+          ? 'sticker'
+          : attachment
+            ? messageTypeFromMime(attachment.mimetype)
+            : (composerType as MessageType),
       direction: 'outgoing',
       status: 'pending',
       createdAt: new Date().toISOString(),
@@ -204,7 +297,56 @@ function ChatComposer({
     try {
       let result;
 
-      if (currentAttachment) {
+      if (composerType === 'location') {
+        result = await messageApi.sendLocation(selectedSessionId, {
+          chatId: activeChat.id,
+          latitude: Number(specialValues[0]),
+          longitude: Number(specialValues[1]),
+          ...(textToSend ? { description: textToSend } : {}),
+        });
+      } else if (composerType === 'contact') {
+        result = await messageApi.sendContact(selectedSessionId, {
+          chatId: activeChat.id,
+          contactName: specialValues[0].trim(),
+          contactNumber: specialValues[1].trim(),
+        });
+      } else if (composerType === 'poll') {
+        result = await messageApi.sendPoll(selectedSessionId, {
+          chatId: activeChat.id,
+          name: specialValues[0].trim(),
+          options: filledPollOptions,
+        });
+      } else if (composerType === 'buttons' || composerType === 'orderConfirmation') {
+        const labels =
+          composerType === 'orderConfirmation' ? [t('chats.confirm'), t('chats.cancel')] : filledPollOptions;
+        result = await messageApi.sendButtons(selectedSessionId, {
+          chatId: activeChat.id,
+          text: textToSend,
+          ...(specialValues[0].trim() ? { footer: specialValues[0].trim() } : {}),
+          buttons: labels.slice(0, 3).map((label, index) => ({
+            id: `${composerType}_${index + 1}`,
+            label,
+          })),
+        });
+      } else if (composerType === 'forward') {
+        let toChatId = specialValues[1].trim();
+        if (!toChatId.includes('@')) {
+          const checked = await contactApi.checkNumber(selectedSessionId, toChatId.replace(/[^0-9]/g, ''));
+          if (!checked.exists || !checked.whatsappId) throw new Error(t('messageTester.notOnWhatsApp'));
+          toChatId = checked.whatsappId;
+        }
+        result = await messageApi.forward(selectedSessionId, {
+          fromChatId: activeChat.id,
+          toChatId,
+          messageId: specialValues[0].trim(),
+        });
+      } else if (currentAttachment && composerType === 'sticker') {
+        result = await messageApi.sendSticker(selectedSessionId, activeChat.id, {
+          base64: currentAttachment.base64,
+          mimetype: currentAttachment.mimetype,
+          filename: currentAttachment.filename,
+        });
+      } else if (currentAttachment) {
         let mediaType: 'image' | 'video' | 'audio' | 'document' = 'document';
         const mime = currentAttachment.mimetype;
         if (mime.startsWith('image/')) mediaType = 'image';
@@ -254,7 +396,17 @@ function ChatComposer({
       // Update sidebar chat list (move active chat to the top with the new snippet)
       const snippet = currentAttachment ? `[${currentAttachment.mimetype.split('/')[0]}]` : textToSend;
       const sentAt = Math.floor(Date.now() / 1000);
-      setChats(prevChats => promoteChatWithSnippet(prevChats, activeChat.id, snippet, sentAt));
+      setChats(prevChats => {
+        const promoted = promoteChatWithSnippet(prevChats, activeChat.id, snippet, sentAt);
+        return promoted === prevChats
+          ? [{ ...activeChat, lastMessage: snippet, timestamp: sentAt, unreadCount: 0 }, ...prevChats]
+          : promoted;
+      });
+      if (composerType !== 'text') {
+        setComposerType('text');
+        setSpecialValues(['', '', '']);
+        setPollOptions(['', '']);
+      }
     } catch (err) {
       showErrorToast(t('chats.errors.send'), err instanceof Error ? err.message : undefined);
       updateMessage(selectedSessionId, activeChat.id, tempId, { status: 'failed' });
@@ -303,9 +455,7 @@ function ChatComposer({
             <div className="replying-to-title">
               {t('chats.replyingTo', {
                 name:
-                  replyingTo.direction === 'outgoing'
-                    ? t('chats.you')
-                    : activeChat.name || activeChat.id.split('@')[0],
+                  replyingTo.direction === 'outgoing' ? t('chats.you') : activeChat.name || activeChat.id.split('@')[0],
               })}
             </div>
             <div className="replying-to-body">
@@ -320,14 +470,146 @@ function ChatComposer({
 
       {/* Message input bar */}
       <footer className="room-input-footer">
+        <div className="chat-type-picker">
+          <button
+            type="button"
+            className="chat-type-current"
+            onClick={() => setShowTypes(open => !open)}
+            disabled={!canCompose || sending}
+          >
+            <span>{t('messageTester.messageType')}</span>
+            <b>{typeLabel(composerType)}</b>
+            <ChevronDown size={16} />
+          </button>
+          {showTypes && (
+            <div className="chat-type-menu">
+              {composerTypes.map(type => (
+                <button
+                  type="button"
+                  key={type}
+                  className={composerType === type ? 'active' : ''}
+                  onClick={() => selectComposerType(type)}
+                >
+                  {typeLabel(type)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {composerType === 'location' && (
+          <div className="chat-special-fields">
+            <input
+              value={specialValues[0]}
+              onChange={e => setSpecialValues([e.target.value, specialValues[1], ''])}
+              placeholder={t('messageTester.locationLatitude')}
+            />
+            <input
+              value={specialValues[1]}
+              onChange={e => setSpecialValues([specialValues[0], e.target.value, ''])}
+              placeholder={t('messageTester.locationLongitude')}
+            />
+          </div>
+        )}
+        {composerType === 'contact' && (
+          <div className="chat-special-fields">
+            <input
+              value={specialValues[0]}
+              onChange={e => setSpecialValues([e.target.value, specialValues[1], ''])}
+              placeholder={t('messageTester.contactName')}
+            />
+            <input
+              value={specialValues[1]}
+              onChange={e => setSpecialValues([specialValues[0], e.target.value, ''])}
+              placeholder={t('messageTester.contactNumber')}
+            />
+          </div>
+        )}
+        {composerType === 'poll' && (
+          <div className="chat-special-fields chat-poll-fields">
+            <input
+              value={specialValues[0]}
+              onChange={e => setSpecialValues([e.target.value, '', ''])}
+              placeholder={t('messageTester.pollQuestion')}
+            />
+            {pollOptions.map((option, index) => (
+              <input
+                key={index}
+                value={option}
+                onChange={e =>
+                  setPollOptions(values => values.map((value, i) => (i === index ? e.target.value : value)))
+                }
+                placeholder={t('messageTester.pollOptionPlaceholder', { index: index + 1 })}
+              />
+            ))}
+            {pollOptions.length < 12 && (
+              <button type="button" onClick={() => setPollOptions(values => [...values, ''])}>
+                + {t('common.add')}
+              </button>
+            )}
+          </div>
+        )}
+        {(composerType === 'buttons' || composerType === 'orderConfirmation') && (
+          <div className="chat-special-fields chat-poll-fields">
+            <input
+              value={specialValues[0]}
+              onChange={e => setSpecialValues([e.target.value, '', ''])}
+              placeholder={t('chats.buttonFooter')}
+            />
+            {composerType === 'buttons' ? (
+              <>
+                {pollOptions.slice(0, 3).map((option, index) => (
+                  <input
+                    key={index}
+                    value={option}
+                    onChange={e =>
+                      setPollOptions(values => values.map((value, i) => (i === index ? e.target.value : value)))
+                    }
+                    placeholder={t('chats.buttonLabel', { index: index + 1 })}
+                  />
+                ))}
+                {pollOptions.length < 3 && (
+                  <button type="button" onClick={() => setPollOptions(values => [...values, ''])}>
+                    + {t('common.add')}
+                  </button>
+                )}
+              </>
+            ) : (
+              <div className="order-button-preview">
+                <span>{t('chats.confirm')}</span>
+                <span>{t('chats.cancel')}</span>
+              </div>
+            )}
+          </div>
+        )}
+        {composerType === 'forward' && (
+          <div className="chat-special-fields">
+            <input
+              value={specialValues[0]}
+              onChange={e => setSpecialValues([e.target.value, specialValues[1], ''])}
+              placeholder={t('messageTester.forwardMessageId')}
+            />
+            <input
+              value={specialValues[1]}
+              onChange={e => setSpecialValues([specialValues[0], e.target.value, ''])}
+              placeholder={t('messageTester.forwardToPlaceholder')}
+            />
+          </div>
+        )}
         <form onSubmit={handleSend} className="input-form">
-          <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} />
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept={mediaAccept[composerType]}
+            onChange={handleFileChange}
+            style={{ display: 'none' }}
+          />
 
           <button
             type="button"
             onClick={triggerFileSelect}
-            disabled={!canWrite || sending}
-            className="btn-input-accessory"
+            disabled={!canCompose || sending}
+            className={`btn-input-accessory ${fileComposerTypes.includes(composerType) ? 'active' : ''}`}
             title={t('chats.attachTitle')}
           >
             <Paperclip size={20} />
@@ -336,7 +618,7 @@ function ChatComposer({
           <button
             type="button"
             onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-            disabled={!canWrite || sending}
+            disabled={!canCompose || sending}
             className={`btn-input-accessory ${showEmojiPicker ? 'active' : ''}`}
             title={t('chats.emojiTitle')}
           >
@@ -346,20 +628,26 @@ function ChatComposer({
           <input
             type="text"
             placeholder={
-              canWrite
+              canCompose
                 ? attachment
                   ? t('chats.captionPlaceholder')
                   : t('chats.messagePlaceholder')
-                : t('chats.noPermission')
+                : automationLocked
+                  ? t('chats.handoffRequired')
+                  : t('chats.noPermission')
             }
             value={messageInput}
             onChange={e => setMessageInput(e.target.value)}
-            disabled={!canWrite || sending}
+            disabled={!canCompose || sending}
             className="message-text-input"
           />
           <button
             type="submit"
-            disabled={!canWrite || (!messageInput.trim() && !attachment) || sending}
+            disabled={
+              !canCompose ||
+              (fileComposerTypes.includes(composerType) ? !attachment : !messageInput.trim() && !canSendSpecial) ||
+              sending
+            }
             className="btn-send-message"
             aria-label={t('chats.send')}
           >

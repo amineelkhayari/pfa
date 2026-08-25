@@ -11,6 +11,8 @@ import {
   CircleDashed,
   AlertCircle,
   MessageSquare,
+  Bot,
+  UserRoundCheck,
 } from 'lucide-react';
 import { useProfilePicture } from '../hooks/useProfilePicture';
 import { useProfilePictures } from '../hooks/useProfilePictures';
@@ -19,6 +21,7 @@ import { formatPhoneForDisplay } from '../utils/formatPhone';
 import {
   sessionApi,
   messageApi,
+  storesApi,
   asMessageType,
   type Session,
   type Chat,
@@ -54,6 +57,7 @@ import ChatThread from '../components/chats/ChatThread';
 import ChatComposer, { type StagedAttachment } from '../components/chats/ChatComposer';
 import StatusMedia from '../components/chats/StatusMedia';
 import StatusComposeModal from '../components/chats/StatusComposeModal';
+import NewChatModal from '../components/chats/NewChatModal';
 import './Chats.css';
 
 // Quiet window for coalescing mark-as-read RPCs (see markReadCoalescer below).
@@ -174,6 +178,7 @@ export function Chats() {
   // The page owns only the open flag (its trigger sits in the sidebar header below); the form
   // itself — state, contacts query, submit — is components/chats/StatusComposeModal.
   const [composeOpen, setComposeOpen] = useState<boolean>(false);
+  const [newChatOpen, setNewChatOpen] = useState<boolean>(false);
 
   const {
     data: messages = [],
@@ -253,6 +258,27 @@ export function Chats() {
   );
   const activePhoneText =
     activePhoneDisplay ?? (resolvedPhoneQ.data ? formatPhoneForDisplay(resolvedPhoneQ.data) : null);
+  const ownershipChatId = resolvedPhoneQ.data ? `${resolvedPhoneQ.data.replace(/\D/g, '')}@c.us` : activeChat?.id;
+  const ownershipQuery = useQuery({
+    queryKey: ['conversation-ownership', selectedSessionId, ownershipChatId],
+    queryFn: () => storesApi.conversationOwnership(selectedSessionId, ownershipChatId!),
+    enabled: Boolean(selectedSessionId && ownershipChatId && activeChat?.kind === 'individual'),
+    staleTime: 10_000,
+  });
+  const [takingOver, setTakingOver] = useState(false);
+  const takeOverConversation = async () => {
+    const ownership = ownershipQuery.data;
+    if (!ownership?.storeId || !ownership.orderId) return;
+    setTakingOver(true);
+    try {
+      await storesApi.setOrderHandoff(ownership.storeId, ownership.orderId, true);
+      await ownershipQuery.refetch();
+    } catch (error) {
+      showErrorToast(t('chats.handoffError'), error instanceof Error ? error.message : undefined);
+    } finally {
+      setTakingOver(false);
+    }
+  };
 
   // 1. Fetch available connected sessions on mount
   useEffect(() => {
@@ -281,7 +307,11 @@ export function Chats() {
       try {
         setLoadingChats(true);
         const data = await sessionApi.getChats(sessionId);
-        const sorted = [...data].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        // WhatsApp's conversation list contains only rooms with real activity. Some engines also
+        // return every address-book contact as a timestamp-0 chat; those belong in "New chat".
+        const sorted = data
+          .filter(chat => Boolean(chat.lastMessage?.trim()))
+          .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
         setChats(sorted);
       } catch (err) {
         showErrorToast(t('chats.errors.loadChats'), err instanceof Error ? err.message : undefined);
@@ -833,6 +863,7 @@ export function Chats() {
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
             onComposeStatus={() => setComposeOpen(true)}
+            onNewChat={() => setNewChatOpen(true)}
             formatChatTime={formatChatTime}
             chatsTab={{
               loading: loadingChats,
@@ -889,14 +920,24 @@ export function Chats() {
                       {activePhoneText ??
                         (activeChat.isGroup ? t('chats.groupSubtitle') : t('chats.privateContactSubtitle'))}
                     </span>
-                    {/* Raw JID preserved for the technical case (the gateway speaks JIDs everywhere:
-                        webhooks, message rows, lid resolution). Monospace + muted so it doesn't compete
-                        with the human-facing name/number. */}
-                    <span className="room-contact-jid" title={activeChat.id}>
-                      {activeChat.id}
-                    </span>
                   </div>
                 </header>
+
+                {ownershipQuery.data?.locked && (
+                  <div className="automation-owner-banner" role="status">
+                    <Bot size={19} />
+                    <div>
+                      <strong>{t('chats.automationOwnsChat')}</strong>
+                      <span>
+                        {t('chats.automationOwnsChatHint', { order: ownershipQuery.data.orderNumber ?? '—' })}
+                      </span>
+                    </div>
+                    <button type="button" onClick={takeOverConversation} disabled={takingOver}>
+                      {takingOver ? <Loader2 className="animate-spin" size={16} /> : <UserRoundCheck size={16} />}
+                      {t('chats.takeOver')}
+                    </button>
+                  </div>
+                )}
 
                 {/* Messages body (list, media, reactions, scroll-to-bottom) — components/chats/ChatThread. */}
                 <ChatThread
@@ -930,6 +971,7 @@ export function Chats() {
                   setAttachment={setAttachment}
                   previewUrl={previewUrl}
                   setPreviewUrl={setPreviewUrl}
+                  automationLocked={ownershipQuery.data?.locked === true}
                 />
               </div>
             ) : activeChannel ? (
@@ -937,11 +979,7 @@ export function Chats() {
               // subscribed channels are a broadcast feed, not a two-way conversation.
               <div key={activeChannel.id} className="channel-room">
                 <header className="chats-room-header">
-                  <button
-                    className="room-back"
-                    onClick={() => setActiveChannel(null)}
-                    aria-label={t('common.back')}
-                  >
+                  <button className="room-back" onClick={() => setActiveChannel(null)} aria-label={t('common.back')}>
                     <ArrowLeft size={20} />
                   </button>
                   <Megaphone size={20} />
@@ -987,7 +1025,11 @@ export function Chats() {
                     <ArrowLeft size={20} />
                   </button>
                   <CircleDashed size={20} />
-                  <h2>{activeStatusGroup.contact.name ?? activeStatusGroup.contact.pushName ?? activeStatusGroup.contact.id}</h2>
+                  <h2>
+                    {activeStatusGroup.contact.name ??
+                      activeStatusGroup.contact.pushName ??
+                      activeStatusGroup.contact.id}
+                  </h2>
                 </header>
                 <div className="messages-list" ref={statusFeedRef}>
                   {activeStatusGroup.items.map(item => (
@@ -1000,9 +1042,7 @@ export function Chats() {
                       style={
                         item.type === 'text' && (item.backgroundColor || item.font)
                           ? {
-                              ...(item.backgroundColor
-                                ? { backgroundColor: item.backgroundColor, color: '#fff' }
-                                : {}),
+                              ...(item.backgroundColor ? { backgroundColor: item.backgroundColor, color: '#fff' } : {}),
                               ...statusFontStyle(item.font),
                             }
                           : undefined
@@ -1048,6 +1088,17 @@ export function Chats() {
           onPosted={() => statusesQuery.refetch()}
         />
       )}
+      <NewChatModal
+        open={newChatOpen}
+        sessionId={selectedSessionId}
+        onClose={() => setNewChatOpen(false)}
+        onSelect={chat => {
+          setActiveTab('chats');
+          setActiveChat(chat);
+          setActiveChannel(null);
+          setActiveStatusContactId(null);
+        }}
+      />
     </div>
   );
 }

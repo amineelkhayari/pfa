@@ -25,6 +25,7 @@ if (API_ORIGIN) warnIfInsecureHttpUrl(API_ORIGIN, 'VITE_API_URL');
 export interface Session {
   id: string;
   name: string;
+  displayName?: string | null;
   status:
     | 'created'
     | 'initializing'
@@ -206,6 +207,60 @@ export interface StoreOrder {
   confirmationError?: string | null;
 }
 
+export interface Campaign {
+  id: string;
+  sessionId: string;
+  name: string;
+  message: string;
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  riskScore: number;
+  sent: number;
+  failed: number;
+  pending: number;
+  skipped: number;
+  recipients: string[];
+  createdAt: string;
+}
+export interface CampaignAudience {
+  sessionId: string;
+  total: number;
+  invalidPhones: number;
+  customers: Array<{ chatId: string; phone: string; name: string; orderCount: number; stores: string[] }>;
+}
+export interface WhatsAppReport {
+  summary: {
+    todaySent: number;
+    successRate: number;
+    activeCampaigns: number;
+    connectedDevices: number;
+    pendingMessages: number;
+    highRiskCampaigns: number;
+  };
+  monthly: { used: number; limit: number; percent: number; periodStart: string };
+  totalSent: number;
+  channels: { bulk: number; chatbot: number; autoresponder: number; api: number };
+  bulk: {
+    sent: number;
+    failed: number;
+    pending: number;
+    skipped: number;
+    total: number;
+    successRate: number;
+    averageRiskScore: number;
+  };
+  accountHealth: { percent: number; connected: number; disconnected: number; total: number };
+  devices: Array<{
+    id: string;
+    name: string;
+    phone?: string | null;
+    status: string;
+    sent: number;
+    received: number;
+    campaigns: number;
+  }>;
+  campaigns: Campaign[];
+}
+
 export interface OrderAiConversation {
   id: string;
   orderId: string;
@@ -216,6 +271,15 @@ export interface OrderAiConversation {
   lastError: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ConversationOwnership {
+  locked: boolean;
+  storeId?: string;
+  orderId?: string;
+  orderNumber?: string | null;
+  automation?: 'ai' | 'confirmation';
+  status?: string;
 }
 
 export interface OrderConfirmationSummary {
@@ -230,18 +294,48 @@ export interface OrderConfirmationSummary {
   periodDays: number | null;
   messageTotals: { sent: number; received: number; failed: number };
   sessions: Array<{
-    id: string; name: string; phone: string | null; status: string; lastActiveAt: string | null;
-    sent: number; received: number; failed: number; lastMessageAt: string | null;
-    storeId: string | null; storeName: string | null; products: number; orders: number;
-    pending: number; confirmed: number; cancelled: number; confirmationFailed: number;
-    aiActive: number; aiEscalated: number;
+    id: string;
+    name: string;
+    phone: string | null;
+    status: string;
+    lastActiveAt: string | null;
+    sent: number;
+    received: number;
+    failed: number;
+    lastMessageAt: string | null;
+    storeId: string | null;
+    storeName: string | null;
+    products: number;
+    orders: number;
+    pending: number;
+    confirmed: number;
+    cancelled: number;
+    confirmationFailed: number;
+    aiActive: number;
+    aiEscalated: number;
   }>;
   stores: Array<{
-    id: string; name: string; provider: string; status: string; sessionId: string;
-    sessionName: string | null; sessionStatus: string; products: number; orders: number;
-    pending: number; confirmed: number; cancelled: number; confirmationFailed: number; notSent: number;
-    sent: number; received: number; failed: number; aiActive: number; aiEscalated: number;
-    lastOrderAt: string | null; lastMessageAt: string | null;
+    id: string;
+    name: string;
+    provider: string;
+    status: string;
+    sessionId: string;
+    sessionName: string | null;
+    sessionStatus: string;
+    products: number;
+    orders: number;
+    pending: number;
+    confirmed: number;
+    cancelled: number;
+    confirmationFailed: number;
+    notSent: number;
+    sent: number;
+    received: number;
+    failed: number;
+    aiActive: number;
+    aiEscalated: number;
+    lastOrderAt: string | null;
+    lastMessageAt: string | null;
   }>;
 }
 
@@ -423,6 +517,9 @@ export interface Contact {
   name?: string;
   pushName?: string;
   number?: string;
+  isMyContact?: boolean;
+  isBlocked?: boolean;
+  profilePicUrl?: string;
 }
 
 export interface SendMediaPayload {
@@ -931,6 +1028,10 @@ export const storesApi = {
   orders: (id: string) => request<StoreOrder[]>(`/stores/${id}/orders`),
   orderConversations: (storeId: string) =>
     request<Record<string, OrderAiConversation>>(`/stores/${storeId}/order-conversations`),
+  conversationOwnership: (sessionId: string, chatId: string) =>
+    request<ConversationOwnership>(
+      `/stores/conversation-ownership/current?sessionId=${encodeURIComponent(sessionId)}&chatId=${encodeURIComponent(chatId)}`,
+    ),
   remindOrder: (storeId: string, orderId: string) =>
     request<StoreOrder>(`/stores/${storeId}/orders/${orderId}/remind`, { method: 'POST' }),
   orderConversation: (storeId: string, orderId: string) =>
@@ -940,6 +1041,22 @@ export const storesApi = {
       method: 'POST',
       body: JSON.stringify({ handoff }),
     }),
+};
+
+export const campaignApi = {
+  report: () => request<WhatsAppReport>('/campaigns/report'),
+  list: () => request<Campaign[]>('/campaigns'),
+  audience: (sessionId: string) =>
+    request<CampaignAudience>(`/campaigns/audience?sessionId=${encodeURIComponent(sessionId)}`),
+  create: (payload: {
+    name: string;
+    message: string;
+    sessionId: string;
+    delayBetweenMessages: number;
+    confirmHighRisk?: boolean;
+    excludedRecipients?: string[];
+  }) => request<Campaign>('/campaigns', { method: 'POST', body: JSON.stringify(payload) }),
+  cancel: (id: string) => request<Campaign>(`/campaigns/${id}/cancel`, { method: 'POST' }),
 };
 
 export const merchantsApi = {
@@ -1120,6 +1237,14 @@ export const messageApi = {
     }),
   sendPoll: (sessionId: string, data: SendPollPayload) =>
     request<MessageResponse>(`/sessions/${sessionId}/messages/send-poll`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  sendButtons: (
+    sessionId: string,
+    data: { chatId: string; text: string; footer?: string; buttons: Array<{ id: string; label: string }> },
+  ) =>
+    request<MessageResponse>(`/sessions/${sessionId}/messages/send-buttons`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -1481,8 +1606,13 @@ export const statsApi = {
 };
 
 export const woocommerceApi = {
-  connect: (storeId: string) => request<{ products: number; orders: number; webhooks: number; connected: boolean }>(`/woocommerce/${storeId}/connect`, { method: 'POST' }),
-  sync: (storeId: string) => request<{ products: number; orders: number }>(`/woocommerce/${storeId}/sync`, { method: 'POST' }),
+  connect: (storeId: string) =>
+    request<{ products: number; orders: number; webhooks: number; connected: boolean }>(
+      `/woocommerce/${storeId}/connect`,
+      { method: 'POST' },
+    ),
+  sync: (storeId: string) =>
+    request<{ products: number; orders: number }>(`/woocommerce/${storeId}/sync`, { method: 'POST' }),
 };
 
 export interface AccountUsage {
@@ -1493,9 +1623,18 @@ export interface AccountUsage {
 }
 
 export interface AccountUser {
-  id: string; name: string; email: string; username: string; role: string; plan: 'free' | 'pro' | null;
-  status: string; settings: Record<string, unknown> | null; sentMessages: number; receivedMessages: number;
-  createdAt: string; updatedAt: string;
+  id: string;
+  name: string;
+  email: string;
+  username: string;
+  role: string;
+  plan: 'free' | 'pro' | null;
+  status: string;
+  settings: Record<string, unknown> | null;
+  sentMessages: number;
+  receivedMessages: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export const accountApi = {
@@ -1507,8 +1646,10 @@ export const accountApi = {
 
 export const adminUsersApi = {
   list: () => request<AccountUser[]>('/admin/users'),
-  summary: () => request<{ total: number; active: number; suspended: number; free: number; pro: number }>('/admin/users/summary'),
-  resources: () => request<{ sessions:number; stores:number; products:number; orders:number }>('/admin/users/resources'),
+  summary: () =>
+    request<{ total: number; active: number; suspended: number; free: number; pro: number }>('/admin/users/summary'),
+  resources: () =>
+    request<{ sessions: number; stores: number; products: number; orders: number }>('/admin/users/resources'),
   details: (id: string) => request<AdminUserDetails>(`/admin/users/${id}/details`),
   update: (id: string, body: { plan?: 'free' | 'pro'; status?: 'active' | 'suspended' }) =>
     request<AccountUser>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
@@ -1523,7 +1664,11 @@ export interface AdminUserDetails {
 }
 
 export interface BillingSubscription {
-  id: string; provider: 'stripe' | 'paypal'; status: string; currentPeriodEnd: string | null; cancelAtPeriodEnd: boolean;
+  id: string;
+  provider: 'stripe' | 'paypal';
+  status: string;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
 }
 export const billingApi = {
   status: () => request<BillingSubscription[]>('/billing/status'),
@@ -1533,12 +1678,16 @@ export const billingApi = {
 };
 
 export interface AdminPaymentSettings {
-  publicAppUrl?: string; stripeEnabled: boolean; paypalEnabled: boolean; paypalEnvironment: 'sandbox' | 'live';
+  publicAppUrl?: string;
+  stripeEnabled: boolean;
+  paypalEnabled: boolean;
+  paypalEnvironment: 'sandbox' | 'live';
   configured: Record<string, boolean>;
 }
 export const adminBillingApi = {
   get: () => request<AdminPaymentSettings>('/admin/billing-settings'),
-  update: (body: Record<string, unknown>) => request<AdminPaymentSettings>('/admin/billing-settings', { method: 'PUT', body: JSON.stringify(body) }),
+  update: (body: Record<string, unknown>) =>
+    request<AdminPaymentSettings>('/admin/billing-settings', { method: 'PUT', body: JSON.stringify(body) }),
 };
 
 export interface AdminAiSettings {
@@ -1552,8 +1701,15 @@ export interface AdminAiSettings {
 }
 export const adminAiApi = {
   get: () => request<AdminAiSettings>('/admin/ai-settings'),
-  update: (body: { enabled?: boolean; provider?: 'openai' | 'openrouter' | 'gemini' | 'custom'; baseUrl?: string; apiKey?: string; model?: string; maxTurns?: number; conversationTimeoutHours?: number }) =>
-    request<AdminAiSettings>('/admin/ai-settings', { method: 'PUT', body: JSON.stringify(body) }),
+  update: (body: {
+    enabled?: boolean;
+    provider?: 'openai' | 'openrouter' | 'gemini' | 'custom';
+    baseUrl?: string;
+    apiKey?: string;
+    model?: string;
+    maxTurns?: number;
+    conversationTimeoutHours?: number;
+  }) => request<AdminAiSettings>('/admin/ai-settings', { method: 'PUT', body: JSON.stringify(body) }),
 };
 
 export interface AiTestResult {

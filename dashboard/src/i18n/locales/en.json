@@ -9,6 +9,11 @@
     "appName": "SmartConfirm",
     "loading": "Loading...",
     "cancel": "Cancel",
+    "automationOwnsChat": "Automation is handling this conversation",
+    "automationOwnsChatHint": "Order #{{order}} is being handled by AI/confirmation automation. Take over before replying manually.",
+    "takeOver": "Take over",
+    "handoffRequired": "Take over this conversation to reply",
+    "handoffError": "Unable to take over the conversation",
     "delete": "Delete",
     "create": "Create",
     "close": "Close",
@@ -58,17 +63,17 @@
     "sessions": "Sessions",
     "chats": "Chats",
     "webhooks": "Webhooks",
-        "stores": "stores",
+    "stores": "stores",
 
     "templates": "Templates",
     "apiKeys": "API Keys",
     "messageTester": "Message Tester",
     "infrastructure": "Infrastructure",
     "plugins": "Plugins",
-    "logs": "Logs"
-    ,"account": "My Account"
-    ,"users": "Users"
-    ,"payments": "Payment Settings"
+    "logs": "Logs",
+    "account": "My Account",
+    "users": "Users",
+    "payments": "Payment Settings"
   },
   "chats": {
     "media": {
@@ -88,6 +93,15 @@
     "searchPlaceholder": "Search chats...",
     "loadingChats": "Loading chats...",
     "empty": "No chats",
+    "newChat": "New chat",
+    "newChatSearch": "Search name or phone number…",
+    "newChatEmpty": "No contacts found",
+    "newChatEmptyHint": "Try another name or number.",
+    "messageTypes": { "buttons": "Buttons", "orderConfirmation": "Order confirmation" },
+    "buttonFooter": "Footer (optional)",
+    "buttonLabel": "Button {{index}}",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
     "noMessageYet": "No messages yet",
     "unreadBadge": "{{count}} unread message",
     "unreadBadge_other": "{{count}} unread messages",
@@ -446,48 +460,48 @@
       "all": "All events"
     }
   },
-"stores": {
-  "title": "Stores",
-  "subtitle": "Manage your connected ecommerce stores",
-  "addStore": "Add Store",
-  "editStore": "Edit Store",
-  "deleteStore": "Delete Store",
-  "deleteConfirm": "Are you sure you want to delete this store?",
+  "stores": {
+    "title": "Stores",
+    "subtitle": "Manage your connected ecommerce stores",
+    "addStore": "Add Store",
+    "editStore": "Edit Store",
+    "deleteStore": "Delete Store",
+    "deleteConfirm": "Are you sure you want to delete this store?",
 
-  "columns": {
-    "name": "Store",
-    "owner": "Owner",
-    "email": "Email",
-    "phone": "Phone",
-    "currency": "Currency",
-    "language": "Language",
-    "timezone": "Timezone",
-    "integration": "Integration",
-    "status": "Status",
-    "actions": "Actions"
+    "columns": {
+      "name": "Store",
+      "owner": "Owner",
+      "email": "Email",
+      "phone": "Phone",
+      "currency": "Currency",
+      "language": "Language",
+      "timezone": "Timezone",
+      "integration": "Integration",
+      "status": "Status",
+      "actions": "Actions"
+    },
+
+    "empty": {
+      "title": "No stores connected",
+      "description": "Connect a store to start managing your ecommerce integrations"
+    },
+
+    "actions": {
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+
+    "integrations": {
+      "none": "None",
+      "shopify": "Shopify",
+      "woocommerce": "WooCommerce"
+    }
   },
-
-  "empty": {
-    "title": "No stores connected",
-    "description": "Connect a store to start managing your ecommerce integrations"
-  },
-
-  "actions": {
-    "edit": "Edit",
-    "delete": "Delete"
-  },
-
-  "status": {
-    "active": "Active",
-    "inactive": "Inactive"
-  },
-
-  "integrations": {
-    "none": "None",
-    "shopify": "Shopify",
-    "woocommerce": "WooCommerce"
-  }
-},
   "templates": {
     "title": "Templates",
     "subtitle": "Create reusable message templates for each WhatsApp session",

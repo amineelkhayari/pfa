@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { Send, CheckCircle, XCircle, Loader2, Upload, X, Plus } from 'lucide-react';
 import {
   messageApi,
@@ -92,8 +94,9 @@ export function MessageTester() {
   const { canWrite } = useRole();
   const { data: allSessions = [], isLoading: loadingSessions } = useSessionsQuery();
   const sessions = allSessions.filter(s => s.status === 'ready');
-  const [session, setSession] = useState('');
-  const [recipient, setRecipient] = useState('');
+  const [searchParams] = useSearchParams();
+  const [session, setSession] = useState(searchParams.get('sessionId') ?? '');
+  const [recipient, setRecipient] = useState(searchParams.get('recipient') ?? '');
   const [recipientType, setRecipientType] = useState<'personal' | 'group'>('personal');
   const [selectedGroup, setSelectedGroup] = useState('');
   const [messageType, setMessageType] = useState<(typeof messageTypes)[number]>('text');
@@ -144,6 +147,15 @@ export function MessageTester() {
   const batchSessionRef = useRef('');
 
   const { data: groups = [], isLoading: loadingGroups } = useSessionGroupsQuery(session, recipientType === 'group');
+  const { data: contacts = [], isLoading: loadingContacts } = useQuery({
+    queryKey: ['contacts', session],
+    queryFn: () => contactApi.list(session),
+    enabled: Boolean(session) && recipientType === 'personal',
+    staleTime: 60_000,
+  });
+  const personalContacts = contacts.filter(
+    contact => !contact.id.endsWith('@g.us') && !contact.id.includes('broadcast'),
+  );
 
   useEffect(() => {
     if (sessions.length > 0 && !session) {
@@ -445,7 +457,13 @@ export function MessageTester() {
 
           <div className="form-group">
             <label>{t('messageTester.session')}</label>
-            <select value={session} onChange={e => setSession(e.target.value)}>
+            <select
+              value={session}
+              onChange={e => {
+                setSession(e.target.value);
+                setRecipient('');
+              }}
+            >
               {sessions.length === 0 && <option value="">{t('messageTester.noReadySessions')}</option>}
               {sessions.map(s => (
                 <option key={s.id} value={s.id}>
@@ -503,11 +521,26 @@ export function MessageTester() {
                   <>
                     <input
                       type="text"
+                      list="message-tester-contact-options"
                       value={recipient}
                       onChange={e => setRecipient(e.target.value)}
-                      placeholder="+62812345678"
+                      placeholder={loadingContacts ? 'Loading contacts…' : 'Search a contact name or phone number…'}
+                      autoComplete="off"
                     />
-                    <span className="hint">{t('messageTester.phoneHint')}</span>
+                    <datalist id="message-tester-contact-options">
+                      {personalContacts.map(contact => {
+                        const number = contact.number || contact.id.split('@')[0];
+                        const name = contact.name || contact.pushName || 'WhatsApp contact';
+                        return (
+                          <option key={contact.id} value={number} label={`${name} · +${number.replace(/^\+/, '')}`} />
+                        );
+                      })}
+                    </datalist>
+                    <span className="hint">
+                      {personalContacts.length
+                        ? `Search and select from ${personalContacts.length} contacts, or enter a number manually.`
+                        : t('messageTester.phoneHint')}
+                    </span>
                   </>
                 )}
               </div>

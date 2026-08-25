@@ -95,7 +95,7 @@ ${catalog || 'No products are currently available in the catalog.'}`
         return result;
       }
       const url = this.config.aiBaseUrl().trim() || 'https://openrouter.ai/api/v1/chat/completions';
-      const response = await this.fetchProvider(url, { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, messages: [{ role: 'system', content: instructions }, ...turns.slice(-16).map(turn => ({ role: turn.role === 'assistant' ? 'assistant' : 'user', content: turn.text }))], max_tokens: provider === 'openrouter' ? 2000 : 700, ...(provider === 'openrouter' ? { reasoning: { effort: 'low' } } : {}) }) });
+      const response = await this.fetchProvider(url, { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, stream: false, messages: [{ role: 'system', content: instructions }, ...turns.slice(-16).map(turn => ({ role: turn.role === 'assistant' ? 'assistant' : 'user', content: turn.text }))], max_tokens: provider === 'openrouter' ? 2000 : 700, ...(provider === 'openrouter' ? { reasoning: { effort: 'low' } } : {}) }) });
       const payload = await this.readJson(response);
       if (!response.ok) this.throwProviderError(provider, model, response, payload, `${provider} chat failed`);
       this.logStopReason(provider, model, payload.choices?.[0]?.finish_reason, payload.choices?.[0]?.native_finish_reason);

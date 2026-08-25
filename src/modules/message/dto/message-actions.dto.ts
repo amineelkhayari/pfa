@@ -27,6 +27,31 @@ export const CONTACT_NAME_MAX_LENGTH = 255;
 export const CONTACT_NUMBER_MAX_LENGTH = 30;
 export const REACTION_EMOJI_MAX_LENGTH = 32;
 
+export class SendButtonsDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  chatId: string;
+
+  @ApiProperty({ maxLength: MESSAGE_TEXT_MAX_LENGTH })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(MESSAGE_TEXT_MAX_LENGTH)
+  text: string;
+
+  @ApiPropertyOptional({ maxLength: 255 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  footer?: string;
+
+  @ApiProperty({ type: 'array', items: { type: 'object' } })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(3)
+  buttons: Array<{ id: string; label: string }>;
+}
+
 export class SendLocationDto {
   @ApiProperty({ description: 'Chat ID (e.g. 628123456789@c.us)' })
   @IsString()

@@ -76,6 +76,22 @@
   text-align: left;
 }
 
+.login-container .login-back {
+  position: fixed;
+  top: 22px;
+  left: 24px;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 700;
+  z-index: 5;
+  box-shadow: var(--shadow-sm);
+}
+
 .login-container .auth-tabs {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -102,7 +118,9 @@
   font-weight: 600;
 }
 
-.login-container .auth-error { margin: -0.75rem 0 1rem; }
+.login-container .auth-error {
+  margin: -0.75rem 0 1rem;
+}
 
 .login-container [dir='rtl'] .login-form {
   text-align: right;

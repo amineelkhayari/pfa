@@ -13,6 +13,7 @@ import { clearActorState, resolveStartupValidation } from './utils/authLifecycle
 import './App.css';
 
 const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
+const Landing = lazy(() => import('./pages/Landing').then(m => ({ default: m.Landing })));
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const Sessions = lazy(() => import('./pages/Sessions').then(m => ({ default: m.Sessions })));
 const Chats = lazy(() => import('./pages/Chats').then(m => ({ default: m.Chats })));
@@ -30,6 +31,8 @@ const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then(m => ({ 
 const PaymentSettings = lazy(() => import('./pages/PaymentSettings').then(m => ({ default: m.PaymentSettings })));
 const AiSettings = lazy(() => import('./pages/AiSettings').then(m => ({ default: m.AiSettings })));
 const AiTestChat = lazy(() => import('./pages/AiTestChat').then(m => ({ default: m.AiTestChat })));
+const Campaigns = lazy(() => import('./pages/Campaigns').then(m => ({ default: m.Campaigns })));
+const Contacts = lazy(() => import('./pages/Contacts').then(m => ({ default: m.Contacts })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,6 +48,7 @@ function AppContent() {
   // Initialize from sessionStorage to avoid setState in effect
   const savedKey = sessionStorage.getItem('openwa_api_key');
   const [isAuthenticated, setIsAuthenticated] = useState(!!savedKey);
+  const [publicView, setPublicView] = useState<'landing' | 'signin' | 'signup'>('landing');
   const [, setApiKey] = useState(savedKey || '');
   const { setRole, role } = useRole();
 
@@ -110,34 +114,44 @@ function AppContent() {
   );
 
   if (!isAuthenticated) {
-    return <Suspense fallback={loadingFallback}><Login onLogin={handleLogin} /></Suspense>;
+    return (
+      <Suspense fallback={loadingFallback}>
+        {publicView === 'landing' ? (
+          <Landing onSignIn={() => setPublicView('signin')} onSignUp={() => setPublicView('signup')} />
+        ) : (
+          <Login onLogin={handleLogin} initialMode={publicView} onBack={() => setPublicView('landing')} />
+        )}
+      </Suspense>
+    );
   }
 
   return (
     <ToastProvider>
       <BrowserRouter>
         <Suspense fallback={loadingFallback}>
-        <Routes>
-          <Route path="/" element={<Layout onLogout={handleLogout} userRole={role} />}>
-            <Route index element={role === 'admin' ? <AdminDashboard /> : <Dashboard />} />
-            <Route path="sessions" element={<Sessions />} />
-            <Route path="stores" element={<Stores />} />
-            <Route path="chats" element={<Chats />} />
-            <Route path="webhooks" element={<Webhooks />} />
-            <Route path="templates" element={<Templates />} />
-            {role === 'admin' && <Route path="api-keys" element={<ApiKeys />} />}
-            <Route path="logs" element={<Logs />} />
-            <Route path="message-tester" element={<MessageTester />} />
-            <Route path="account" element={<Account />} />
-            {role !== 'admin' && <Route path="ai-test" element={<AiTestChat />} />}
-            {role === 'admin' && <Route path="admin/users" element={<AdminUsers />} />}
-            {role === 'admin' && <Route path="admin/payments" element={<PaymentSettings />} />}
-            {role === 'admin' && <Route path="admin/ai" element={<AiSettings />} />}
-            {role === 'admin' && <Route path="infrastructure" element={<Infrastructure />} />}
-            {role === 'admin' && <Route path="plugins" element={<Plugins />} />}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Routes>
+          <Routes>
+            <Route path="/" element={<Layout onLogout={handleLogout} userRole={role} />}>
+              <Route index element={role === 'admin' ? <AdminDashboard /> : <Dashboard />} />
+              <Route path="sessions" element={<Sessions />} />
+              <Route path="stores" element={<Stores />} />
+              <Route path="chats" element={<Chats />} />
+              <Route path="contacts" element={<Contacts />} />
+              <Route path="webhooks" element={<Webhooks />} />
+              <Route path="templates" element={<Templates />} />
+              {role !== 'admin' && <Route path="campaigns" element={<Campaigns />} />}
+              {role === 'admin' && <Route path="api-keys" element={<ApiKeys />} />}
+              <Route path="logs" element={<Logs />} />
+              <Route path="message-tester" element={<MessageTester />} />
+              <Route path="account" element={<Account />} />
+              {role !== 'admin' && <Route path="ai-test" element={<AiTestChat />} />}
+              {role === 'admin' && <Route path="admin/users" element={<AdminUsers />} />}
+              {role === 'admin' && <Route path="admin/payments" element={<PaymentSettings />} />}
+              {role === 'admin' && <Route path="admin/ai" element={<AiSettings />} />}
+              {role === 'admin' && <Route path="infrastructure" element={<Infrastructure />} />}
+              {role === 'admin' && <Route path="plugins" element={<Plugins />} />}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Route>
+          </Routes>
         </Suspense>
       </BrowserRouter>
     </ToastProvider>
