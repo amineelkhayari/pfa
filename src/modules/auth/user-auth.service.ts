@@ -17,8 +17,8 @@ export class UserAuthService implements OnModuleInit {
   private readonly logger = createLogger('UserAuthService');
 
   constructor(
-    @InjectRepository(UserAccount, 'main') private readonly users: Repository<UserAccount>,
-    @InjectRepository(UserLoginSession, 'main') private readonly sessions: Repository<UserLoginSession>,
+    @InjectRepository(UserAccount, 'data') private readonly users: Repository<UserAccount>,
+    @InjectRepository(UserLoginSession, 'data') private readonly sessions: Repository<UserLoginSession>,
   ) {}
 
   async onModuleInit(): Promise<void> {

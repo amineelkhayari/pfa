@@ -29,7 +29,7 @@ export class ApiKeyUsageTracker {
   private readonly pending = new Map<string, number>();
 
   constructor(
-    @InjectRepository(ApiKey, 'main')
+    @InjectRepository(ApiKey, 'data')
     private readonly apiKeyRepository: Repository<ApiKey>,
   ) {}
 

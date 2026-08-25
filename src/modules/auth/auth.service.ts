@@ -68,7 +68,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   private static readonly ADMIN_CAPABILITY_LOCK_KEY = 'admin-capability';
 
   constructor(
-    @InjectRepository(ApiKey, 'main')
+    @InjectRepository(ApiKey, 'data')
     private readonly apiKeyRepository: Repository<ApiKey>,
     private readonly usageTracker: ApiKeyUsageTracker,
     private readonly moduleRef: ModuleRef,

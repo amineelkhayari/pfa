@@ -40,7 +40,7 @@ export class AuditService implements OnModuleInit, OnModuleDestroy {
   private cleanupTimer?: ReturnType<typeof setInterval>;
 
   constructor(
-    @InjectRepository(AuditLog, 'main')
+    @InjectRepository(AuditLog, 'data')
     private readonly auditRepository: Repository<AuditLog>,
   ) {}
 

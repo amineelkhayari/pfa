@@ -11,8 +11,8 @@ type Json = Record<string, any>;
 @Injectable()
 export class BillingService {
   constructor(
-    @InjectRepository(BillingSubscription, 'main') private readonly subscriptions: Repository<BillingSubscription>,
-    @InjectRepository(UserAccount, 'main') private readonly users: Repository<UserAccount>,
+    @InjectRepository(BillingSubscription, 'data') private readonly subscriptions: Repository<BillingSubscription>,
+    @InjectRepository(UserAccount, 'data') private readonly users: Repository<UserAccount>,
     private readonly config: BillingConfigService,
   ) {}
 

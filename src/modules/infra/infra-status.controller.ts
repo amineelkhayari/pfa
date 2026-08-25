@@ -51,8 +51,8 @@ export class InfraStatusController {
 
   constructor(
     private readonly configService: ConfigService,
-    @InjectDataSource('main')
-    private readonly mainDataSource: DataSource,
+    // @InjectDataSource('main')
+    // private readonly mainDataSource: DataSource,
     @InjectDataSource('data')
     private readonly dataDataSource: DataSource,
     private readonly engineFactory: EngineFactory,
@@ -98,11 +98,11 @@ export class InfraStatusController {
   async getStatus(): Promise<InfraStatus> {
     // Active DB liveness probe (SELECT 1) on both connections in parallel — not just isInitialized,
     // which stays true after a Postgres backend dies until an explicit .destroy() (see probeDbConnected).
-    const [mainDbConnected, dataDbConnected] = await Promise.all([
-      this.probeDbConnected(this.mainDataSource),
+    const [ dataDbConnected] = await Promise.all([
+      //this.probeDbConnected(this.mainDataSource),
       this.probeDbConnected(this.dataDataSource),
     ]);
-    const dbConnected = mainDbConnected && dataDbConnected;
+    const dbConnected =  dataDbConnected;
     const dbType = this.configService.get<string>('dataDatabase.type', 'sqlite');
     const dbHost = this.configService.get<string>('dataDatabase.host', 'localhost');
 

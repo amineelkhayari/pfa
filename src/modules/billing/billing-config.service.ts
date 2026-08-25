@@ -16,7 +16,7 @@ export interface PaymentSettings {
 @Injectable()
 export class BillingConfigService implements OnModuleInit {
   private current: PaymentSettings = {};
-  constructor(@InjectRepository(BillingConfig, 'main') private readonly repo: Repository<BillingConfig>) {}
+  constructor(@InjectRepository(BillingConfig, 'data') private readonly repo: Repository<BillingConfig>) {}
   async onModuleInit() { const row = await this.repo.findOneBy({ id: 'default' }); if (row) this.current = this.decrypt(row.encryptedSettings); }
   view() {
     return { publicAppUrl: this.value('publicAppUrl', 'PUBLIC_APP_URL'), stripeEnabled: this.enabled('stripe'), paypalEnabled: this.enabled('paypal'), paypalEnvironment: this.value('paypalEnvironment', 'PAYPAL_ENV') ?? 'sandbox',

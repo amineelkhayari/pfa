@@ -23,7 +23,7 @@ import { BillingSubscription } from '../billing/entities/subscription.entity';
 @Global()
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ApiKey, UserAccount, UserLoginSession, BillingSubscription], 'main'),
+    TypeOrmModule.forFeature([ApiKey, UserAccount, UserLoginSession, BillingSubscription], 'data'),
     TypeOrmModule.forFeature([Session, Store, Product, Order], 'data'),
   ],
   controllers: [AuthController, AuthValidateController, UserAuthController, AdminUsersController],

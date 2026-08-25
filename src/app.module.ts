@@ -124,36 +124,7 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
       validate: validateEnv,
     }),
 
-    // Main Database (always SQLite - boot config)
-    TypeOrmModule.forRootAsync({
-      name: 'main',
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => {
-        // Default ON for zero-config first boot. When disabled
-        // (MAIN_DATABASE_SYNCHRONIZE=false), the main-owned migrations create the
-        // api_keys/audit_logs schema instead — never both at once.
-        const synchronize = configService.get<boolean>('database.synchronize', true);
-        return {
-          name: 'main',
-          type: 'better-sqlite3' as const,
-          database: configService.get<string>('database.database', './data/main.sqlite'),
-          entities: [
-            __dirname + '/modules/auth/**/*.entity{.ts,.js}',
-            __dirname + '/modules/audit/**/*.entity{.ts,.js}',
-            __dirname + '/modules/billing/**/*.entity{.ts,.js}',
-          ],
-          // Dedicated migrations dir for the main connection only (must NOT run the
-          // data-connection migrations, which target session/webhook/message tables).
-          migrations: [__dirname + '/database/migrations-main/*{.ts,.js}'],
-          synchronize,
-          migrationsRun: !synchronize,
-          logging: configService.get<boolean>('database.logging', false),
-        };
-      },
-    }),
-
-    // Data Storage Database (pluggable - user data)
+    // Single application database (SQLite or PostgreSQL).
     TypeOrmModule.forRootAsync({
       name: 'data',
       imports: [ConfigModule],
@@ -162,6 +133,9 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
         const dbType = configService.get<'sqlite' | 'postgres'>('dataDatabase.type', 'sqlite');
         const baseConfig = {
           entities: [
+            __dirname + '/modules/auth/**/*.entity{.ts,.js}',
+            __dirname + '/modules/audit/**/*.entity{.ts,.js}',
+            __dirname + '/modules/billing/**/*.entity{.ts,.js}',
             __dirname + '/modules/session/**/*.entity{.ts,.js}',
             __dirname + '/modules/webhook/**/*.entity{.ts,.js}',
             __dirname + '/modules/message/**/*.entity{.ts,.js}',

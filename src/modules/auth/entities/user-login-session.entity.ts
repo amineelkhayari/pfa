@@ -1,4 +1,6 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import { dateColumnType } from '../../../common/utils/column-types';
+import { DateTransformer } from '../../../common/transformers/date.transformer';
 
 @Entity('user_login_sessions')
 export class UserLoginSession {
@@ -13,7 +15,7 @@ export class UserLoginSession {
   @Column({ type: 'varchar' })
   userId: string;
 
-  @Column({ type: 'datetime' })
+  @Column({ type: dateColumnType(), transformer: DateTransformer })
   expiresAt: Date;
 
   @CreateDateColumn()

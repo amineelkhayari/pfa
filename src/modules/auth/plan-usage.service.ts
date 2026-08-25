@@ -25,12 +25,12 @@ export const PLAN_LIMITS: Record<UserPlan, PlanLimits> = {
 @Injectable()
 export class PlanUsageService {
   constructor(
-    @InjectRepository(UserAccount, 'main') private readonly users: Repository<UserAccount>,
+    @InjectRepository(UserAccount, 'data') private readonly users: Repository<UserAccount>,
     @InjectRepository(Session, 'data') private readonly sessions: Repository<Session>,
     @InjectRepository(Store, 'data') private readonly stores: Repository<Store>,
     @InjectRepository(Product, 'data') private readonly products: Repository<Product>,
     @InjectRepository(Order, 'data') private readonly orders: Repository<Order>,
-    @InjectRepository(BillingSubscription, 'main') private readonly subscriptions: Repository<BillingSubscription>,
+    @InjectRepository(BillingSubscription, 'data') private readonly subscriptions: Repository<BillingSubscription>,
   ) {}
 
   async assertCanCreateSession(): Promise<void> {

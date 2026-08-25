@@ -29,7 +29,7 @@ const { version: APP_VERSION } = require('../../../package.json') as { version: 
 @SkipThrottle()
 export class HealthController {
   constructor(
-    @InjectDataSource('main') private readonly mainDataSource: DataSource,
+   // @InjectDataSource('main') private readonly mainDataSource: DataSource,
     @InjectDataSource('data') private readonly dataDataSource: DataSource,
     private readonly shutdownService: ShutdownService,
   ) {}
@@ -65,17 +65,17 @@ export class HealthController {
       throw new ServiceUnavailableException({ status: 'error', details: { shutdown: { status: 'draining' } } });
     }
 
-    const [main, data] = await Promise.all([
-      this.probeDatabase(this.mainDataSource),
+    const [ data] = await Promise.all([
+      // this.probeDatabase(this.mainDataSource),
       this.probeDatabase(this.dataDataSource),
     ]);
 
     const details: Record<string, DependencyStatus> = {
-      mainDatabase: { status: main },
+      //mainDatabase: { status: main },
       dataDatabase: { status: data },
     };
 
-    if (main === 'down' || data === 'down') {
+    if ( data === 'down') {
       // 503 so orchestrators/LBs stop routing traffic to a node with a dead DB.
       throw new ServiceUnavailableException({ status: 'error', details });
     }

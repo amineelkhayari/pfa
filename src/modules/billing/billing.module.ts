@@ -9,7 +9,7 @@ import { BillingConfigService } from './billing-config.service';
 import { AdminAiSettingsController, AdminBillingController } from './admin-billing.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([BillingSubscription, BillingConfig, UserAccount], 'main')],
+  imports: [TypeOrmModule.forFeature([BillingSubscription, BillingConfig, UserAccount], 'data')],
   controllers: [BillingController, AdminBillingController, AdminAiSettingsController],
   providers: [BillingService, BillingConfigService],
   exports: [BillingService, BillingConfigService],

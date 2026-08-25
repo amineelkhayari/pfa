@@ -1,5 +1,7 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { ApiKeyRole } from './api-key.entity';
+import { dateColumnType, jsonColumnType } from '../../../common/utils/column-types';
+import { DateTransformer } from '../../../common/transformers/date.transformer';
 
 export enum UserPlan {
   FREE = 'free',
@@ -34,7 +36,7 @@ export class UserAccount {
   @Column({ type: 'varchar', length: 20, default: 'active' })
   status: string;
 
-  @Column({ type: 'simple-json', nullable: true })
+  @Column({ type: jsonColumnType(), nullable: true })
   settings: Record<string, unknown> | null;
 
   @Column({ type: 'int', default: 0 })
@@ -43,7 +45,7 @@ export class UserAccount {
   @Column({ type: 'int', default: 0 })
   receivedMessages: number;
 
-  @Column({ type: 'datetime' })
+  @Column({ type: dateColumnType(), transformer: DateTransformer })
   usagePeriodStart: Date;
 
   @CreateDateColumn()

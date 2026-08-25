@@ -6,7 +6,7 @@ import { AuditController } from './audit.controller';
 
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([AuditLog], 'main')],
+  imports: [TypeOrmModule.forFeature([AuditLog], 'data')],
   controllers: [AuditController],
   providers: [AuditService],
   exports: [AuditService],
