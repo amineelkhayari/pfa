@@ -6,15 +6,6 @@ import { Platform } from '../enum/platform.enum';
 
 export class CreateStoreDto {
   @ApiProperty({
-    description: 'Merchant UUID that owns the store',
-    example: '8c4c1c0f-cd65-45d9-a2a6-2d9c5b9db9b6',
-    format: 'uuid',
-  })
-  @IsUUID()
-  @IsNotEmpty()
-  merchantId: string;
-
-  @ApiProperty({
     description: 'Store display name',
     example: 'My Shopify Store',
     maxLength: 150,

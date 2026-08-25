@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { Store } from './entities/store.entity';
-import { Merchant } from '../merchant/entities/merchant.entity';
 
 import { StoreService } from './store.service';
 import { StoreController } from './store.controller';
@@ -24,7 +23,6 @@ import { Message } from '../message/entities/message.entity';
     TypeOrmModule.forFeature(
       [
         Store,
-        Merchant,
         Product,
         Order,
         Session,

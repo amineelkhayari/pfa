@@ -16,10 +16,8 @@ import {
   type CreateInstanceInput,
   type UpdateInstanceInput,
   storesApi,
-  merchantsApi,
   accountApi,
   type StorePayload,
-  type MerchantPayload,
 } from '../services/api';
 
 // ── Query Keys ────────────────────────────────────────────────────────
@@ -43,13 +41,17 @@ export const queryKeys = {
   stores: ['stores'] as const,
   orderConfirmationSummary: (filters: { days?: number; type?: string }) =>
     ['stores', 'orders', 'confirmation-summary', filters] as const,
-  merchants: ['merchants'] as const,
   accountUsage: ['account', 'usage'] as const,
 };
 
 export function useAccountUsageQuery() {
   const isUserLogin = sessionStorage.getItem('openwa_api_key')?.startsWith('owa_usr_') ?? false;
-  return useQuery({ queryKey: queryKeys.accountUsage, queryFn: accountApi.usage, enabled: isUserLogin, staleTime: 15_000 });
+  return useQuery({
+    queryKey: queryKeys.accountUsage,
+    queryFn: accountApi.usage,
+    enabled: isUserLogin,
+    staleTime: 15_000,
+  });
 }
 
 // ── Session Queries ───────────────────────────────────────────────────
@@ -126,18 +128,6 @@ export function useOrderConfirmationSummaryQuery(filters: { days?: number; type?
     queryFn: () => storesApi.confirmationSummary(filters),
     staleTime: 15_000,
     refetchInterval: 30_000,
-  });
-}
-
-export function useMerchantsQuery() {
-  return useQuery({ queryKey: queryKeys.merchants, queryFn: merchantsApi.listAll, staleTime: 30_000 });
-}
-
-export function useCreateMerchantMutation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (data: MerchantPayload) => merchantsApi.create(data),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: queryKeys.merchants }),
   });
 }
 

@@ -40,7 +40,6 @@ import { PluginsApiModule } from './modules/plugins/plugins.module';
 import { AgentToolsModule } from './core/agent-tools/agent-tools.module';
 import { IntegrationModule } from './modules/integration/integration.module';
 import { SearchModule } from './modules/search/search.module';
-import { MerchantModule } from './modules/merchant/merchant.module';
 import { StoreModule } from './modules/stores/store.module';
 import { EngineEcomModule } from './ecomEngine/engin.ecom.module';
 import { ShopifyModule } from './modules/shopify/shopify.module';
@@ -171,7 +170,6 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
             __dirname + '/modules/integration/**/*.entity{.ts,.js}',
             __dirname + '/modules/status-store/**/*.entity{.ts,.js}',
             // AJOUTER
-            __dirname + '/modules/merchant/**/*.entity{.ts,.js}',
             __dirname + '/modules/stores/**/*.entity{.ts,.js}',
             __dirname + '/modules/shopify/**/*.entity{.ts,.js}',
             __dirname + '/modules/woocommerce/**/*.entity{.ts,.js}',
@@ -313,7 +311,6 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
     PluginsApiModule, // Phase 5: Plugins API
     AgentToolsModule, // Agent-invocable tool registry (protocol-neutral)
     IntegrationModule, // Integration Fabric: @Public provider-webhook ingress + fast-ack pipeline
-    MerchantModule,
     StoreModule,
     ShopifyModule,
     WooCommerceModule,

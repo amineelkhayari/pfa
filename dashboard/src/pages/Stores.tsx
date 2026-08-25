@@ -26,9 +26,7 @@ import { useRole } from '../hooks/useRole';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import {
   useCreateStoreMutation,
-  useCreateMerchantMutation,
   useDeleteStoreMutation,
-  useMerchantsQuery,
   useSessionsQuery,
   useStoresQuery,
   useUpdateStoreMutation,
@@ -46,7 +44,6 @@ import {
 import './Stores.css';
 
 const emptyForm: StorePayload = {
-  merchantId: '',
   sessionId: '',
   name: '',
   provider: 'shopify',
@@ -66,7 +63,8 @@ const emptyForm: StorePayload = {
     webhookBaseUrl: '',
     catalogAssistantEnabled: true,
     confirmationSuccessTemplate: 'Merci {{customerName}}, votre commande {{orderNumber}} est confirmée ✅',
-    relatedProductsTemplate: 'Vous pourriez aussi aimer :\n{{products}}\n\nRépondez avec le nom du produit pour plus d’informations.',
+    relatedProductsTemplate:
+      'Vous pourriez aussi aimer :\n{{products}}\n\nRépondez avec le nom du produit pour plus d’informations.',
   },
 };
 
@@ -75,18 +73,14 @@ export function Stores() {
   useDocumentTitle(t('stores.title'));
   const { canWrite } = useRole();
   const { data: stores = [], isLoading, isError, refetch: refetchStores } = useStoresQuery();
-  const { data: merchants = [] } = useMerchantsQuery();
   const { data: sessions = [] } = useSessionsQuery();
   const createStore = useCreateStoreMutation();
-  const createMerchant = useCreateMerchantMutation();
   const updateStore = useUpdateStoreMutation();
   const deleteStore = useDeleteStoreMutation();
   const [form, setForm] = useState<StorePayload>(emptyForm);
   const [editing, setEditing] = useState<Store | null>(null);
   const [deleting, setDeleting] = useState<Store | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [showMerchantForm, setShowMerchantForm] = useState(false);
-  const [merchantForm, setMerchantForm] = useState({ name: '', email: '', phone: '' });
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [detailStore, setDetailStore] = useState<Store | null>(null);
@@ -120,14 +114,13 @@ export function Stores() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ ...emptyForm, merchantId: merchants[0]?.id ?? '', sessionId: availableSessions[0]?.id ?? '' });
+    setForm({ ...emptyForm, sessionId: availableSessions[0]?.id ?? '' });
     setShowForm(true);
   };
 
   const openEdit = (store: Store) => {
     setEditing(store);
     setForm({
-      merchantId: store.merchantId,
       sessionId: store.sessionId,
       name: store.name,
       provider: store.provider,
@@ -138,7 +131,12 @@ export function Stores() {
       timezone: store.timezone,
       currency: store.currency,
       status: store.status,
-      settings: { ...store.settings, shopDomain: store.settings?.shopDomain ?? '', clientSecret: '', consumerSecret: '' },
+      settings: {
+        ...store.settings,
+        shopDomain: store.settings?.shopDomain ?? '',
+        clientSecret: '',
+        consumerSecret: '',
+      },
     });
     setShowForm(true);
   };
@@ -165,7 +163,10 @@ export function Stores() {
         if (created.provider === 'woocommerce') {
           setShowForm(false);
           const result = await woocommerceApi.connect(created.id);
-          setToast({ type: 'success', message: `WooCommerce connected. Imported ${result.products} products and ${result.orders} orders.` });
+          setToast({
+            type: 'success',
+            message: `WooCommerce connected. Imported ${result.products} products and ${result.orders} orders.`,
+          });
         }
       }
       setShowForm(false);
@@ -186,25 +187,18 @@ export function Stores() {
     }
   };
 
-  const submitMerchant = async () => {
-    try {
-      await createMerchant.mutateAsync(merchantForm);
-      setShowMerchantForm(false);
-      setMerchantForm({ name: '', email: '', phone: '' });
-      setToast({ type: 'success', message: 'Merchant created successfully.' });
-    } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Unable to create the merchant.' });
-    }
-  };
-
   const syncStore = async (store: Store) => {
     setSyncingId(store.id);
     try {
-      const result = store.provider === 'woocommerce' ? await woocommerceApi.sync(store.id) : await shopifyApi.sync(store.id);
+      const result =
+        store.provider === 'woocommerce' ? await woocommerceApi.sync(store.id) : await shopifyApi.sync(store.id);
       await refetchStores();
       setToast({ type: 'success', message: `Sync complete: ${result.products} products and ${result.orders} orders.` });
     } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : `${store.provider} synchronization failed.` });
+      setToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : `${store.provider} synchronization failed.`,
+      });
     } finally {
       setSyncingId(null);
     }
@@ -215,10 +209,15 @@ export function Stores() {
     try {
       const result = await woocommerceApi.connect(store.id);
       await refetchStores();
-      setToast({ type: 'success', message: `WooCommerce connected: ${result.products} products and ${result.orders} orders imported.` });
+      setToast({
+        type: 'success',
+        message: `WooCommerce connected: ${result.products} products and ${result.orders} orders imported.`,
+      });
     } catch (error) {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'WooCommerce connection failed.' });
-    } finally { setSyncingId(null); }
+    } finally {
+      setSyncingId(null);
+    }
   };
 
   const openDetails = async (store: Store, tab: 'products' | 'orders') => {
@@ -266,7 +265,8 @@ export function Stores() {
       setConversations(current => ({ ...current, [order.id]: updated }));
       setToast({
         type: 'success',
-        message: updated.status === 'escalated' ? 'Conversation assigned to a human agent.' : 'AI conversation resumed.',
+        message:
+          updated.status === 'escalated' ? 'Conversation assigned to a human agent.' : 'AI conversation resumed.',
       });
     } catch (error) {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'Unable to update handoff.' });
@@ -286,12 +286,15 @@ export function Stores() {
       form.settings.scopes &&
       form.settings.redirectUri,
     );
-  const wooConfigValid = form.provider !== 'woocommerce' || Boolean(
-    /^https:\/\//i.test(form.settings?.siteUrl ?? '') && form.settings?.consumerKey &&
-    (form.settings.consumerSecret || form.settings.consumerSecretConfigured),
-  );
+  const wooConfigValid =
+    form.provider !== 'woocommerce' ||
+    Boolean(
+      /^https:\/\//i.test(form.settings?.siteUrl ?? '') &&
+      form.settings?.consumerKey &&
+      (form.settings.consumerSecret || form.settings.consumerSecretConfigured),
+    );
   const valid = Boolean(
-    form.merchantId && form.sessionId && form.name.trim() && form.email.trim() && shopDomainValid && shopifyConfigValid && wooConfigValid,
+    form.sessionId && form.name.trim() && form.email.trim() && shopDomainValid && shopifyConfigValid && wooConfigValid,
   );
 
   return (
@@ -311,28 +314,14 @@ export function Stores() {
         subtitle={t('stores.subtitle')}
         actions={
           canWrite ? (
-            <button
-              className="btn-primary"
-              onClick={openCreate}
-              disabled={!merchants.length || !availableSessions.length}
-            >
+            <button className="btn-primary" onClick={openCreate} disabled={!availableSessions.length}>
               <Plus size={16} /> {t('stores.addStore')}
             </button>
           ) : undefined
         }
       />
 
-      {!merchants.length && !isLoading && (
-        <div className="stores-notice">
-          <AlertTriangle size={18} /> Create a merchant before adding a store.
-          {canWrite && (
-            <button className="btn-secondary" onClick={() => setShowMerchantForm(true)}>
-              Create merchant
-            </button>
-          )}
-        </div>
-      )}
-      {!!merchants.length && !availableSessions.length && !stores.length && !isLoading && (
+      {!availableSessions.length && !stores.length && !isLoading && (
         <div className="stores-notice">
           <AlertTriangle size={18} /> Create a WhatsApp session before adding a store.
         </div>
@@ -374,7 +363,11 @@ export function Stores() {
                     </button>
                   )}
                   {store.provider === 'woocommerce' && !store.settings?.connected && canWrite && (
-                    <button className="btn-secondary" onClick={() => connectWooStore(store)} disabled={syncingId === store.id}>
+                    <button
+                      className="btn-secondary"
+                      onClick={() => connectWooStore(store)}
+                      disabled={syncingId === store.id}
+                    >
                       <ExternalLink size={15} /> Connect
                     </button>
                   )}
@@ -411,10 +404,6 @@ export function Stores() {
               </div>
               <div className="store-card-body store-details">
                 <div>
-                  <span>Merchant</span>
-                  <strong>{store.merchant?.name ?? store.merchantId}</strong>
-                </div>
-                <div>
                   <span>WhatsApp session</span>
                   <strong>{store.session?.name ?? store.sessionId}</strong>
                 </div>
@@ -449,10 +438,18 @@ export function Stores() {
                   </div>
                 )}
                 {store.provider === 'woocommerce' && (
-                  <div><span>WooCommerce</span><strong>{store.settings?.connected ? 'Connected' : 'Connection required'}</strong></div>
+                  <div>
+                    <span>WooCommerce</span>
+                    <strong>{store.settings?.connected ? 'Connected' : 'Connection required'}</strong>
+                  </div>
                 )}
                 {store.provider === 'woocommerce' && store.settings?.connected && (
-                  <div><span>Imported</span><strong>{store.settings.importedProducts ?? 0} products · {store.settings.importedOrders ?? 0} orders</strong></div>
+                  <div>
+                    <span>Imported</span>
+                    <strong>
+                      {store.settings.importedProducts ?? 0} products · {store.settings.importedOrders ?? 0} orders
+                    </strong>
+                  </div>
                 )}
               </div>
             </article>
@@ -477,16 +474,6 @@ export function Stores() {
       >
         <div className="store-form-grid">
           <label>
-            Merchant
-            <select value={form.merchantId} onChange={e => setField('merchantId', e.target.value)} required>
-              {merchants.map(m => (
-                <option key={m.id} value={m.id}>
-                  {m.name} — {m.email}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
             WhatsApp session
             <select value={form.sessionId} onChange={e => setField('sessionId', e.target.value)} required>
               {availableSessions.map(s => (
@@ -501,37 +488,113 @@ export function Stores() {
             <input value={form.name} onChange={e => setField('name', e.target.value)} maxLength={150} required />
           </label>
           <div className="store-form-full provider-picker">
-            <div className="field-heading"><span>Choose your commerce platform</span><small>Only active integrations are selectable</small></div>
+            <div className="field-heading">
+              <span>Choose your commerce platform</span>
+              <small>Only active integrations are selectable</small>
+            </div>
             <div className="provider-options">
               {(['shopify', 'woocommerce'] as const).map(provider => (
-                <button type="button" key={provider} className={`provider-option ${form.provider === provider ? 'selected' : ''}`} onClick={() => setField('provider', provider)}>
+                <button
+                  type="button"
+                  key={provider}
+                  className={`provider-option ${form.provider === provider ? 'selected' : ''}`}
+                  onClick={() => setField('provider', provider)}
+                >
                   <span className="provider-mark">{provider === 'shopify' ? 'S' : 'Woo'}</span>
-                  <span><strong>{provider === 'shopify' ? 'Shopify' : 'WooCommerce'}</strong><small>{provider === 'shopify' ? 'OAuth app installation' : 'REST API keys'}</small></span>
+                  <span>
+                    <strong>{provider === 'shopify' ? 'Shopify' : 'WooCommerce'}</strong>
+                    <small>{provider === 'shopify' ? 'OAuth app installation' : 'REST API keys'}</small>
+                  </span>
                   {form.provider === provider && <CheckCircle2 size={18} />}
                 </button>
               ))}
             </div>
           </div>
           <aside className="store-connect-guide store-form-full">
-            <div className="guide-title"><BookOpen size={19}/><div><strong>{form.provider === 'shopify' ? 'Shopify connection guide' : 'WooCommerce connection guide'}</strong><span>Follow these steps—OpenWA completes the import and webhook setup.</span></div></div>
+            <div className="guide-title">
+              <BookOpen size={19} />
+              <div>
+                <strong>
+                  {form.provider === 'shopify' ? 'Shopify connection guide' : 'WooCommerce connection guide'}
+                </strong>
+                <span>Follow these steps—OpenWA completes the import and webhook setup.</span>
+              </div>
+            </div>
             {form.provider === 'woocommerce' ? (
               <ol>
-                <li><span>1</span><div><strong>Create API credentials</strong><small>WordPress → WooCommerce → Settings → Advanced → REST API → Add key. Select Read/Write access.</small></div></li>
-                <li><span>2</span><div><strong>Paste the HTTPS store URL and keys</strong><small>The Consumer Key starts with ck_ and the Consumer Secret starts with cs_.</small></div></li>
-                <li><span>3</span><div><strong>Add your public OpenWA URL</strong><small>Use only the tunnel/domain base URL. The order webhook path and secure signature secret are created automatically.</small></div></li>
+                <li>
+                  <span>1</span>
+                  <div>
+                    <strong>Create API credentials</strong>
+                    <small>
+                      WordPress → WooCommerce → Settings → Advanced → REST API → Add key. Select Read/Write access.
+                    </small>
+                  </div>
+                </li>
+                <li>
+                  <span>2</span>
+                  <div>
+                    <strong>Paste the HTTPS store URL and keys</strong>
+                    <small>The Consumer Key starts with ck_ and the Consumer Secret starts with cs_.</small>
+                  </div>
+                </li>
+                <li>
+                  <span>3</span>
+                  <div>
+                    <strong>Add your public OpenWA URL</strong>
+                    <small>
+                      Use only the tunnel/domain base URL. The order webhook path and secure signature secret are
+                      created automatically.
+                    </small>
+                  </div>
+                </li>
               </ol>
             ) : (
               <ol>
-                <li><span>1</span><div><strong>Create a Shopify development app</strong><small>Copy its Client ID and Client secret, then configure order and product scopes.</small></div></li>
-                <li><span>2</span><div><strong>Set the callback URL</strong><small>It must match the OpenWA OAuth callback shown below exactly.</small></div></li>
-                <li><span>3</span><div><strong>Save and install</strong><small>You will be redirected to Shopify to approve access; import and webhook registration run afterward.</small></div></li>
+                <li>
+                  <span>1</span>
+                  <div>
+                    <strong>Create a Shopify development app</strong>
+                    <small>Copy its Client ID and Client secret, then configure order and product scopes.</small>
+                  </div>
+                </li>
+                <li>
+                  <span>2</span>
+                  <div>
+                    <strong>Set the callback URL</strong>
+                    <small>It must match the OpenWA OAuth callback shown below exactly.</small>
+                  </div>
+                </li>
+                <li>
+                  <span>3</span>
+                  <div>
+                    <strong>Save and install</strong>
+                    <small>
+                      You will be redirected to Shopify to approve access; import and webhook registration run
+                      afterward.
+                    </small>
+                  </div>
+                </li>
               </ol>
             )}
-            <div className="guide-security"><ShieldCheck size={16}/><span>Credentials are encrypted. Secret values are never returned to the dashboard.</span></div>
+            <div className="guide-security">
+              <ShieldCheck size={16} />
+              <span>Credentials are encrypted. Secret values are never returned to the dashboard.</span>
+            </div>
             <div className="connection-checks">
-              <span className={form.sessionId ? 'ready' : ''}><CheckCircle2 size={14}/> WhatsApp session</span>
-              <span className={(form.provider === 'shopify' ? shopifyConfigValid && shopDomainValid : wooConfigValid) ? 'ready' : ''}><CheckCircle2 size={14}/> API credentials</span>
-              <span className={form.settings?.webhookBaseUrl ? 'ready' : ''}><CheckCircle2 size={14}/> Public webhook URL</span>
+              <span className={form.sessionId ? 'ready' : ''}>
+                <CheckCircle2 size={14} /> WhatsApp session
+              </span>
+              <span
+                className={
+                  (form.provider === 'shopify' ? shopifyConfigValid && shopDomainValid : wooConfigValid) ? 'ready' : ''
+                }
+              >
+                <CheckCircle2 size={14} /> API credentials
+              </span>
+              <span className={form.settings?.webhookBaseUrl ? 'ready' : ''}>
+                <CheckCircle2 size={14} /> Public webhook URL
+              </span>
             </div>
           </aside>
           {form.provider === 'shopify' && (
@@ -548,27 +611,55 @@ export function Stores() {
               />
             </label>
           )}
-          {form.provider === 'woocommerce' && <>
-            <label>
-              WooCommerce site URL
-              <input type="url" value={form.settings?.siteUrl ?? ''} onChange={e => setField('settings', { ...form.settings, siteUrl: e.target.value.trim() })} placeholder="https://shop.example.com" required />
-              <small>WordPress address where WooCommerce is installed. HTTPS is required.</small>
-            </label>
-            <label>
-              Consumer key
-              <input value={form.settings?.consumerKey ?? ''} onChange={e => setField('settings', { ...form.settings, consumerKey: e.target.value.trim() })} placeholder="ck_..." required />
-              <small>Use a Read/Write key so confirmations can update orders.</small>
-            </label>
-            <label>
-              Consumer secret
-              <input type="password" value={form.settings?.consumerSecret ?? ''} onChange={e => setField('settings', { ...form.settings, consumerSecret: e.target.value })} placeholder={form.settings?.consumerSecretConfigured ? 'Leave blank to keep existing secret' : 'cs_...'} required={!form.settings?.consumerSecretConfigured} />
-            </label>
-            <label>
-              Public webhook base URL
-              <input type="url" value={form.settings?.webhookBaseUrl ?? ''} onChange={e => setField('settings', { ...form.settings, webhookBaseUrl: e.target.value.trim() })} placeholder="https://your-public-domain.com" />
-              <small><Link2 size={13}/> Enter only the base URL—do not add /api.</small>
-            </label>
-          </>}
+          {form.provider === 'woocommerce' && (
+            <>
+              <label>
+                WooCommerce site URL
+                <input
+                  type="url"
+                  value={form.settings?.siteUrl ?? ''}
+                  onChange={e => setField('settings', { ...form.settings, siteUrl: e.target.value.trim() })}
+                  placeholder="https://shop.example.com"
+                  required
+                />
+                <small>WordPress address where WooCommerce is installed. HTTPS is required.</small>
+              </label>
+              <label>
+                Consumer key
+                <input
+                  value={form.settings?.consumerKey ?? ''}
+                  onChange={e => setField('settings', { ...form.settings, consumerKey: e.target.value.trim() })}
+                  placeholder="ck_..."
+                  required
+                />
+                <small>Use a Read/Write key so confirmations can update orders.</small>
+              </label>
+              <label>
+                Consumer secret
+                <input
+                  type="password"
+                  value={form.settings?.consumerSecret ?? ''}
+                  onChange={e => setField('settings', { ...form.settings, consumerSecret: e.target.value })}
+                  placeholder={
+                    form.settings?.consumerSecretConfigured ? 'Leave blank to keep existing secret' : 'cs_...'
+                  }
+                  required={!form.settings?.consumerSecretConfigured}
+                />
+              </label>
+              <label>
+                Public webhook base URL
+                <input
+                  type="url"
+                  value={form.settings?.webhookBaseUrl ?? ''}
+                  onChange={e => setField('settings', { ...form.settings, webhookBaseUrl: e.target.value.trim() })}
+                  placeholder="https://your-public-domain.com"
+                />
+                <small>
+                  <Link2 size={13} /> Enter only the base URL—do not add /api.
+                </small>
+              </label>
+            </>
+          )}
           {form.provider === 'shopify' && (
             <label>
               Client ID
@@ -628,7 +719,9 @@ export function Stores() {
               AI catalog assistant
               <select
                 value={form.settings?.catalogAssistantEnabled === false ? 'false' : 'true'}
-                onChange={e => setField('settings', { ...form.settings, catalogAssistantEnabled: e.target.value === 'true' })}
+                onChange={e =>
+                  setField('settings', { ...form.settings, catalogAssistantEnabled: e.target.value === 'true' })
+                }
               >
                 <option value="true">Enabled</option>
                 <option value="false">Disabled</option>
@@ -644,7 +737,9 @@ export function Stores() {
                 onChange={e => setField('settings', { ...form.settings, confirmationSuccessTemplate: e.target.value })}
                 placeholder="Merci {{customerName}}, votre commande {{orderNumber}} est confirmée ✅"
               />
-              <small>Available: {'{{customerName}}'}, {'{{orderNumber}}'}, {'{{storeName}}'}</small>
+              <small>
+                Available: {'{{customerName}}'}, {'{{orderNumber}}'}, {'{{storeName}}'}
+              </small>
             </label>
           )}
           {form.provider === 'shopify' && (
@@ -656,7 +751,9 @@ export function Stores() {
                 onChange={e => setField('settings', { ...form.settings, relatedProductsTemplate: e.target.value })}
                 placeholder={'Vous pourriez aussi aimer :\n{{products}}'}
               />
-              <small>Available: {'{{products}}'}, {'{{orderNumber}}'}, {'{{storeName}}'}</small>
+              <small>
+                Available: {'{{products}}'}, {'{{orderNumber}}'}, {'{{storeName}}'}
+              </small>
             </label>
           )}
           <label>
@@ -852,55 +949,6 @@ export function Stores() {
             )}
           </div>
         )}
-      </Modal>
-
-      <Modal
-        open={showMerchantForm}
-        onClose={() => setShowMerchantForm(false)}
-        title="Create merchant"
-        footer={
-          <>
-            <button className="btn-secondary" onClick={() => setShowMerchantForm(false)}>
-              Cancel
-            </button>
-            <button
-              className="btn-primary"
-              disabled={!merchantForm.name.trim() || !merchantForm.email.trim() || createMerchant.isPending}
-              onClick={submitMerchant}
-            >
-              Create
-            </button>
-          </>
-        }
-      >
-        <div className="store-form-grid">
-          <label>
-            Business name
-            <input
-              value={merchantForm.name}
-              onChange={e => setMerchantForm(current => ({ ...current, name: e.target.value }))}
-              maxLength={150}
-              required
-            />
-          </label>
-          <label>
-            Email
-            <input
-              type="email"
-              value={merchantForm.email}
-              onChange={e => setMerchantForm(current => ({ ...current, email: e.target.value }))}
-              required
-            />
-          </label>
-          <label>
-            Phone
-            <input
-              value={merchantForm.phone}
-              onChange={e => setMerchantForm(current => ({ ...current, phone: e.target.value }))}
-              placeholder="+212612345678"
-            />
-          </label>
-        </div>
       </Modal>
 
       <Modal

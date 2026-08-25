@@ -3,7 +3,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { Store } from './entities/store.entity';
-import { Merchant } from '../merchant/entities/merchant.entity';
 
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
@@ -25,8 +24,6 @@ export class StoreService {
     @InjectRepository(Store, 'data')
     private readonly storeRepository: Repository<Store>,
 
-    @InjectRepository(Merchant, 'data')
-    private readonly merchantRepository: Repository<Merchant>,
     @InjectRepository(Session, 'data')
     private readonly sessionRepository: Repository<Session>,
     @InjectRepository(Product, 'data')
@@ -57,25 +54,16 @@ export class StoreService {
     //     ]
     //   }
     // );
-    const merchant = await this.merchantRepository.findOne({
-      where: scope.userId && !scope.isAdmin ? { id: dto.merchantId, userId: scope.userId } : { id: dto.merchantId },
-    });
-
-    if (!merchant) {
-      throw new NotFoundException('Merchant not found.');
-    }
-
     await this.assertSessionAvailable(dto.sessionId);
 
-    const exists = await this.storeRepository.findOne({
-      where: {
-        merchantId: dto.merchantId,
-        name: dto.name,
-      },
-    });
+    const exists = await this.storeRepository
+      .createQueryBuilder('store')
+      .where('store.name = :name', { name: dto.name })
+      .andWhere(scope.userId ? 'store.userId = :userId' : 'store.userId IS NULL', { userId: scope.userId })
+      .getOne();
 
     if (exists) {
-      throw new ConflictException('Store already exists for this merchant.');
+      throw new ConflictException('A store with this name already exists.');
     }
 
     const store = this.storeRepository.create({
@@ -92,7 +80,6 @@ export class StoreService {
     return await this.storeRepository.find({
       where: scope.userId && !scope.isAdmin ? { userId: scope.userId } : undefined,
       relations: {
-        merchant: true,
         session: true,
         // integrations: true,
       },
@@ -300,7 +287,6 @@ export class StoreService {
     const store = await this.storeRepository.findOne({
       where: scope.userId && !scope.isAdmin ? { id, userId: scope.userId } : { id },
       relations: {
-        merchant: true,
         session: true,
         // integrations: true,
       },
@@ -311,19 +297,6 @@ export class StoreService {
     }
 
     return store;
-  }
-
-  async findByMerchant(merchantId: string): Promise<Store[]> {
-    const scope = getRequestUserScope();
-    return await this.storeRepository.find({
-      where: scope.userId && !scope.isAdmin ? { merchantId, userId: scope.userId } : { merchantId },
-      // relations: {
-      //   integrations: true,
-      // },
-      order: {
-        createdAt: 'DESC',
-      },
-    });
   }
 
   async findProducts(storeId: string): Promise<Product[]> {
@@ -421,11 +394,6 @@ export class StoreService {
 
   async update(id: string, dto: UpdateStoreDto): Promise<Store> {
     const store = await this.findOneById(id);
-
-    if (dto.merchantId && dto.merchantId !== store.merchantId) {
-      const merchant = await this.merchantRepository.findOneBy({ id: dto.merchantId });
-      if (!merchant) throw new NotFoundException('Merchant not found.');
-    }
 
     if (dto.sessionId && dto.sessionId !== store.sessionId) {
       await this.assertSessionAvailable(dto.sessionId, id);

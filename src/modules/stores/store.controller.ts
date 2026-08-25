@@ -85,21 +85,6 @@ export class StoreController {
     return this.publicStore(await this.storeService.findOneById(id));
   }
 
-  @Get('merchant/:merchantId')
-  @ApiOperation({ summary: 'Get all stores for a merchant' })
-  @ApiParam({
-    name: 'merchantId',
-    description: 'Merchant UUID',
-    example: '4d6b6b6f-7c84-4c68-9e6b-f2c2fcbfd5b4',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Stores retrieved successfully.',
-  })
-  async findByMerchant(@Param('merchantId', ParseUUIDPipe) merchantId: string) {
-    return await this.storeService.findByMerchant(merchantId);
-  }
-
   @Get(':id/products')
   @ApiOperation({ summary: 'List locally imported products for a store' })
   findProducts(@Param('id', ParseUUIDPipe) id: string) {

@@ -135,28 +135,9 @@ export interface Store {
   session?: Session;
   createdAt: string;
   updatedAt: string;
-  merchant: {
-    id: string;
-    name: string;
-    email: string;
-    phone?: string | null;
-    createdAt: string;
-    updatedAt: string;
-  };
-  merchantId: string;
 }
-
-export interface Merchant {
-  id: string;
-  name: string;
-  email: string;
-  phone?: string | null;
-}
-
-export type MerchantPayload = Pick<Merchant, 'name' | 'email'> & { phone?: string };
 
 export interface StorePayload {
-  merchantId: string;
   sessionId: string;
   name: string;
   provider: Store['provider'];
@@ -1057,11 +1038,6 @@ export const campaignApi = {
     excludedRecipients?: string[];
   }) => request<Campaign>('/campaigns', { method: 'POST', body: JSON.stringify(payload) }),
   cancel: (id: string) => request<Campaign>(`/campaigns/${id}/cancel`, { method: 'POST' }),
-};
-
-export const merchantsApi = {
-  listAll: () => request<Merchant[]>('/merchants'),
-  create: (data: MerchantPayload) => request<Merchant>('/merchants', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 export const shopifyApi = {

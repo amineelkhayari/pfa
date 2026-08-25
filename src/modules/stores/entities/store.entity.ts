@@ -4,7 +4,6 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
-  ManyToOne,
   OneToOne,
   JoinColumn,
   Index,
@@ -12,12 +11,11 @@ import {
 
 import { StoreStatus } from '../enum/store-status.enum';
 // import { IntegrationConnection } from './integration-connection.entity';
-import { Merchant } from '../../merchant/entities/merchant.entity';
 import { Platform } from '../enum/platform.enum';
 import { Session } from '../../session/entities/session.entity';
 
 @Entity('stores')
-@Index('UQ_stores_merchant_name', ['merchantId', 'name'], { unique: true })
+@Index('IDX_stores_user', ['userId'])
 export class Store {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -84,11 +82,6 @@ export class Store {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @ManyToOne(() => Merchant, merchant => merchant.stores, { onDelete: 'CASCADE' })
-  merchant: Merchant;
-
-  @Column({ type: 'varchar' })
-  merchantId: string;
   @OneToOne(() => Session, session => session.store, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'sessionId' })
   session: Session;
