@@ -65,16 +65,37 @@ export function loadEnvironment(): void {
     console.log('[Bootstrap] Loading saved configuration from:', generatedEnvPath);
     dotenv.config({ path: generatedEnvPath, override: false });
   } else {
-    console.log('[Bootstrap] First run detected, creating default configuration...');
-    // Create minimal .env.generated with sensible defaults
+    console.log('[Bootstrap] First run detected, creating PostgreSQL configuration...');
+    // Persist the Docker/host PostgreSQL values so the generated configuration is complete and can
+    // subsequently be managed from Dashboard > Infrastructure. JSON quoting is compatible with
+    // dotenv and prevents spaces, #, quotes, or other password characters from corrupting the file.
+    const envValue = (name: string, fallback = ''): string => JSON.stringify(process.env[name] || fallback);
     const minimalConfig = `# OpenWA Configuration
 # Generated automatically on first run
 # Edit via Dashboard > Infrastructure or modify this file directly.
 # Note: values in process env or project .env take precedence over this file.
 
-# Database (SQLite - no external service required)
-DATABASE_TYPE=sqlite
-POSTGRES_BUILTIN=false
+# PostgreSQL database
+DATABASE_TYPE=postgres
+POSTGRES_BUILTIN=${process.env.POSTGRES_BUILTIN === 'true' ? 'true' : 'false'}
+DATABASE_HOST=${envValue('DATABASE_HOST', 'localhost')}
+DATABASE_PORT=${envValue('DATABASE_PORT', '5432')}
+DATABASE_USERNAME=${envValue('DATABASE_USERNAME', 'openwa')}
+DATABASE_PASSWORD=${envValue('DATABASE_PASSWORD')}
+DATABASE_NAME=${envValue('DATABASE_NAME', 'openwa')}
+POSTGRES_SCHEMA=${envValue('POSTGRES_SCHEMA', 'public')}
+DATABASE_SSL=${process.env.DATABASE_SSL === 'true' ? 'true' : 'false'}
+DATABASE_SSL_REJECT_UNAUTHORIZED=${process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'false' ? 'false' : 'true'}
+DATABASE_SYNCHRONIZE=false
+DATABASE_LOGGING=${process.env.DATABASE_LOGGING === 'true' ? 'true' : 'false'}
+DATABASE_POOL_SIZE=${envValue('DATABASE_POOL_SIZE', '10')}
+DATABASE_CONNECTION_TIMEOUT_MS=${envValue('DATABASE_CONNECTION_TIMEOUT_MS', '10000')}
+DATABASE_IDLE_TIMEOUT_MS=${envValue('DATABASE_IDLE_TIMEOUT_MS', '30000')}
+DATABASE_STATEMENT_TIMEOUT_MS=${envValue('DATABASE_STATEMENT_TIMEOUT_MS', '30000')}
+
+# WhatsApp engine
+ENGINE_TYPE=baileys
+BAILEYS_AUTH_DIR=${envValue('BAILEYS_AUTH_DIR', './data/baileys')}
 
 # Redis & Queue (disabled by default)
 REDIS_ENABLED=false
@@ -86,7 +107,7 @@ STORAGE_TYPE=local
 MINIO_BUILTIN=false
 STORAGE_LOCAL_PATH=./data/media
 
-# Docker Profiles: none (minimal setup)
+# Supply DATABASE_HOST, DATABASE_USERNAME, and DATABASE_PASSWORD through Docker or edit this file.
 `;
     writeSecretFile(generatedEnvPath, minimalConfig);
     console.log('[Bootstrap] Created default configuration at:', generatedEnvPath);

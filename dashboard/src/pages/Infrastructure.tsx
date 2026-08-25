@@ -126,7 +126,7 @@ export function Infrastructure() {
   });
 
   const [engineConfig, setEngineConfig] = useState<EngineConfig>({
-    type: 'whatsapp-web.js',
+    type: 'baileys',
     headless: true,
     sessionDataPath: './data/sessions',
     browserArgs: '--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-gpu',
@@ -749,57 +749,7 @@ export function Infrastructure() {
             ))}
           </div>
 
-          {/* The actual WhatsApp Web build in use — distinct from the library version above (#488). */}
-          {infraStatus?.engine.webVersion !== undefined && (
-            <p className="engine-web-version">
-              {t('infrastructure.engine.webVersion')}:{' '}
-              <code>{infraStatus.engine.webVersion ?? t('infrastructure.engine.webVersionNative')}</code>
-              {infraStatus.engine.webVersionSource && (
-                <span className="muted">
-                  {' '}
-                  ({t(`infrastructure.engine.webVersionSource.${infraStatus.engine.webVersionSource}`)})
-                </span>
-              )}
-            </p>
-          )}
-
-          {engineConfig.type === 'whatsapp-web.js' ? (
-            <div className="config-form">
-              <div className="toggle-row">
-                <div className="toggle-info">
-                  <span>{t('infrastructure.engine.headless')}</span>
-                  <small>{t('infrastructure.engine.headlessDesc')}</small>
-                </div>
-                <label className="toggle-switch">
-                  <input
-                    type="checkbox"
-                    checked={engineConfig.headless}
-                    onChange={e => updateEngineConfig('headless', e.target.checked)}
-                  />
-                  <span className="toggle-slider"></span>
-                </label>
-              </div>
-              <div className="form-group">
-                <label>{t('infrastructure.engine.sessionDataPath')}</label>
-                <input
-                  type="text"
-                  value={engineConfig.sessionDataPath}
-                  onChange={e => updateEngineConfig('sessionDataPath', e.target.value)}
-                />
-              </div>
-              <div className="form-group">
-                <label>{t('infrastructure.engine.browserArgs')}</label>
-                <input
-                  type="text"
-                  value={engineConfig.browserArgs}
-                  onChange={e => updateEngineConfig('browserArgs', e.target.value)}
-                  placeholder="--no-sandbox --disable-gpu"
-                />
-              </div>
-            </div>
-          ) : (
-            <p className="muted-hint">{t('infrastructure.engine.noBrowser')}</p>
-          )}
+          <p className="muted-hint">{t('infrastructure.engine.noBrowser')}</p>
 
           <p className="engine-restart-note">{t('infrastructure.engine.restartNote')}</p>
         </section>

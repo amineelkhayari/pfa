@@ -175,8 +175,7 @@ export class EngineFactory implements OnModuleInit {
     return enginePlugins.map(plugin => {
       const inst = plugin.instance;
       const features = inst && this.isEnginePlugin(inst) ? inst.getFeatures() : [];
-      // The real underlying library version (e.g. whatsapp-web.js 1.34.7), distinct from the
-      // plugin's manifest version — so the dashboard can show which engine is actually running.
+      // The underlying Baileys library version, distinct from the plugin manifest version.
       const library = inst && this.isEnginePlugin(inst) ? inst.getEngineLibrary?.() : undefined;
 
       return {

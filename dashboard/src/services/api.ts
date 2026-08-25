@@ -634,10 +634,6 @@ export interface InfraStatus {
   engine: {
     type: string;
     headless: boolean;
-    // whatsapp-web.js only: the actual WhatsApp Web build in use (distinct from the library version)
-    // and how it was chosen. (#488)
-    webVersion?: string | null;
-    webVersionSource?: 'pinned' | 'auto' | 'native';
   };
 }
 

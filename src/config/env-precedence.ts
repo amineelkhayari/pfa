@@ -48,12 +48,6 @@ export const BLANK_SHADOWED_ENV_KEYS: string[] = [
   'REDIS_ENABLED',
   'REDIS_HOST',
   'REDIS_PORT',
-  // Engine launch options the dashboard saves (data/.env.generated). Compose blank-forwards these so a
-  // dashboard edit is not shadowed by a pinned container default; the app layer (configuration.ts)
-  // supplies the sane default when nothing is set.
-  'PUPPETEER_HEADLESS',
-  'SESSION_DATA_PATH',
-  'PUPPETEER_ARGS',
   // Rate-limit values are blank-forwarded by Compose so a host value can take precedence without an
   // empty forward masking the lower-priority loaded .env / data/.env.generated value.
   'RATE_LIMIT_SHORT_TTL',
@@ -71,11 +65,6 @@ export const BLANK_SHADOWED_ENV_KEYS: string[] = [
   'API_MASTER_KEY',
   'TRUSTED_PROXIES',
   'CSP_UPGRADE_INSECURE_REQUESTS',
-  // whatsapp-web.js launch knobs: the WhatsApp Web version pin, its remote HTML template, and the
-  // first-boot init wait raised for slow hosts.
-  'WWEBJS_WEB_VERSION',
-  'WWEBJS_WEB_VERSION_REMOTE_PATH',
-  'WWEBJS_AUTH_TIMEOUT_MS',
 ];
 
 export function clearBlankEnv(env: NodeJS.ProcessEnv, keys: string[]): void {

@@ -70,6 +70,26 @@ describe('loadEnvironment', () => {
     expect(process.env.REDIS_HOST).toBe('host-from-process-env');
     expect(workerConnectionOptions().host).toBe('host-from-process-env');
   });
+
+  it('creates a complete PostgreSQL .env.generated from Docker values on first run', () => {
+    process.env.DATABASE_HOST = 'db.example.com';
+    process.env.DATABASE_PORT = '5432';
+    process.env.DATABASE_USERNAME = 'app_user';
+    process.env.DATABASE_PASSWORD = 'secret # with spaces';
+    process.env.DATABASE_NAME = 'openwa_prod';
+    const dir = makeTempCwd({});
+
+    runLoader();
+
+    const generated = fs.readFileSync(path.join(dir, 'data', '.env.generated'), 'utf8');
+    expect(generated).toContain('DATABASE_TYPE=postgres');
+    expect(generated).toContain('DATABASE_HOST="db.example.com"');
+    expect(generated).toContain('DATABASE_USERNAME="app_user"');
+    expect(generated).toContain('DATABASE_PASSWORD="secret # with spaces"');
+    expect(generated).toContain('DATABASE_NAME="openwa_prod"');
+    expect(generated).toContain('DATABASE_SYNCHRONIZE=false');
+    expect(generated).toContain('ENGINE_TYPE=baileys');
+  });
 });
 
 describe('main.ts bootstrap order', () => {
