@@ -9,7 +9,7 @@
 # minifier) optional dependency fails to install ("Cannot find module lightningcss.linux-arm64-gnu.node").
 # The per-arch runtime deps are installed natively in the target-platform production stage below.
 # NOTE: $BUILDPLATFORM requires BuildKit (CI uses buildx; modern `docker build`/compose default to it).
-FROM --platform=$BUILDPLATFORM docker.io/node:22-slim AS builder
+FROM --platform=$BUILDPLATFORM docker.io/node:25-slim AS builder
 
 WORKDIR /app
 
@@ -52,7 +52,7 @@ COPY . .
 RUN npm run build && npm run dashboard:ci -- --include=dev && npm run dashboard:build && rm -f dist/*.tsbuildinfo
 
 # ===== Stage 2: Production =====
-FROM docker.io/node:22-slim AS production
+FROM docker.io/node:25-slim AS production
 
 # sqlite3 ships the CLI so an in-container scripts/backup.sh run takes online-consistent SQLite
 # snapshots (.backup) instead of plain-copying a live database (which can archive a torn file).
