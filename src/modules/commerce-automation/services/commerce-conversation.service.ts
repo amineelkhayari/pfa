@@ -9,10 +9,10 @@ import { Order } from '../../stores/entities/order.entity';
 import { Store } from '../../stores/entities/store.entity';
 import { Product } from '../../stores/entities/product.entity';
 import { Platform } from '../../stores/enum/platform.enum';
-import { ShopifyService } from './shopify.service';
-import { OrderAiConversation } from '../entities/order-ai-conversation.entity';
-import { OpenAiOrderAgentService } from './openai-order-agent.service';
-import { StoreOrderCart } from '../entities/store-order-cart.entity';
+import { ShopifyService } from '../../shopify/services/shopify.service';
+import { OrderAiConversation } from '../../stores/entities/order-ai-conversation.entity';
+import { CommerceAiAgentService } from './commerce-ai-agent.service';
+import { StoreOrderCart } from '../../stores/entities/store-order-cart.entity';
 import { WooCommerceService, WooCredentials } from '../../woocommerce/services/woocommerce.service';
 
 interface IncomingReply {
@@ -24,8 +24,8 @@ interface IncomingReply {
 }
 
 @Injectable()
-export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
-  private readonly logger = createLogger('ShopifyOrderReplyService');
+export class CommerceConversationService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = createLogger('CommerceConversationService');
   private hookId?: string;
 
   constructor(
@@ -34,7 +34,7 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
     private readonly woocommerce: WooCommerceService,
     private readonly messages: MessageService,
     private readonly encryption: CredentialEncryptionService,
-    private readonly ai: OpenAiOrderAgentService,
+    private readonly ai: CommerceAiAgentService,
     @InjectRepository(Store, 'data') private readonly stores: Repository<Store>,
     @InjectRepository(Order, 'data') private readonly orders: Repository<Order>,
     @InjectRepository(Product, 'data') private readonly products: Repository<Product>,
@@ -44,7 +44,7 @@ export class ShopifyOrderReplyService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     this.hookId = this.hooks.register(
-      'shopify-order-confirmation',
+      'commerce-order-assistant',
       'message:received',
       async context => {
         await this.handleReply(context.sessionId, context.data as IncomingReply);

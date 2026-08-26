@@ -1,5 +1,3 @@
-// import { IntegrationConnection } from "../../modules/stores/entities/integration-connection.entity";
-
 export interface IntegrationProvider {
   /**
    * Provider name

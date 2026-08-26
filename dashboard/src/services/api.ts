@@ -1688,8 +1688,9 @@ export interface AiTestResult {
   provider: string;
   model: string;
   reply: string;
+  toolCalls?: Array<{ tool: string; input: Record<string, unknown>; result: Record<string, unknown> }>;
 }
 export const aiTestApi = {
-  chat: (message: string, history: Array<{ role: 'customer' | 'assistant'; text: string }>) =>
-    request<AiTestResult>('/ai/test-chat', { method: 'POST', body: JSON.stringify({ message, history }) }),
+  chat: (message: string, history: Array<{ role: 'customer' | 'assistant'; text: string }>, storeId?: string) =>
+    request<AiTestResult>('/ai/test-chat', { method: 'POST', body: JSON.stringify({ message, history, storeId }) }),
 };

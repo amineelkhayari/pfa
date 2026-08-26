@@ -3,7 +3,7 @@ import { BillingConfigService } from '../../billing/billing-config.service';
 import { createLogger } from '../../../common/services/logger.service';
 import { Order } from '../../stores/entities/order.entity';
 import { Product } from '../../stores/entities/product.entity';
-import { AiConversationTurn } from '../entities/order-ai-conversation.entity';
+import { AiConversationTurn } from '../../stores/entities/order-ai-conversation.entity';
 import { Agent, fetch as undiciFetch } from 'undici';
 
 export type OrderAiDecision = { action: 'continue' | 'confirm' | 'cancel' | 'escalate'; reply: string };
@@ -21,8 +21,8 @@ const decisionSchema = {
 };
 
 @Injectable()
-export class OpenAiOrderAgentService {
-  private readonly logger = createLogger('OpenAiOrderAgentService');
+export class CommerceAiAgentService {
+  private readonly logger = createLogger('CommerceAiAgentService');
   // Node's automatic IPv4/IPv6 address racing can time out on hosts without a
   // working IPv6 route. AI providers are HTTPS endpoints, so keep this client
   // on IPv4 rather than making a process-wide networking change.

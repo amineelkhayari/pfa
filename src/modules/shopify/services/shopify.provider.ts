@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ShopifyService } from './shopify.service';
-import { IntegrationProvider } from '../../../ecomEngine/interface/integration-provider.interface';
+import { IntegrationProvider } from '../../../commerce/integration-provider.interface';
 
 @Injectable()
 export class ShopifyProvider implements IntegrationProvider {

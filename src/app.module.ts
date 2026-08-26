@@ -41,11 +41,12 @@ import { AgentToolsModule } from './core/agent-tools/agent-tools.module';
 import { IntegrationModule } from './modules/integration/integration.module';
 import { SearchModule } from './modules/search/search.module';
 import { StoreModule } from './modules/stores/store.module';
-import { EngineEcomModule } from './ecomEngine/engin.ecom.module';
+import { CommerceCoreModule } from './commerce/commerce-core.module';
 import { ShopifyModule } from './modules/shopify/shopify.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { WooCommerceModule } from './modules/woocommerce/woocommerce.module';
 import { CampaignModule } from './modules/campaign/campaign.module';
+import { CommerceAutomationModule } from './modules/commerce-automation/commerce-automation.module';
 
 // Only import QueueModule if explicitly enabled to avoid Redis connection errors
 const queueModules: Array<Type | DynamicModule> = [];
@@ -290,7 +291,8 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
     WooCommerceModule,
     BillingModule,
     CampaignModule,
-    EngineEcomModule,
+    CommerceAutomationModule,
+    CommerceCoreModule,
     ...searchModules, // Global message search (opt-out via SEARCH_ENABLED=false; default ON)
     ...mcpModules, // MCP Streamable-HTTP server (opt-in via MCP_ENABLED=true)
     ...serveStaticModules, // Bundled dashboard SPA (production single-port setup)

@@ -6,8 +6,6 @@ import { Store } from './entities/store.entity';
 
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
-// import { IntegrationConnection } from './entities/integration-connection.entity';
-import { IntegrationProviderRegistry } from '../../ecomEngine/registry/integration-provider.registry';
 import { MessageService } from '../message/message.service';
 import { Session } from '../session/entities/session.entity';
 import { Product } from './entities/product.entity';
@@ -15,7 +13,7 @@ import { Order } from './entities/order.entity';
 import { CredentialEncryptionService } from '../../common/security/credential-encryption.service';
 import { getRequestUserScope } from '../../common/services/request-context';
 import { PlanUsageService } from '../auth/plan-usage.service';
-import { OrderAiConversation } from '../shopify/entities/order-ai-conversation.entity';
+import { OrderAiConversation } from './entities/order-ai-conversation.entity';
 import { Message } from '../message/entities/message.entity';
 
 @Injectable()
@@ -35,9 +33,6 @@ export class StoreService {
     @InjectRepository(Message, 'data')
     private readonly messageRepository: Repository<Message>,
     private readonly credentialEncryption: CredentialEncryptionService,
-    // @InjectRepository(IntegrationConnection, 'data')
-    // private readonly connectionRepository: Repository<IntegrationConnection>,
-    private readonly integrationRegistry: IntegrationProviderRegistry,
     private readonly messageService: MessageService,
     private readonly planUsage: PlanUsageService,
   ) {}
