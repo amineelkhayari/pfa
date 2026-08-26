@@ -63,6 +63,41 @@ export class WooCommerceService {
 
   async confirmOrder(credentials: WooCredentials, externalId: string) { await this.request(credentials, `orders/${externalId}`, { method: 'PUT', body: JSON.stringify({ status: 'processing' }) }); }
   async cancelOrder(credentials: WooCredentials, externalId: string) { await this.request(credentials, `orders/${externalId}`, { method: 'PUT', body: JSON.stringify({ status: 'cancelled' }) }); }
+  async updateOrderShippingAddress(credentials: WooCredentials, externalId: string, address: Record<string, unknown>) {
+    await this.request(credentials, `orders/${externalId}`, { method: 'PUT', body: JSON.stringify({ shipping: address }) });
+  }
+
+  async createConfirmedChatOrder(credentials: WooCredentials, input: {
+    productId: string; variationId?: string | null; quantity: number; phone: string;
+    customerName: string; address1: string; city: string; postalCode?: string | null; country: string;
+  }): Promise<{ orderId: string; orderName: string | null }> {
+    const [firstName, ...lastParts] = input.customerName.trim().split(/\s+/);
+    const address = {
+      first_name: firstName || input.customerName,
+      last_name: lastParts.join(' '),
+      address_1: input.address1,
+      city: input.city,
+      postcode: input.postalCode || '',
+      country: input.country,
+      phone: input.phone,
+    };
+    const payload = await this.request(credentials, 'orders', {
+      method: 'POST',
+      body: JSON.stringify({
+        status: 'processing',
+        billing: address,
+        shipping: address,
+        line_items: [{
+          product_id: Number(input.productId),
+          quantity: input.quantity,
+          ...(input.variationId ? { variation_id: Number(input.variationId) } : {}),
+        }],
+        meta_data: [{ key: '_openwa_source', value: 'whatsapp-confirmed' }],
+      }),
+    });
+    if (!payload?.id) throw new BadGatewayException('WooCommerce did not return the created order.');
+    return { orderId: String(payload.id), orderName: payload.number ? `#${payload.number}` : String(payload.id) };
+  }
 
   verifyWebhook(rawBody: Buffer, signature: string | undefined, secret: string): boolean {
     if (!signature) return false;

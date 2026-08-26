@@ -14,6 +14,7 @@ import { OrderAiConversation } from '../../stores/entities/order-ai-conversation
 import { CommerceAiAgentService } from './commerce-ai-agent.service';
 import { StoreOrderCart } from '../../stores/entities/store-order-cart.entity';
 import { WooCommerceService, WooCredentials } from '../../woocommerce/services/woocommerce.service';
+import { CommerceToolService } from './commerce-tool.service';
 
 interface IncomingReply {
   body?: string;
@@ -35,6 +36,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
     private readonly messages: MessageService,
     private readonly encryption: CredentialEncryptionService,
     private readonly ai: CommerceAiAgentService,
+    private readonly tools: CommerceToolService,
     @InjectRepository(Store, 'data') private readonly stores: Repository<Store>,
     @InjectRepository(Order, 'data') private readonly orders: Repository<Order>,
     @InjectRepository(Product, 'data') private readonly products: Repository<Product>,
@@ -78,8 +80,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
     // "order" started a cart before this distinction was made, trapping all later messages in the
     // numbered product menu.
     if (
-      store.provider === Platform.SHOPIFY
-      && !this.isGeneralOrderQuery(reply)
+      !this.isGeneralOrderQuery(reply)
       && await this.handleNewOrder(sessionId, store, message, reply, sender, catalog, customerOrders)
     ) return;
     const pending = customerOrders.filter(candidate => candidate.confirmationStatus === 'pending');
@@ -187,6 +188,15 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
     const chatId = message.chatId ?? message.from;
     if (!chatId) return;
     if (conversation.status === 'escalated') return;
+    if (await this.handlePendingOrderEdit(sessionId, chatId, store, order, conversation, customerText, turns)) return;
+    if (this.hasAddressChangeIntent(customerText)) {
+      conversation.pendingAction = 'collect_shipping_address';
+      conversation.pendingData = null;
+      conversation.turns = [...turns, { role: 'assistant', text: 'Envoyez la nouvelle livraison sous cette forme : Nom complet | Adresse | Ville | Code postal (optionnel) | Pays', at: new Date().toISOString() }];
+      await this.conversations.save(conversation);
+      await this.messages.sendText(sessionId, { chatId, text: 'Bien sûr. Envoyez la nouvelle livraison sous cette forme :\n*Nom complet | Adresse | Ville | Code postal (optionnel) | Pays*\n\nExemple : Amine Alaoui | 15 rue Hassan II | Rabat | 10000 | Morocco' });
+      return;
+    }
     const timeoutHours = this.ai.timeoutHours();
     if (conversation.createdAt && Date.now() - new Date(conversation.updatedAt).getTime() > timeoutHours * 60 * 60 * 1000) {
       conversation.status = 'expired';
@@ -263,7 +273,8 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
     const chatId = message.chatId ?? message.from;
     if (!chatId) return;
     try {
-      const products = this.relevantProducts(await this.storeProducts(store.id), text);
+      const catalog = await this.storeProducts(store.id);
+      const products = this.tools.searchProducts(text, catalog, store.currency, 8).products;
       const history = await this.messages.getMessages(sessionId, { chatId, limit: 10 });
       const turns = history.messages
         .filter(item => item.type === 'text' && Boolean(item.body?.trim()))
@@ -346,7 +357,9 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
         await this.messages.sendText(sessionId, { chatId, text: `Choisissez une option pour ${product.title}. Répondez avec le numéro :\n${variants.slice(0, 10).map((item, index) => `${index + 1}. ${item.title} — ${item.price ?? product.price} ${store.currency}`).join('\n')}` });
       } else {
         const variant = variants[0];
-        cart.variantId = String(variant?.admin_graphql_api_id ?? (variant?.id ? `gid://shopify/ProductVariant/${variant.id}` : ''));
+        cart.variantId = store.provider === Platform.WOOCOMMERCE
+          ? String(variant?.id ?? '')
+          : String(variant?.admin_graphql_api_id ?? (variant?.id ? `gid://shopify/ProductVariant/${variant.id}` : ''));
         cart.variantTitle = String(variant?.title ?? 'Default Title'); cart.step = 'quantity'; await this.carts.save(cart);
         await this.messages.sendText(sessionId, { chatId, text: `Combien d’unités de ${product.title} souhaitez-vous ?` });
       }
@@ -359,7 +372,9 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       const selectedNumber = this.choiceNumber(text, variants.length);
       const variant = selectedNumber ? variants[selectedNumber - 1] : variants.find(item => text.toLowerCase().includes(String(item.title ?? '').toLowerCase()));
       if (!variant) { await this.messages.sendText(sessionId, { chatId, text: `Je n’ai pas reconnu l’option. Répondez avec un numéro :\n${variants.slice(0, 10).map((item, index) => `${index + 1}. ${item.title}`).join('\n')}` }); return true; }
-      cart.variantId = String(variant.admin_graphql_api_id ?? `gid://shopify/ProductVariant/${variant.id}`); cart.variantTitle = String(variant.title); cart.step = 'quantity'; await this.carts.save(cart);
+      cart.variantId = store.provider === Platform.WOOCOMMERCE
+        ? String(variant.id ?? '')
+        : String(variant.admin_graphql_api_id ?? `gid://shopify/ProductVariant/${variant.id}`); cart.variantTitle = String(variant.title); cart.step = 'quantity'; await this.carts.save(cart);
       await this.messages.sendText(sessionId, { chatId, text: 'Quelle quantité souhaitez-vous ?' }); return true;
     }
     if (cart.step === 'quantity') {
@@ -386,14 +401,26 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       if (!/\b(confirm|confirmer|confirme|nconfirm|yes|oui|wakha)\w*\b|تأكيد|أؤكد|اؤكد|نعم/i.test(text)) { await this.messages.sendText(sessionId, { chatId, text: 'Répondez CONFIRMER pour créer la commande, ou ANNULER pour arrêter.' }); return true; }
       const settings = this.encryption.revealSettings(store.settings ?? {});
       try {
-        const result = await this.shopify.createConfirmedChatOrder(String(settings.shopDomain ?? ''), String(settings.accessToken ?? ''), {
-          variantId: String(cart.variantId), quantity: cart.quantity, phone: `+${phone}`, customerName: String(cart.customerName), address1: String(cart.address1), city: String(cart.city), postalCode: cart.postalCode, country: cart.country,
-        });
+        const result = store.provider === Platform.WOOCOMMERCE
+          ? await this.woocommerce.createConfirmedChatOrder({
+              siteUrl: String(settings.siteUrl ?? ''), consumerKey: String(settings.consumerKey ?? ''),
+              consumerSecret: String(settings.consumerSecret ?? ''), webhookSecret: String(settings.webhookSecret ?? ''),
+              webhookBaseUrl: String(settings.webhookBaseUrl ?? ''),
+            }, {
+              productId: product.shopifyProductId, variationId: cart.variantId, quantity: cart.quantity,
+              phone: `+${phone}`, customerName: String(cart.customerName), address1: String(cart.address1),
+              city: String(cart.city), postalCode: cart.postalCode, country: cart.country,
+            })
+          : await this.shopify.createConfirmedChatOrder(String(settings.shopDomain ?? ''), String(settings.accessToken ?? ''), {
+              variantId: String(cart.variantId), quantity: cart.quantity, phone: `+${phone}`,
+              customerName: String(cart.customerName), address1: String(cart.address1), city: String(cart.city),
+              postalCode: cart.postalCode, country: cart.country,
+            });
         await this.carts.delete(cart.id);
         await this.messages.sendText(sessionId, { chatId, text: `Votre commande ${result.orderName ?? ''} a été créée et confirmée avec succès ✅` });
       } catch (error) {
         this.logger.error(`Chat order creation failed (store=${store.id}, customer=${phone.slice(-4)}): ${error instanceof Error ? error.message : 'unknown error'}`);
-        await this.messages.sendText(sessionId, { chatId, text: 'Je n’ai pas pu créer la commande dans Shopify pour le moment. Vos informations sont conservées; répondez CONFIRMER pour réessayer ou ANNULER.' });
+        await this.messages.sendText(sessionId, { chatId, text: `Je n’ai pas pu créer la commande dans ${store.provider} pour le moment. Vos informations sont conservées; répondez CONFIRMER pour réessayer ou ANNULER.` });
       }
       return true;
     }
@@ -404,6 +431,78 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
     // Require a clear creation/buying verb. A bare "order/commande/طلب" is commonly an existing
     // order enquiry and must remain conversational.
     return /\b(?:buy|purchase|commander|acheter|achete|nchri|nakhod|nakhdo|nakhdoh|ncommandi)\b|\b(?:i want|i need|want to|would like to)\s+(?:buy|purchase|order)\b|\b(?:je veux|je voudrais)\s+(?:commander|acheter)\b|\bbghit\s+(?:nchri|nakhod|nakhdo|nakhdoh|ncommandi)\b|(?:بغيت|أريد)\s+(?:نشتري|نطلب|شراء|ناخد|ناخدو|ناخذه)/i.test(text);
+  }
+
+  private hasAddressChangeIntent(text: string): boolean {
+    return /(?:change|modifier|corriger|update).{0,25}(?:adresse|address|livraison)|(?:adresse|address).{0,25}(?:change|modifier|corriger)|بدل.{0,15}العنوان|تغيير.{0,15}العنوان|bdel.{0,15}(?:adresse|address)/i.test(text);
+  }
+
+  private async handlePendingOrderEdit(
+    sessionId: string,
+    chatId: string,
+    store: Store,
+    order: Order,
+    conversation: OrderAiConversation,
+    text: string,
+    turns: Array<{ role: 'customer' | 'assistant'; text: string; at: string }>,
+  ): Promise<boolean> {
+    if (!conversation.pendingAction) return false;
+    const cancel = /^(?:annuler|cancel|stop|la|non|لا|إلغاء)$/i.test(text.trim());
+    if (cancel) {
+      conversation.pendingAction = null; conversation.pendingData = null;
+      conversation.turns = [...turns, { role: 'assistant', text: 'La modification de livraison a été annulée.', at: new Date().toISOString() }];
+      await this.conversations.save(conversation);
+      await this.messages.sendText(sessionId, { chatId, text: 'D’accord, la modification de livraison a été annulée.' });
+      return true;
+    }
+    if (conversation.pendingAction === 'collect_shipping_address') {
+      const parts = text.split('|').map(value => value.trim());
+      if (parts.length < 3 || !parts[0] || !parts[1] || !parts[2]) {
+        await this.messages.sendText(sessionId, { chatId, text: 'Je n’ai pas pu lire toutes les informations. Utilisez :\n*Nom complet | Adresse | Ville | Code postal (optionnel) | Pays*' });
+        return true;
+      }
+      conversation.pendingData = {
+        customerName: parts[0], address1: parts[1], city: parts[2],
+        postalCode: parts[3] || undefined, country: parts[4] || String(order.shippingAddress?.country ?? 'Morocco'),
+        phone: order.phone ?? undefined,
+      };
+      conversation.pendingAction = 'confirm_shipping_address';
+      const preview = `Nouvelle livraison pour ${order.orderNumber ?? order.shopifyOrderId} :\n• ${parts[0]}\n• ${parts[1]}, ${parts[2]}${parts[3] ? `, ${parts[3]}` : ''}\n• ${parts[4] || order.shippingAddress?.country || 'Morocco'}\n\nRépondez *CONFIRMER* pour appliquer ou *ANNULER*.`;
+      conversation.turns = [...turns, { role: 'assistant', text: preview, at: new Date().toISOString() }];
+      await this.conversations.save(conversation);
+      await this.messages.sendText(sessionId, { chatId, text: preview });
+      return true;
+    }
+    if (conversation.pendingAction === 'confirm_shipping_address') {
+      if (!/^(?:confirmer|confirm|oui|yes|wakha|نعم|تأكيد)$/i.test(text.trim())) {
+        await this.messages.sendText(sessionId, { chatId, text: 'Répondez CONFIRMER pour appliquer la nouvelle adresse, ou ANNULER.' });
+        return true;
+      }
+      const data = conversation.pendingData;
+      if (!data) { conversation.pendingAction = null; await this.conversations.save(conversation); return false; }
+      const settings = this.encryption.revealSettings(store.settings ?? {});
+      if (store.provider === Platform.WOOCOMMERCE) {
+        await this.woocommerce.updateOrderShippingAddress({
+          siteUrl: String(settings.siteUrl ?? ''), consumerKey: String(settings.consumerKey ?? ''), consumerSecret: String(settings.consumerSecret ?? ''),
+        }, order.shopifyOrderId, {
+          first_name: data.customerName.split(/\s+/)[0], last_name: data.customerName.split(/\s+/).slice(1).join(' '),
+          address_1: data.address1, city: data.city, postcode: data.postalCode ?? '', country: data.country,
+        });
+      } else {
+        await this.shopify.updateOrderShippingAddress(String(settings.shopDomain ?? ''), String(settings.accessToken ?? ''), order.shopifyOrderId, {
+          name: data.customerName, address1: data.address1, city: data.city, zip: data.postalCode, country: data.country, phone: data.phone,
+        });
+      }
+      order.customerName = data.customerName;
+      order.shippingAddress = { ...(order.shippingAddress ?? {}), name: data.customerName, address1: data.address1, city: data.city, zip: data.postalCode, country: data.country };
+      await this.orders.save(order);
+      conversation.pendingAction = null; conversation.pendingData = null;
+      conversation.turns = [...turns, { role: 'assistant', text: 'L’adresse de livraison a été mise à jour avec succès ✅', at: new Date().toISOString() }];
+      await this.conversations.save(conversation);
+      await this.messages.sendText(sessionId, { chatId, text: `L’adresse de livraison de la commande ${order.orderNumber ?? order.shopifyOrderId} a été mise à jour avec succès ✅` });
+      return true;
+    }
+    return false;
   }
 
   private hasReferentialPurchaseIntent(text: string): boolean {

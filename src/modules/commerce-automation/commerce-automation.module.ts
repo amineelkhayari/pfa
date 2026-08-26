@@ -14,6 +14,7 @@ import { StoreModule } from '../stores/store.module';
 import { AdminAiTestController, UserAiTestController } from './controllers/commerce-ai-test.controller';
 import { CommerceAiAgentService } from './services/commerce-ai-agent.service';
 import { CommerceConversationService } from './services/commerce-conversation.service';
+import { CommerceToolService } from './services/commerce-tool.service';
 
 /** Provider-neutral customer conversation and order automation. */
 @Module({
@@ -26,7 +27,7 @@ import { CommerceConversationService } from './services/commerce-conversation.se
     TypeOrmModule.forFeature([Store, Product, Order, OrderAiConversation, StoreOrderCart], 'data'),
   ],
   controllers: [AdminAiTestController, UserAiTestController],
-  providers: [CommerceConversationService, CommerceAiAgentService, CredentialEncryptionService],
-  exports: [CommerceConversationService, CommerceAiAgentService],
+  providers: [CommerceConversationService, CommerceAiAgentService, CommerceToolService, CredentialEncryptionService],
+  exports: [CommerceConversationService, CommerceAiAgentService, CommerceToolService],
 })
 export class CommerceAutomationModule {}

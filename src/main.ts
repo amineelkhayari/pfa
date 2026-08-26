@@ -32,8 +32,18 @@ import { AuthService } from './modules/auth/auth.service';
 import { AuditService } from './modules/audit/audit.service';
 import { Request, Response, NextFunction, json, urlencoded } from 'express';
 import { randomBytes } from 'crypto';
+import { setDefaultResultOrder } from 'dns';
 import { readFileSync } from 'fs';
+import { setDefaultAutoSelectFamily } from 'net';
 import { extname, join } from 'path';
+
+// Node's dual-stack connection racing can time out on Windows even when the
+// PostgreSQL host's IPv4 endpoint is reachable (notably with db.prisma.io).
+// Prefer the working IPv4 route before TypeORM creates its connection pool.
+if (process.platform === 'win32' && process.env.DATABASE_TYPE === 'postgres') {
+  setDefaultResultOrder('ipv4first');
+  setDefaultAutoSelectFamily(false);
+}
 
 // The created app, exposed at module scope so the fatal handler below can run a best-effort teardown
 // (engine sessions, Redis/pg) when bootstrap fails AFTER NestFactory.create succeeded — notably a

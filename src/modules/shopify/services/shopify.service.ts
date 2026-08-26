@@ -83,6 +83,18 @@ export class ShopifyService {
     return error instanceof Error ? error.message : fallback;
   }
 
+  async updateOrderShippingAddress(shopDomain: string, accessToken: string, orderId: string, address: Record<string, unknown>): Promise<void> {
+    try {
+      await firstValueFrom(this.http.put(
+        `${this.getBaseUrl(shopDomain)}/orders/${encodeURIComponent(orderId)}.json`,
+        { order: { id: orderId, shipping_address: address } },
+        { headers: this.getHeaders(accessToken) },
+      ));
+    } catch (error) {
+      throw new BadRequestException(this.errorDetails(error, 'Unable to update the Shopify delivery address.'));
+    }
+  }
+
   async createConfirmedChatOrder(shopDomain: string, accessToken: string, input: {
     variantId: string; quantity: number; phone: string; customerName: string;
     address1: string; city: string; postalCode?: string | null; country: string;
