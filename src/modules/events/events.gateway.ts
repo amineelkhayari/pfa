@@ -244,8 +244,9 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
     // Accept the key only via Socket.IO's `auth` field or the header — never the query string, which
     // leaks the credential into proxy/access logs. (The deprecated `?apiKey=` fallback was removed.)
-    const handshakeAuth = client.handshake.auth as { apiKey?: string } | undefined;
-    const apiKey = handshakeAuth?.apiKey || (client.handshake.headers['x-api-key'] as string);
+    const handshakeAuth = client.handshake.auth as { apiKey?: string; accessToken?: string } | undefined;
+    const bearer = (client.handshake.headers['authorization'] as string | undefined)?.replace(/^Bearer\s+/i, '');
+    const apiKey = handshakeAuth?.accessToken || bearer || handshakeAuth?.apiKey || (client.handshake.headers['x-api-key'] as string);
 
     if (!apiKey) {
       this.logger.warn(`Client ${client.id} rejected: No API key provided`);
@@ -426,10 +427,10 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   }
 
   private async validateSocketCredential(raw: string, clientIp: string): Promise<ApiKey> {
-    if (!raw.startsWith('owa_usr_')) return this.authService.validateApiKey(raw, clientIp);
+    if (!raw.startsWith('eyJ')) return this.authService.validateApiKey(raw, clientIp);
     if (!this.userAuthService || !this.sessionRepository) throw new Error('User WebSocket authentication unavailable');
     const user = await this.userAuthService.validateToken(raw);
-    if (user.role === ApiKeyRole.ADMIN) throw new ForbiddenException('Administrators cannot access customer WebSocket events');
+    if (user.role === ApiKeyRole.ADMIN) throw new ForbiddenException('Administrators cannot access customer events');
     const sessions = await this.sessionRepository.find({ select: { id: true }, where: { userId: user.id } });
     return {
       id: `user:${user.id}`, name: user.username, role: user.role,

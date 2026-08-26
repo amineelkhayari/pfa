@@ -15,8 +15,7 @@ interface LoginProps {
 
 export function Login({ onLogin, initialMode = 'signin', onBack }: LoginProps) {
   const { t, i18n } = useTranslation();
-  const [apiKey, setApiKey] = useState('');
-  const [mode, setMode] = useState<'signin' | 'signup' | 'apiKey'>(initialMode);
+  const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -32,11 +31,7 @@ export function Login({ onLogin, initialMode = 'signin', onBack }: LoginProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (mode === 'apiKey' && !apiKey.trim()) {
-      setError(t('login.apiKeyRequired'));
-      return;
-    }
-    if (mode !== 'apiKey' && (!username.trim() || !password)) {
+    if (!username.trim() || !password) {
       setError('Username and password are required.');
       return;
     }
@@ -44,28 +39,17 @@ export function Login({ onLogin, initialMode = 'signin', onBack }: LoginProps) {
     setError('');
 
     try {
-      const endpoint = mode === 'apiKey' ? 'validate' : mode;
-      const response = await fetch(`${API_BASE_URL}/auth/${endpoint}`, {
+      const response = await fetch(`${API_BASE_URL}/auth/${mode}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(mode === 'apiKey' ? { 'X-API-Key': apiKey } : {}),
-        },
-        ...(mode !== 'apiKey'
-          ? {
-              body: JSON.stringify(
-                mode === 'signin' ? { identifier: username, password } : { name, email, username, password },
-              ),
-            }
-          : {}),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          mode === 'signin' ? { identifier: username, password } : { name, email, username, password },
+        ),
       });
 
       if (response.ok) {
-        if (mode === 'apiKey') onLogin(apiKey);
-        else {
-          const data = await response.json();
-          onLogin(data.token);
-        }
+        const data = await response.json();
+        onLogin(data.accessToken);
       } else {
         const errorData = await response.json().catch(() => ({}));
         setError(errorData.message || t('login.invalidKey'));
@@ -115,9 +99,6 @@ export function Login({ onLogin, initialMode = 'signin', onBack }: LoginProps) {
             <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>
               Sign up
             </button>
-            <button type="button" className={mode === 'apiKey' ? 'active' : ''} onClick={() => setMode('apiKey')}>
-              API key
-            </button>
           </div>
           {mode === 'signup' && (
             <>
@@ -135,8 +116,7 @@ export function Login({ onLogin, initialMode = 'signin', onBack }: LoginProps) {
               </div>
             </>
           )}
-          {mode !== 'apiKey' && (
-            <>
+          <>
               <div className="input-group">
                 <label htmlFor="username">Username or email</label>
                 <div className="input-wrapper">
@@ -159,42 +139,15 @@ export function Login({ onLogin, initialMode = 'signin', onBack }: LoginProps) {
                   </button>
                 </div>
               </div>
-            </>
-          )}
-          {mode === 'apiKey' && (
-            <div className="input-group">
-              <label htmlFor="apiKey">{t('login.apiKey')}</label>
-              <div className="input-wrapper">
-                <input
-                  id="apiKey"
-                  type={showKey ? 'text' : 'password'}
-                  value={apiKey}
-                  onChange={e => setApiKey(e.target.value)}
-                  placeholder={t('login.apiKeyPlaceholder')}
-                  className={error ? 'error' : ''}
-                />
-                <button
-                  type="button"
-                  className="toggle-visibility"
-                  onClick={() => setShowKey(!showKey)}
-                  aria-label={showKey ? t('common.hideApiKey') : t('common.showApiKey')}
-                >
-                  {showKey ? <EyeOff size={20} /> : <Eye size={20} />}
-                </button>
-              </div>
-              {error && <span className="error-message">{error}</span>}
-            </div>
-          )}
-          {mode !== 'apiKey' && error && <span className="error-message auth-error">{error}</span>}
+          </>
+          {error && <span className="error-message auth-error">{error}</span>}
 
           <button type="submit" className="connect-btn" disabled={isLoading}>
             {isLoading
               ? 'Please wait…'
               : mode === 'signup'
                 ? 'Create free account'
-                : mode === 'signin'
-                  ? 'Sign in'
-                  : t('login.connect')}
+                : 'Sign in'}
           </button>
         </form>
 

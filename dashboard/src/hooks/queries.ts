@@ -45,7 +45,7 @@ export const queryKeys = {
 };
 
 export function useAccountUsageQuery() {
-  const isUserLogin = sessionStorage.getItem('openwa_api_key')?.startsWith('owa_usr_') ?? false;
+  const isUserLogin = Boolean(sessionStorage.getItem('openwa_access_token'));
   return useQuery({
     queryKey: queryKeys.accountUsage,
     queryFn: accountApi.usage,

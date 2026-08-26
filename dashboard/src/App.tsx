@@ -46,7 +46,7 @@ const queryClient = new QueryClient({
 
 function AppContent() {
   // Initialize from sessionStorage to avoid setState in effect
-  const savedKey = sessionStorage.getItem('openwa_api_key');
+  const savedKey = sessionStorage.getItem('openwa_access_token');
   const [isAuthenticated, setIsAuthenticated] = useState(!!savedKey);
   const [publicView, setPublicView] = useState<'landing' | 'signin' | 'signup'>('landing');
   const [, setApiKey] = useState(savedKey || '');
@@ -54,13 +54,13 @@ function AppContent() {
 
   const handleLogin = async (key: string) => {
     setApiKey(key);
-    sessionStorage.setItem('openwa_api_key', key);
+    sessionStorage.setItem('openwa_access_token', key);
 
     // Fetch the role from API
     try {
       const response = await fetch(`${API_BASE_URL}/auth/validate`, {
         method: 'POST',
-        headers: { 'X-API-Key': key },
+        headers: { Authorization: `Bearer ${key}` },
       });
       if (response.ok) {
         const data = await response.json();
@@ -78,7 +78,7 @@ function AppContent() {
     setApiKey('');
     setIsAuthenticated(false);
     setRole(null);
-    sessionStorage.removeItem('openwa_api_key');
+    sessionStorage.removeItem('openwa_access_token');
     // Wipe the React Query cache too: it is keyed by resource, not actor, so without a full
     // clear a logout → login in the same tab with a different key/scope shows the previous
     // actor's sessions/messages/apiKeys/audit rows.
@@ -91,7 +91,7 @@ function AppContent() {
 
     fetch(`${API_BASE_URL}/auth/validate`, {
       method: 'POST',
-      headers: { 'X-API-Key': savedKey },
+      headers: { Authorization: `Bearer ${savedKey}` },
     })
       .then(async res => {
         const decision = resolveStartupValidation(res.status, await res.json().catch(() => null));
@@ -132,16 +132,16 @@ function AppContent() {
           <Routes>
             <Route path="/" element={<Layout onLogout={handleLogout} userRole={role} />}>
               <Route index element={role === 'admin' ? <AdminDashboard /> : <Dashboard />} />
-              <Route path="sessions" element={<Sessions />} />
-              <Route path="stores" element={<Stores />} />
-              <Route path="chats" element={<Chats />} />
-              <Route path="contacts" element={<Contacts />} />
-              <Route path="webhooks" element={<Webhooks />} />
-              <Route path="templates" element={<Templates />} />
+              {role !== 'admin' && <Route path="sessions" element={<Sessions />} />}
+              {role !== 'admin' && <Route path="stores" element={<Stores />} />}
+              {role !== 'admin' && <Route path="chats" element={<Chats />} />}
+              {role !== 'admin' && <Route path="contacts" element={<Contacts />} />}
+              {role !== 'admin' && <Route path="webhooks" element={<Webhooks />} />}
+              {role !== 'admin' && <Route path="templates" element={<Templates />} />}
               {role !== 'admin' && <Route path="campaigns" element={<Campaigns />} />}
               {role === 'admin' && <Route path="api-keys" element={<ApiKeys />} />}
               <Route path="logs" element={<Logs />} />
-              <Route path="message-tester" element={<MessageTester />} />
+              {role !== 'admin' && <Route path="message-tester" element={<MessageTester />} />}
               <Route path="account" element={<Account />} />
               {role !== 'admin' && <Route path="ai-test" element={<AiTestChat />} />}
               {role === 'admin' && <Route path="admin/users" element={<AdminUsers />} />}

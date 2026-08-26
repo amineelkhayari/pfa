@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException, 
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
+import { JwtPayload, sign, verify } from 'jsonwebtoken';
 import { Repository } from 'typeorm';
 import { ApiKeyRole } from './entities/api-key.entity';
 import { UserAccount, UserPlan } from './entities/user-account.entity';
@@ -25,8 +26,20 @@ export class UserAuthService implements OnModuleInit {
     const username = (process.env.ADMIN_USERNAME || 'admin').trim().toLowerCase();
     const existing = await this.users.findOneBy({ username });
     if (existing) {
-      if (existing.role === ApiKeyRole.ADMIN && existing.plan !== null) {
+      let changed = false;
+      if (existing.role !== ApiKeyRole.ADMIN) {
+        existing.role = ApiKeyRole.ADMIN;
+        changed = true;
+      }
+      if (existing.plan !== null) {
         existing.plan = null;
+        changed = true;
+      }
+      if (existing.status !== 'active') {
+        existing.status = 'active';
+        changed = true;
+      }
+      if (changed) {
         await this.users.save(existing);
       }
       return;
@@ -81,15 +94,22 @@ export class UserAuthService implements OnModuleInit {
   }
 
   async validateToken(rawToken: string): Promise<UserAccount> {
-    const login = await this.sessions.findOneBy({ tokenHash: this.hashToken(rawToken) });
+    const claims = this.verifyJwt(rawToken);
+    const login = await this.sessions.findOneBy({ tokenHash: this.hashToken(claims.jti!) });
     if (!login || login.expiresAt <= new Date()) throw new UnauthorizedException('Session expired or invalid.');
+    if (login.userId !== claims.sub) throw new UnauthorizedException('Session expired or invalid.');
     const user = await this.users.findOneBy({ id: login.userId });
     if (!user || user.status !== 'active') throw new UnauthorizedException('Account is not active.');
     return user;
   }
 
   async logout(rawToken: string): Promise<void> {
-    await this.sessions.delete({ tokenHash: this.hashToken(rawToken) });
+    try {
+      const claims = this.verifyJwt(rawToken, true);
+      if (claims.jti) await this.sessions.delete({ tokenHash: this.hashToken(claims.jti) });
+    } catch {
+      // Logout is intentionally idempotent, including for an expired/invalid token.
+    }
   }
 
   async updateProfile(userId: string, dto: UpdateUserProfileDto): Promise<UserAccount> {
@@ -146,10 +166,52 @@ export class UserAuthService implements OnModuleInit {
   }
 
   private async issueSession(user: UserAccount) {
-    const token = `owa_usr_${randomBytes(32).toString('hex')}`;
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    await this.sessions.save(this.sessions.create({ tokenHash: this.hashToken(token), userId: user.id, expiresAt }));
-    return { token, expiresAt, user: this.publicView(user) };
+    const jti = randomBytes(24).toString('hex');
+    const expiresInSeconds = this.jwtLifetimeSeconds();
+    const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
+    const accessToken = sign(
+      { role: user.role, username: user.username },
+      this.jwtSecret(),
+      {
+        algorithm: 'HS256',
+        subject: user.id,
+        jwtid: jti,
+        issuer: 'openwa',
+        audience: 'openwa-dashboard',
+        expiresIn: expiresInSeconds,
+      },
+    );
+    await this.sessions.save(this.sessions.create({ tokenHash: this.hashToken(jti), userId: user.id, expiresAt }));
+    return { accessToken, token: accessToken, tokenType: 'Bearer', expiresAt, user: this.publicView(user) };
+  }
+
+  private verifyJwt(rawToken: string, ignoreExpiration = false): JwtPayload {
+    try {
+      const payload = verify(rawToken, this.jwtSecret(), {
+        algorithms: ['HS256'],
+        issuer: 'openwa',
+        audience: 'openwa-dashboard',
+        ignoreExpiration,
+      });
+      if (typeof payload === 'string' || !payload.sub || !payload.jti) throw new Error('Missing JWT claims');
+      return payload;
+    } catch {
+      throw new UnauthorizedException('Session expired or invalid.');
+    }
+  }
+
+  private jwtSecret(): string {
+    const configured = process.env.JWT_SECRET?.trim();
+    if (configured) return configured;
+    // Stable compatibility fallback for existing installations. Production deployments should set
+    // a dedicated JWT_SECRET (at least 32 random bytes) so account tokens are independent of DB/API secrets.
+    const seed = `${process.env.API_KEY_PEPPER || ''}:${process.env.DATABASE_PASSWORD || ''}:${process.env.ADMIN_PASSWORD || 'admin'}`;
+    return createHash('sha256').update(`openwa-jwt:${seed}`).digest('hex');
+  }
+
+  private jwtLifetimeSeconds(): number {
+    const days = Number.parseInt(process.env.JWT_EXPIRES_DAYS || '30', 10);
+    return (Number.isFinite(days) && days > 0 ? days : 30) * 24 * 60 * 60;
   }
 
   private async hashPassword(password: string): Promise<string> {

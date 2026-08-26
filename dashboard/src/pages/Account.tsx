@@ -6,7 +6,7 @@ import './Account.css';
 
 export function Account() {
   const client = useQueryClient();
-  const isUserLogin = sessionStorage.getItem('openwa_api_key')?.startsWith('owa_usr_') ?? false;
+  const isUserLogin = Boolean(sessionStorage.getItem('openwa_access_token'));
   const { data: user, isLoading } = useQuery({ queryKey: ['account', 'me'], queryFn: accountApi.me, enabled: isUserLogin });
   const { data: subscriptions = [] } = useQuery({ queryKey: ['billing', 'status'], queryFn: billingApi.status, enabled: isUserLogin });
   const [name, setName] = useState('');

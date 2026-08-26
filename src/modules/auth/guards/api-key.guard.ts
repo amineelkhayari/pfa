@@ -57,10 +57,10 @@ export class ApiKeyGuard implements CanActivate {
   }
 
   private async authorize(request: Request, context: ExecutionContext): Promise<boolean> {
-    const apiKeyHeader = this.extractApiKey(request);
+    const credential = this.extractCredential(request);
 
-    if (!apiKeyHeader) {
-      throw new UnauthorizedException('API key is required');
+    if (!credential) {
+      throw new UnauthorizedException('Bearer access token or API key is required');
     }
 
     const requiredRole = this.reflector.getAllAndOverride<ApiKeyRole>(REQUIRED_ROLE_KEY, [
@@ -68,10 +68,10 @@ export class ApiKeyGuard implements CanActivate {
       context.getClass(),
     ]);
 
-    if (apiKeyHeader.startsWith('owa_usr_')) {
-      const user = await this.userAuthService.validateToken(apiKeyHeader);
+    if (credential.kind === 'jwt') {
+      const user = await this.userAuthService.validateToken(credential.value);
       if (user.role === ApiKeyRole.ADMIN && !this.isAdminManagementPath(request.path)) {
-        throw new ForbiddenException('Administrator accounts can only access management, billing settings, logs, and totals');
+        throw new ForbiddenException('Administrator accounts can only access administration resources');
       }
       if (requiredRole && !this.hasUserPermission(user, requiredRole)) {
         throw new ForbiddenException(`Insufficient permissions. Required: ${requiredRole}`);
@@ -107,7 +107,7 @@ export class ApiKeyGuard implements CanActivate {
     const clientIp = this.getClientIp(request);
 
     // Validate API key
-    const apiKey = await this.authService.validateApiKey(apiKeyHeader, clientIp, sessionId);
+    const apiKey = await this.authService.validateApiKey(credential.value, clientIp, sessionId);
 
     if (requiredRole && !this.authService.hasPermission(apiKey, requiredRole)) {
       throw new ForbiddenException(`Insufficient permissions. Required: ${requiredRole}`);
@@ -151,21 +151,33 @@ export class ApiKeyGuard implements CanActivate {
 
   private isAdminManagementPath(path: string): boolean {
     const normalized = path.replace(/^\/api(?=\/|$)/, '');
-    return ['/admin', '/audit', '/stats', '/settings', '/health', '/metrics'].some(
-      prefix => normalized === prefix || normalized.startsWith(`${prefix}/`),
-    ) || ['/auth/me', '/auth/logout', '/auth/validate'].includes(normalized);
+    const managementPrefixes = [
+      '/admin',
+      '/audit',
+      '/stats',
+      '/settings',
+      '/health',
+      '/metrics',
+      '/infra',
+      '/plugins',
+      '/auth/api-keys',
+    ];
+    return (
+      managementPrefixes.some(prefix => normalized === prefix || normalized.startsWith(`${prefix}/`)) ||
+      ['/auth/me', '/auth/logout', '/auth/validate'].includes(normalized)
+    );
   }
 
-  private extractApiKey(request: Request): string | undefined {
-    // Support both X-API-Key header and Authorization Bearer
-    const xApiKey = request.headers['x-api-key'] as string;
-    if (xApiKey) return xApiKey;
-
+  private extractCredential(request: Request): { kind: 'jwt' | 'apiKey'; value: string } | undefined {
+    // Dashboard/account authentication is always a Bearer JWT. X-API-Key remains available for
+    // integrations and server-to-server clients, but is no longer a dashboard login mechanism.
     const authHeader = request.headers['authorization'];
     if (authHeader?.startsWith('Bearer ')) {
-      return authHeader.substring(7);
+      const value = authHeader.substring(7).trim();
+      if (value) return { kind: 'jwt', value };
     }
-
+    const xApiKey = request.headers['x-api-key'] as string;
+    if (xApiKey) return { kind: 'apiKey', value: xApiKey };
     return undefined;
   }
 

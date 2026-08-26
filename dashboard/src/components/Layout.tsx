@@ -70,7 +70,17 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
   const ThemeIcon = themeIcons[theme];
   const themeLabel = t(`theme.${theme}`);
 
-  const adminPaths = new Set(['/', '/admin/users', '/admin/payments', '/admin/ai', '/logs']);
+  const adminPaths = new Set([
+    '/',
+    '/api-keys',
+    '/infrastructure',
+    '/plugins',
+    '/logs',
+    '/account',
+    '/admin/users',
+    '/admin/payments',
+    '/admin/ai',
+  ]);
   const navItems = allNavItems.filter(item => (userRole === 'admin' ? adminPaths.has(item.to) : !item.adminOnly));
 
   const [isCollapsed, setIsCollapsed] = useState(false);

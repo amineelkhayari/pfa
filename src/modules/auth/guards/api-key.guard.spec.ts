@@ -6,6 +6,8 @@ import { AuthService } from '../auth.service';
 import { ApiKey, ApiKeyRole } from '../entities/api-key.entity';
 import { AuditService } from '../../audit/audit.service';
 import { AuditAction } from '../../audit/entities/audit-log.entity';
+import { UserAuthService } from '../user-auth.service';
+import { ApiKeyRole as UserRole } from '../entities/api-key.entity';
 
 function createMockApiKey(overrides: Partial<ApiKey> = {}): ApiKey {
   return {
@@ -53,6 +55,8 @@ describe('ApiKeyGuard', () => {
   let reflector: jest.Mocked<Reflector>;
   let configService: jest.Mocked<Partial<ConfigService>>;
   let auditService: jest.Mocked<Partial<AuditService>>;
+  let userAuthService: jest.Mocked<Partial<UserAuthService>>;
+  let sessionRepository: { existsBy: jest.Mock };
 
   function buildGuard(trustedProxies: string[] = []): ApiKeyGuard {
     configService = {
@@ -63,6 +67,8 @@ describe('ApiKeyGuard', () => {
       reflector,
       configService as ConfigService,
       auditService as AuditService,
+      userAuthService as UserAuthService,
+      sessionRepository as never,
     );
   }
 
@@ -79,6 +85,8 @@ describe('ApiKeyGuard', () => {
     auditService = {
       logWarn: jest.fn().mockResolvedValue(null),
     };
+    userAuthService = { validateToken: jest.fn() };
+    sessionRepository = { existsBy: jest.fn().mockResolvedValue(true) };
 
     guard = buildGuard();
   });
@@ -117,17 +125,19 @@ describe('ApiKeyGuard', () => {
     expect(authService.validateApiKey).toHaveBeenCalledWith('my-key', '127.0.0.1', undefined);
   });
 
-  it('should accept Authorization Bearer header', async () => {
+  it('should authenticate Authorization Bearer as a user JWT, not as an API key', async () => {
     reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce(undefined);
 
-    const apiKey = createMockApiKey();
-    (authService.validateApiKey as jest.Mock).mockResolvedValue(apiKey);
+    (userAuthService.validateToken as jest.Mock).mockResolvedValue({
+      id: 'user-1', username: 'customer', name: 'Customer', role: UserRole.OPERATOR, status: 'active', plan: null,
+    });
 
-    const context = createMockContext({ authorization: 'Bearer my-bearer-key' });
+    const context = createMockContext({ authorization: 'Bearer eyJ.jwt.token' });
     const result = await guard.canActivate(context);
 
     expect(result).toBe(true);
-    expect(authService.validateApiKey).toHaveBeenCalledWith('my-bearer-key', '127.0.0.1', undefined);
+    expect(userAuthService.validateToken).toHaveBeenCalledWith('eyJ.jwt.token');
+    expect(authService.validateApiKey).not.toHaveBeenCalled();
   });
 
   it('should reject when API key validation fails', async () => {
