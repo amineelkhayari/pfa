@@ -3,31 +3,25 @@
 # OpenWA backup.
 #
 # Captures the load-bearing state needed to restore a working install:
-#   - main.sqlite   — auth (API keys) + audit log, ALWAYS SQLite (see app.module.ts)
-#   - data store    — openwa.sqlite (SQLite) OR a pg_dump (when DATABASE_TYPE=postgres)
-#   - sessions/     — whatsapp-web.js LocalAuth session data
+#   - database      — openwa.sqlite (SQLite) OR a pg_dump (when DATABASE_TYPE=postgres)
 #   - baileys/      — Baileys engine authentication state
 #   - media/        — locally-stored media (skipped automatically when using S3)
 #   - plugin-packages/ — installed plugin packages from PLUGINS_DIR
 #   - plugin-state/    — registry and persisted ctx.storage state under OPENWA_DATA_DIR
 #   - .env.generated and .api-key — dashboard config and plaintext bootstrap admin key
 #
-# The previous runbook backed up the wrong file (openwa.db) and omitted main.sqlite,
-# so a "successful" backup silently lost every API key and all audit history.
-#
 # Usage:
 #   ./scripts/backup.sh
 # Environment:
-#   MAIN_DATABASE_NAME  auth/audit SQLite file (default: ./data/main.sqlite)
-#   DATABASE_NAME       data-store SQLite file (default: ./data/openwa.sqlite; sqlite only)
-#                       Both resolve EXACTLY like the app: the environment first, then ./.env, then
+#   DATABASE_NAME       application SQLite file (default: ./data/openwa.sqlite; sqlite only)
+#                       It resolves EXACTLY like the app: the environment first, then ./.env, then
 #                       <data dir>/.env.generated, otherwise the fixed ./data default (see
 #                       lib-env.sh). They are NOT derived from OPENWA_DATA_DIR — the app never does
 #                       that either.
 #   OPENWA_DATA_DIR   data directory for the non-DB state below (default: ./data)
 #   BACKUP_DIR        where archives are written (default: ./backups)
 #   DATABASE_TYPE     sqlite (default) | postgres
-#   SESSION_DATA_PATH, BAILEYS_AUTH_DIR, STORAGE_LOCAL_PATH, PLUGINS_DIR
+#   BAILEYS_AUTH_DIR, STORAGE_LOCAL_PATH, PLUGINS_DIR
 #                     override the corresponding state directories
 #   For postgres: DATABASE_URL, or DATABASE_HOST/PORT/USERNAME/PASSWORD/NAME
 #
@@ -55,9 +49,7 @@ TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 # the dashboard's <data dir>/.env.generated, otherwise the fixed ./data default. OPENWA_DATA_DIR
 # below only bases the non-DB state directories — deriving DB paths from it would back up files the
 # app never reads.
-MAIN_DB="$(openwa_resolve MAIN_DATABASE_NAME ./data/main.sqlite)"
 DATA_DB="$(openwa_resolve DATABASE_NAME ./data/openwa.sqlite)"
-SESSIONS_DIR="$(openwa_resolve SESSION_DATA_PATH "$DATA_DIR/sessions")"
 BAILEYS_DIR="$(openwa_resolve BAILEYS_AUTH_DIR "$DATA_DIR/baileys")"
 MEDIA_DIR="$(openwa_resolve STORAGE_LOCAL_PATH "$DATA_DIR/media")"
 # Installed plugin code. The app defaults this to <dataDir>/plugins — the same tree as the
@@ -97,7 +89,7 @@ backup_sqlite() {
   dest="$2"
   if [ ! -f "$src" ]; then
     log "ERROR: database file not found: $src"
-    log "       the app reads this exact path — check MAIN_DATABASE_NAME / DATABASE_NAME / cwd, or start the app first"
+    log "       the app reads this exact path — check DATABASE_NAME / cwd, or start the app first"
     exit 1
   fi
   if command -v sqlite3 >/dev/null 2>&1; then
@@ -112,10 +104,7 @@ backup_sqlite() {
 # Members the finished archive MUST contain (relative tar paths). A run that cannot stage any of
 # them has already failed hard above; the post-archive min-content check below is the last gate
 # against shipping an archive that would "restore" into a fresh-empty install.
-REQUIRED_MEMBERS=("./main.sqlite")
-
-log "Backing up auth/audit DB ($MAIN_DB) — the API-key + audit store"
-backup_sqlite "$MAIN_DB" "$STAGE/main.sqlite"
+REQUIRED_MEMBERS=()
 
 if [ "$DATABASE_TYPE" = "postgres" ]; then
   log "Backing up data store via pg_dump"
@@ -141,17 +130,10 @@ else
   REQUIRED_MEMBERS+=("./openwa.sqlite")
 fi
 
-if [ -d "$SESSIONS_DIR" ]; then
-  log "Backing up whatsapp-web.js sessions"
-  cp -pR "$SESSIONS_DIR" "$STAGE/sessions"
-else
-  log "WARN: $SESSIONS_DIR not found — skipping sessions"
-fi
-
 if [ -d "$BAILEYS_DIR" ]; then
   log "Backing up Baileys authentication state"
   cp -pR "$BAILEYS_DIR" "$STAGE/baileys"
-elif [ "${ENGINE_TYPE:-}" = "baileys" ]; then
+else
   log "WARN: ENGINE_TYPE=baileys but $BAILEYS_DIR was not found — restored sessions will require pairing"
 fi
 

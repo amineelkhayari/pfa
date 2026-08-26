@@ -169,68 +169,6 @@ describe('validateEnv', () => {
     expect(() => validateEnv({})).not.toThrow();
   });
 
-  it('rejects a sqlite data DB path that collides with the internal main database file', () => {
-    // The 'main' (auth/audit) and 'data' connections must be separate SQLite files; sharing one
-    // file means two migration ledgers + synchronize policies on the same tables.
-    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: './data/main.sqlite' })).toThrow(
-      /DATABASE_NAME/,
-    );
-    // Relative spellings of the same file are caught (path normalization).
-    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: './data/../data/main.sqlite' })).toThrow(
-      /DATABASE_NAME/,
-    );
-    // The default data path is fine.
-    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: './data/openwa.sqlite' })).not.toThrow();
-    // Postgres uses a bare DB name, never a file path — must not false-positive.
-    expect(() =>
-      validateEnv({
-        DATABASE_TYPE: 'postgres',
-        DATABASE_HOST: 'db',
-        DATABASE_USERNAME: 'u',
-        DATABASE_PASSWORD: 'p',
-        DATABASE_NAME: 'main.sqlite',
-      }),
-    ).not.toThrow();
-  });
-
-  it('resolves the main DB path from MAIN_DATABASE_NAME like the runtime (no false-negative/-positive)', () => {
-    // The runtime main path is MAIN_DATABASE_NAME || ./data/main.sqlite (configuration.ts). When it
-    // is overridden, a DATABASE_NAME following it to the same file must still be caught — comparing
-    // against the hardcoded default alone would miss this.
-    expect(() =>
-      validateEnv({
-        DATABASE_TYPE: 'sqlite',
-        MAIN_DATABASE_NAME: '/srv/openwa/main.sqlite',
-        DATABASE_NAME: '/srv/openwa/main.sqlite',
-      }),
-    ).toThrow(/DATABASE_NAME/);
-    // Same collision via a non-normalized spelling (relative/absolute forms of one file).
-    expect(() =>
-      validateEnv({
-        DATABASE_TYPE: 'sqlite',
-        MAIN_DATABASE_NAME: './custom/main.sqlite',
-        DATABASE_NAME: './custom/../custom/main.sqlite',
-      }),
-    ).toThrow(/DATABASE_NAME/);
-    // And the reverse: when MAIN_DATABASE_NAME moves the main DB elsewhere, the DEFAULT main file
-    // is no longer the runtime main DB, so using it for data must NOT be rejected.
-    expect(() =>
-      validateEnv({
-        DATABASE_TYPE: 'sqlite',
-        MAIN_DATABASE_NAME: '/srv/openwa/main.sqlite',
-        DATABASE_NAME: './data/main.sqlite',
-      }),
-    ).not.toThrow();
-    // Distinct overridden paths pass.
-    expect(() =>
-      validateEnv({
-        DATABASE_TYPE: 'sqlite',
-        MAIN_DATABASE_NAME: './data/auth.sqlite',
-        DATABASE_NAME: './data/openwa.sqlite',
-      }),
-    ).not.toThrow();
-  });
-
   it('rejects DATABASE_SYNCHRONIZE=true with DATABASE_TYPE=postgres (drops body_ts → /search 501)', () => {
     // The Postgres data connection hardcodes migrationsRun=true; an opted-in synchronize=true makes
     // TypeORM re-sync from entities on every boot, dropping the migration-created `body_ts` generated

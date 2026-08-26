@@ -1,10 +1,7 @@
 import { globSync } from 'glob';
 import dataDataSource, { postgresDataSourceOptions, buildPostgresDataSourceOptions } from './data-source';
 
-// The data CLI DataSource manages the DATA connection's migrations (session/webhook/message/
-// template/engine). It must NOT pull in the auth/audit entities — those belong to the always-SQLite
-// MAIN connection (data-source-main.ts). A broad '**' entity glob would sweep the main-owned
-// entities into `migration:generate` against the data DB and emit spurious auth/audit DDL.
+// The CLI DataSource must include entities from every module in the single application database.
 describe('data CLI DataSource', () => {
   const resolveEntityFiles = (): string[] =>
     (dataDataSource.options.entities as string[])
@@ -20,10 +17,10 @@ describe('data CLI DataSource', () => {
     expect(files.some(f => f.endsWith('lid-mapping.entity.ts'))).toBe(true);
   });
 
-  it('never resolves the main-owned api-key/audit-log entities', () => {
+  it('resolves auth and audit entities in the same database', () => {
     const files = resolveEntityFiles();
-    expect(files.some(f => f.endsWith('api-key.entity.ts'))).toBe(false);
-    expect(files.some(f => f.endsWith('audit-log.entity.ts'))).toBe(false);
+    expect(files.some(f => f.endsWith('api-key.entity.ts'))).toBe(true);
+    expect(files.some(f => f.endsWith('audit-log.entity.ts'))).toBe(true);
   });
 
   it('does not use a catch-all entity glob (guards against re-broadening)', () => {
@@ -32,29 +29,6 @@ describe('data CLI DataSource', () => {
     }
   });
 
-  it('refuses to load when DATABASE_NAME resolves to the main DB file (CLI collision guard)', () => {
-    // The migration CLI never runs ConfigModule's validate(), so the SQLite main/data collision
-    // guard is applied at module load instead — data migrations must never run against the main
-    // (auth/audit) file.
-    const prevMain = process.env.MAIN_DATABASE_NAME;
-    const prevData = process.env.DATABASE_NAME;
-    process.env.MAIN_DATABASE_NAME = '/tmp/cli-guard-main.sqlite';
-    // A non-normalized relative spelling of the same file must be caught too.
-    process.env.DATABASE_NAME = '/tmp/../tmp/cli-guard-main.sqlite';
-    jest.resetModules();
-    try {
-      expect(() => {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        require('./data-source');
-      }).toThrow(/DATABASE_NAME/);
-    } finally {
-      if (prevMain !== undefined) process.env.MAIN_DATABASE_NAME = prevMain;
-      else delete process.env.MAIN_DATABASE_NAME;
-      if (prevData !== undefined) process.env.DATABASE_NAME = prevData;
-      else delete process.env.DATABASE_NAME;
-      jest.resetModules();
-    }
-  });
 });
 
 // The migration CLI connection runs DDL (CREATE INDEX, unique backfills) that can legitimately take

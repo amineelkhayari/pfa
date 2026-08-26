@@ -2,7 +2,7 @@
 #
 # OpenWA restore.
 #
-# Restores the always-SQLite auth/audit database, a SQLite data store, engine authentication, local
+# Restores the single application database, engine authentication, local
 # media, installed plugins, and bootstrap configuration from an archive produced by scripts/backup.sh.
 # PostgreSQL dumps are staged for the explicit psql import printed at the end of the restore.
 #
@@ -13,14 +13,13 @@
 #                     plain-copied (possibly torn) database snapshots; without it the restore
 #                     continues after a loud warning
 # Environment:
-#   MAIN_DATABASE_NAME  restore target for the auth/audit DB (default: ./data/main.sqlite)
-#   DATABASE_NAME       restore target for the SQLite data store (default: ./data/openwa.sqlite)
-#                       Both resolve EXACTLY like the app (src/config/configuration.ts): the
+#   DATABASE_NAME       restore target for the SQLite database (default: ./data/openwa.sqlite)
+#                       It resolves EXACTLY like the app (src/config/configuration.ts): the
 #                       explicit env path wins, otherwise the fixed ./data default. They are NOT
 #                       derived from OPENWA_DATA_DIR — restoring there would write databases the
 #                       app never reads (fresh-empty boot + new master key).
 #   OPENWA_DATA_DIR   data directory to restore non-DB state into (default: ./data)
-#   SESSION_DATA_PATH, BAILEYS_AUTH_DIR, STORAGE_LOCAL_PATH, PLUGINS_DIR
+#   BAILEYS_AUTH_DIR, STORAGE_LOCAL_PATH, PLUGINS_DIR
 #                     override the corresponding state directories
 #
 # Stop the OpenWA app before restoring. A snapshot of the current data dir is taken
@@ -64,9 +63,7 @@ DATA_DIR="${OPENWA_DATA_DIR:-./data}"
 # dashboard's <data dir>/.env.generated, else the fixed ./data defaults. They may legitimately live
 # outside OPENWA_DATA_DIR. This reads the config of the install being restored INTO, which is why it
 # happens here rather than after the archive's own .env.generated is written over it further down.
-MAIN_DB="$(openwa_resolve MAIN_DATABASE_NAME ./data/main.sqlite)"
 DATA_DB="$(openwa_resolve DATABASE_NAME ./data/openwa.sqlite)"
-SESSIONS_DIR="$(openwa_resolve SESSION_DATA_PATH "$DATA_DIR/sessions")"
 BAILEYS_DIR="$(openwa_resolve BAILEYS_AUTH_DIR "$DATA_DIR/baileys")"
 MEDIA_DIR="$(openwa_resolve STORAGE_LOCAL_PATH "$DATA_DIR/media")"
 # Installed plugin code. The app defaults this to <dataDir>/plugins — the same tree as the
@@ -165,7 +162,7 @@ replace_tree() {
 }
 
 # The data-dir safety snapshot below cannot cover a database target that lives OUTSIDE it (custom
-# MAIN_DATABASE_NAME / DATABASE_NAME). Preserve such a file separately before overwriting it, so a
+# DATABASE_NAME). Preserve such a file separately before overwriting it, so a
 # restore pointed at the wrong archive remains recoverable.
 snapshot_external_db() {
   target="$1"
@@ -225,24 +222,11 @@ fi
 
 mkdir -p "$DATA_DIR"
 
-if [ -f "$STAGE/main.sqlite" ]; then
-  log "Restoring auth/audit DB -> $MAIN_DB"
-  snapshot_external_db "$MAIN_DB"
-  mkdir -p "$(dirname "$MAIN_DB")"
-  cp "$STAGE/main.sqlite" "$MAIN_DB"
-else
-  log "WARN: main.sqlite not in archive — API keys / audit log will NOT be restored"
-fi
-
 if [ -f "$STAGE/openwa.sqlite" ]; then
   log "Restoring data store -> $DATA_DB"
   snapshot_external_db "$DATA_DB"
   mkdir -p "$(dirname "$DATA_DB")"
   cp "$STAGE/openwa.sqlite" "$DATA_DB"
-fi
-
-if [ -d "$STAGE/sessions" ]; then
-  replace_tree "$STAGE/sessions" "$SESSIONS_DIR" "whatsapp-web.js sessions"
 fi
 
 if [ -d "$STAGE/baileys" ]; then

@@ -6,19 +6,12 @@ import { loadCliEnv } from './load-cli-env';
 // migration CLI targets the SAME database the dashboard configured — not the default SQLite DB.
 loadCliEnv();
 
-// The TypeORM CLI never runs ConfigModule's validate(), so the boot-time guards in env.validation
-// don't apply here. The one that matters for a DDL-issuing connection is re-applied explicitly:
-// DATABASE_NAME must not resolve to the main (auth/audit) SQLite file, or data migrations would
-// run against the wrong database. Resolved exactly like the runtime (env → default), so the CLI
-// and the app make the same call.
-
 const dbType = process.env.DATABASE_TYPE || 'sqlite';
 
 const sourceGlob = (...segments: string[]): string => path.join(__dirname, ...segments).replace(/\\/g, '/');
 
-// Scoped to the DATA-owned modules only (session/webhook/message/template/engine/integration/status-store), mirroring
-// the runtime data connection (app.module.ts). A broad '**' glob would also sweep in the main-owned
-// auth/audit entities and pollute `migration:generate` against the data DB with their DDL.
+// Explicit module globs keep migration generation predictable while including every entity owned by
+// the single application database.
 const dataEntities = [
   sourceGlob('..', 'modules', 'auth', '**', '*.entity{.ts,.js}'),
   sourceGlob('..', 'modules', 'audit', '**', '*.entity{.ts,.js}'),

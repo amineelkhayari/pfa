@@ -4,26 +4,6 @@ import configuration, {
   resolveNonNegativeIntEnv,
 } from './configuration';
 
-describe('configuration — main DB synchronize', () => {
-  const orig = process.env.MAIN_DATABASE_SYNCHRONIZE;
-
-  afterEach(() => {
-    if (orig === undefined) delete process.env.MAIN_DATABASE_SYNCHRONIZE;
-    else process.env.MAIN_DATABASE_SYNCHRONIZE = orig;
-  });
-
-  it('defaults main synchronize ON (zero-config first boot)', () => {
-    delete process.env.MAIN_DATABASE_SYNCHRONIZE;
-    expect(configuration().database.synchronize).toBe(true);
-  });
-
-  it('disables synchronize only when MAIN_DATABASE_SYNCHRONIZE="false"', () => {
-    process.env.MAIN_DATABASE_SYNCHRONIZE = 'false';
-    expect(configuration().database.synchronize).toBe(false);
-    process.env.MAIN_DATABASE_SYNCHRONIZE = 'true';
-    expect(configuration().database.synchronize).toBe(true);
-  });
-});
 describe('configuration — Postgres database name', () => {
   const orig = process.env.DATABASE_NAME;
   afterEach(() => {

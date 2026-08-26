@@ -13,8 +13,8 @@ import { readWsRateLimitConfig } from '../modules/events/ws-rate-limit';
  * from an unrelated string. Deriving both from one value is what keeps a plugin's code and its
  * registry entry in the same tree.
  *
- * Deliberately NOT env-overridable: every other data path (DATABASE_NAME, MAIN_DATABASE_NAME,
- * BAILEYS_AUTH_DIR, STORAGE_LOCAL_PATH) carries its own override and none of them
+ * Deliberately NOT env-overridable: every other data path (DATABASE_NAME, BAILEYS_AUTH_DIR,
+ * STORAGE_LOCAL_PATH) carries its own override and none of them
  * would follow a DATA_DIR knob, so such a knob would move part of the state while looking like it
  * moved all of it.
  */
@@ -114,23 +114,7 @@ export default () => ({
     enabled: process.env.CACHE_ENABLED === 'true',
   },
 
-  // Main Database configuration (always SQLite for boot config)
-  database: {
-    type: 'sqlite' as const,
-    // SQLite file for the auth/audit DB. Overridable (e.g. e2e points it at a temp file) so tests
-    // never write api keys into the developer's ./data/main.sqlite.
-    database: process.env.MAIN_DATABASE_NAME || './data/main.sqlite',
-    // Schema management for the auth/audit DB. Default ON (zero-config first boot).
-    // Set MAIN_DATABASE_SYNCHRONIZE=false to manage schema via the main-owned migrations
-    // instead (migrationsRun then creates api_keys/audit_logs). When disabled, run the
-    // main-connection migrations explicitly with `npm run migration:run:main` (or
-    // `migration:run:main:prod` for the compiled image) — the plain `migration:run` only
-    // manages the data connection.
-    synchronize: process.env.MAIN_DATABASE_SYNCHRONIZE !== 'false',
-    logging: process.env.DATABASE_LOGGING === 'true',
-  },
-
-  // Data Storage Database configuration (pluggable: SQLite, PostgreSQL, etc.)
+  // Single application database configuration (SQLite or PostgreSQL).
   dataDatabase: {
     type: process.env.DATABASE_TYPE || 'sqlite',
     // SQLite path (used when type is sqlite)

@@ -19,7 +19,6 @@ const REQUIRED_PINS = [
   'AUTO_START_SESSIONS',
   'DATABASE_TYPE',
   'DATABASE_NAME',
-  'MAIN_DATABASE_NAME',
   'REDIS_ENABLED',
   // The search module mounts conditionally on SEARCH_ENABLED — without this pin an export run
   // with SEARCH_ENABLED=false in the caller's env silently drops /api/search from the snapshot.

@@ -37,7 +37,6 @@ process.env.SEARCH_ENABLED = 'true';
 // also drops any SQLite -wal/-shm sidecars. The 'main' connection keeps in-memory SQLite.
 const exportDataDir = mkdtempSync(join(tmpdir(), 'openapi-export-'));
 process.env.DATABASE_NAME = join(exportDataDir, 'export.sqlite');
-process.env.MAIN_DATABASE_NAME = ':memory:';
 
 async function main() {
   // Operator-supplied CLI path — this is a local dev/CI tool, not a network service, so there is
