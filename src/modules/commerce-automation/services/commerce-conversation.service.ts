@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { HookManager } from '../../../core/hooks';
 import { createLogger } from '../../../common/services/logger.service';
 import { CredentialEncryptionService } from '../../../common/security/credential-encryption.service';
@@ -76,6 +76,20 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       take: 50,
     });
     const customerOrders = recentOrders.filter(candidate => this.samePhone(sender, this.normalizePhone(candidate.phone)));
+    const preparedEdit = customerOrders.length
+      ? await this.conversations.findOne({
+          where: { orderId: In(customerOrders.map(order => order.id)), pendingAction: 'confirm_shipping_address' },
+          order: { updatedAt: 'DESC' },
+        })
+      : null;
+    if (preparedEdit && /^(?:confirmer|confirm|oui\s+je\s+confirme|yes\s+i\s+confirm|wakha|نعم|تأكيد|annuler|cancel|stop|non|لا|إلغاء)$/i.test(reply.trim())) {
+      const preparedOrder = customerOrders.find(order => order.id === preparedEdit.orderId);
+      const chatId = message.chatId ?? message.from;
+      if (preparedOrder && chatId) {
+        const turns = [...(preparedEdit.turns ?? []), { role: 'customer' as const, text: reply.slice(0, 1000), at: new Date().toISOString() }];
+        if (await this.handlePendingOrderEdit(sessionId, chatId, store, preparedOrder, preparedEdit, reply, turns)) return;
+      }
+    }
     // Looking up an existing order is never a request to create a new one. Previously the bare word
     // "order" started a cart before this distinction was made, trapping all later messages in the
     // numbered product menu.
@@ -307,9 +321,12 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       if (!turns.length || turns[turns.length - 1].role !== 'customer' || turns[turns.length - 1].text !== text) {
         turns.push({ role: 'customer', text: text.slice(0, 1000), at: new Date().toISOString() });
       }
-      const answer = await this.ai.chat(
+      const customerPhone = this.normalizePhone(message.senderPhone ?? message.from ?? message.chatId);
+      const answer = await this.ai.chatWithTools(
         turns,
         { name: store.name, language: store.language, products, orders: customerOrders },
+        this.tools.definitions(),
+        call => this.executeCommerceTool(call.name, call.arguments, store, customerPhone, catalog, customerOrders, text),
       );
       const safeAnswer = this.hasUnverifiedMutationClaim(answer)
         ? this.catalogFallbackReply(text, products, customerOrders, store)
@@ -320,6 +337,243 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       const fallback = this.catalogFallbackReply(text, products, customerOrders, store);
       await this.messages.sendText(sessionId, { chatId, text: fallback });
     }
+  }
+
+  private async executeCommerceTool(
+    name: string,
+    input: Record<string, unknown>,
+    store: Store,
+    phone: string,
+    catalog: Product[],
+    customerOrders: Order[],
+    customerText: string,
+  ): Promise<Record<string, unknown>> {
+    if (!phone) return { error: 'CUSTOMER_PHONE_UNAVAILABLE' };
+    if (name === 'search_products') {
+      const query = typeof input.query === 'string' ? input.query.slice(0, 200) : '';
+      const limit = Math.min(8, Math.max(1, Number(input.limit) || 5));
+      return this.tools.searchProducts(query, catalog, store.currency, limit).call.result;
+    }
+    if (name === 'get_product_details') {
+      const product = catalog.find(item => item.id === String(input.product_id ?? ''));
+      if (!product) return { error: 'PRODUCT_NOT_FOUND' };
+      return {
+        id: product.id,
+        name: product.title,
+        description: product.description,
+        price: Number(product.price),
+        currency: store.currency,
+        stock: this.tools.stock(product),
+        variants: (product.variants ?? []).slice(0, 20).map(variant => ({
+          id: String(variant.admin_graphql_api_id ?? variant.id ?? ''),
+          name: String(variant.title ?? variant.name ?? 'Default Title'),
+          price: Number(variant.price ?? product.price),
+          stock: Number.isFinite(Number(variant.inventory_quantity ?? variant.inventoryQuantity))
+            ? Number(variant.inventory_quantity ?? variant.inventoryQuantity)
+            : null,
+        })),
+      };
+    }
+    if (name === 'list_customer_orders') {
+      return {
+        count: customerOrders.length,
+        orders: customerOrders.slice(0, 10).map(order => ({
+          order_number: order.orderNumber ?? order.shopifyOrderId,
+          status: order.status,
+          confirmation_status: order.confirmationStatus,
+          total: Number(order.totalPrice),
+          currency: order.currency,
+          items: (order.lineItems ?? []).map(item => ({ name: item.title ?? item.name, quantity: item.quantity ?? 1 })),
+        })),
+      };
+    }
+    if (name === 'get_order_details') {
+      const requested = String(input.order_number ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+      const order = customerOrders.find(item =>
+        String(item.orderNumber ?? item.shopifyOrderId).replace(/[^a-z0-9]/gi, '').toLowerCase() === requested,
+      );
+      if (!order) return { error: 'ORDER_NOT_FOUND' };
+      return {
+        order_number: order.orderNumber ?? order.shopifyOrderId,
+        status: order.status,
+        confirmation_status: order.confirmationStatus,
+        total: Number(order.totalPrice),
+        currency: order.currency,
+        items: order.lineItems ?? [],
+        shipping_address: order.shippingAddress ?? null,
+      };
+    }
+    if (name === 'get_active_cart') {
+      const cart = await this.carts.findOneBy({ storeId: store.id, phone });
+      if (!cart) return { active: false };
+      const product = catalog.find(item => item.id === cart.productId);
+      return {
+        active: true,
+        product: product ? { id: product.id, name: product.title, price: Number(product.price), currency: store.currency } : null,
+        variant_id: cart.variantId,
+        variant_name: cart.variantTitle,
+        quantity: cart.quantity,
+        next_required: cart.step,
+      };
+    }
+    if (name === 'get_store_information') {
+      return {
+        id: store.id,
+        name: store.name,
+        provider: store.provider,
+        owner_name: store.ownerName ?? null,
+        email: store.email,
+        phone: store.phone ?? null,
+        language: store.language,
+        timezone: store.timezone,
+        currency: store.currency,
+        status: store.status,
+      };
+    }
+    if (name === 'prepare_shipping_address_update') {
+      const order = this.findCustomerOrder(customerOrders, input.order_number);
+      if (!order) return { error: 'ORDER_NOT_FOUND', prepared: false };
+      const customerName = this.toolString(input.customer_name, 150);
+      const address1 = this.toolString(input.address1, 300);
+      const city = this.toolString(input.city, 100);
+      const postalCode = this.toolString(input.postal_code, 30, true);
+      const country = this.toolString(input.country, 100, true) || String(order.shippingAddress?.country ?? 'Morocco');
+      if (!customerName || !address1 || !city) return { error: 'MISSING_SHIPPING_FIELDS', prepared: false };
+      let conversation = await this.conversations.findOneBy({ orderId: order.id });
+      conversation ??= this.conversations.create({
+        orderId: order.id, storeId: store.id, status: 'active', turnCount: 0, turns: [],
+      });
+      conversation.pendingAction = 'confirm_shipping_address';
+      conversation.pendingData = { customerName, address1, city, postalCode: postalCode || undefined, country, phone: order.phone ?? undefined };
+      await this.conversations.save(conversation);
+      this.logToolCall('prepare_shipping_address_update', store.id, phone, { orderNumber: order.orderNumber ?? order.shopifyOrderId });
+      return {
+        prepared: true,
+        applied: false,
+        order_number: order.orderNumber ?? order.shopifyOrderId,
+        preview: { customer_name: customerName, address1, city, postal_code: postalCode || null, country },
+        next_required: 'explicit_confirmation',
+        required_reply: 'CONFIRMER',
+        instruction: 'The provider has not been updated. Ask the customer to reply CONFIRMER or ANNULER.',
+      };
+    }
+    if (name === 'apply_shipping_address_update') {
+      const order = this.findCustomerOrder(customerOrders, input.order_number);
+      if (!order) return { error: 'ORDER_NOT_FOUND', updated: false };
+      if (!/^(?:confirmer|confirm|oui\s+je\s+confirme|yes\s+i\s+confirm|wakha|نعم|تأكيد)$/i.test(customerText.trim())) {
+        return { error: 'EXPLICIT_CONFIRMATION_REQUIRED', updated: false, required_reply: 'CONFIRMER' };
+      }
+      const conversation = await this.conversations.findOneBy({ orderId: order.id });
+      if (conversation?.pendingAction !== 'confirm_shipping_address' || !conversation.pendingData) {
+        return { error: 'NO_PREPARED_SHIPPING_UPDATE', updated: false };
+      }
+      await this.applyPreparedShippingUpdate(store, order, conversation.pendingData);
+      conversation.pendingAction = null;
+      conversation.pendingData = null;
+      await this.conversations.save(conversation);
+      this.logToolCall('apply_shipping_address_update', store.id, phone, { orderNumber: order.orderNumber ?? order.shopifyOrderId });
+      return {
+        updated: true,
+        provider: store.provider,
+        order_number: order.orderNumber ?? order.shopifyOrderId,
+        shipping_address: order.shippingAddress,
+      };
+    }
+    if (name === 'start_new_order') {
+      const product = catalog.find(item => item.id === String(input.product_id ?? ''));
+      if (!product) return { error: 'PRODUCT_NOT_FOUND', created: false };
+      const requestedQuantity = input.quantity === undefined ? null : Number(input.quantity);
+      if (requestedQuantity !== null && (!Number.isInteger(requestedQuantity) || requestedQuantity < 1 || requestedQuantity > 99)) {
+        return { error: 'INVALID_QUANTITY', created: false };
+      }
+      const variants = product.variants ?? [];
+      const requestedVariant = input.variant_id === undefined ? null : String(input.variant_id);
+      const variant = requestedVariant
+        ? variants.find(item => String(item.admin_graphql_api_id ?? item.id ?? '') === requestedVariant)
+        : variants.length === 1 ? variants[0] : undefined;
+      if (requestedVariant && !variant) return { error: 'VARIANT_NOT_FOUND', created: false };
+      let cart = await this.carts.findOneBy({ storeId: store.id, phone });
+      cart ??= this.carts.create({ storeId: store.id, phone, step: 'product', quantity: 1, country: 'Morocco' });
+      cart.productId = product.id;
+      cart.variantId = variant
+        ? store.provider === Platform.WOOCOMMERCE
+          ? String(variant.id ?? '')
+          : String(variant.admin_graphql_api_id ?? (variant.id ? `gid://shopify/ProductVariant/${variant.id}` : ''))
+        : null;
+      cart.variantTitle = variant ? String(variant.title ?? variant.name ?? 'Default Title') : null;
+      if (requestedQuantity !== null) cart.quantity = requestedQuantity;
+      cart.step = variants.length > 1 && !variant ? 'variant' : requestedQuantity === null ? 'quantity' : 'name';
+      cart = await this.carts.save(cart);
+      this.logToolCall('start_new_order', store.id, phone, { productId: product.id, quantity: requestedQuantity });
+      return {
+        cart_started: true,
+        created: false,
+        product: { id: product.id, name: product.title, price: Number(variant?.price ?? product.price), currency: store.currency },
+        quantity: requestedQuantity,
+        next_required: cart.step,
+        variants: cart.step === 'variant'
+          ? variants.slice(0, 10).map(item => ({
+              id: String(item.admin_graphql_api_id ?? item.id ?? ''),
+              name: String(item.title ?? item.name ?? 'Default Title'),
+              price: Number(item.price ?? product.price),
+            }))
+          : undefined,
+        instruction: 'No Shopify/WooCommerce order exists yet. Ask only for next_required.',
+      };
+    }
+    return { error: 'UNKNOWN_TOOL', tool: name };
+  }
+
+  private findCustomerOrder(orders: Order[], value: unknown): Order | undefined {
+    const requested = String(value ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+    if (!requested) return undefined;
+    return orders.find(order =>
+      String(order.orderNumber ?? order.shopifyOrderId).replace(/[^a-z0-9]/gi, '').toLowerCase() === requested,
+    );
+  }
+
+  private toolString(value: unknown, max: number, optional = false): string {
+    if (value === undefined || value === null) return optional ? '' : '';
+    return typeof value === 'string' ? value.trim().slice(0, max) : '';
+  }
+
+  private async applyPreparedShippingUpdate(
+    store: Store,
+    order: Order,
+    data: { customerName: string; address1: string; city: string; postalCode?: string; country: string; phone?: string },
+  ): Promise<void> {
+    const settings = this.encryption.revealSettings(store.settings ?? {});
+    if (store.provider === Platform.WOOCOMMERCE) {
+      await this.woocommerce.updateOrderShippingAddress({
+        siteUrl: String(settings.siteUrl ?? ''),
+        consumerKey: String(settings.consumerKey ?? ''),
+        consumerSecret: String(settings.consumerSecret ?? ''),
+      }, order.shopifyOrderId, {
+        first_name: data.customerName.split(/\s+/)[0],
+        last_name: data.customerName.split(/\s+/).slice(1).join(' '),
+        address_1: data.address1,
+        city: data.city,
+        postcode: data.postalCode ?? '',
+        country: data.country,
+      });
+    } else {
+      await this.shopify.updateOrderShippingAddress(
+        String(settings.shopDomain ?? ''),
+        String(settings.accessToken ?? ''),
+        order.shopifyOrderId,
+        { name: data.customerName, address1: data.address1, city: data.city, zip: data.postalCode, country: data.country, phone: data.phone },
+      );
+    }
+    order.customerName = data.customerName;
+    order.shippingAddress = {
+      ...(order.shippingAddress ?? {}),
+      name: data.customerName,
+      address1: data.address1,
+      city: data.city,
+      zip: data.postalCode,
+      country: data.country,
+    };
+    await this.orders.save(order);
   }
 
   /**
@@ -575,22 +829,10 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       }
       const data = conversation.pendingData;
       if (!data) { conversation.pendingAction = null; await this.conversations.save(conversation); return false; }
-      const settings = this.encryption.revealSettings(store.settings ?? {});
-      if (store.provider === Platform.WOOCOMMERCE) {
-        await this.woocommerce.updateOrderShippingAddress({
-          siteUrl: String(settings.siteUrl ?? ''), consumerKey: String(settings.consumerKey ?? ''), consumerSecret: String(settings.consumerSecret ?? ''),
-        }, order.shopifyOrderId, {
-          first_name: data.customerName.split(/\s+/)[0], last_name: data.customerName.split(/\s+/).slice(1).join(' '),
-          address_1: data.address1, city: data.city, postcode: data.postalCode ?? '', country: data.country,
-        });
-      } else {
-        await this.shopify.updateOrderShippingAddress(String(settings.shopDomain ?? ''), String(settings.accessToken ?? ''), order.shopifyOrderId, {
-          name: data.customerName, address1: data.address1, city: data.city, zip: data.postalCode, country: data.country, phone: data.phone,
-        });
-      }
-      order.customerName = data.customerName;
-      order.shippingAddress = { ...(order.shippingAddress ?? {}), name: data.customerName, address1: data.address1, city: data.city, zip: data.postalCode, country: data.country };
-      await this.orders.save(order);
+      await this.applyPreparedShippingUpdate(store, order, data);
+      this.logToolCall('apply_shipping_address_update', store.id, this.normalizePhone(order.phone), {
+        orderNumber: order.orderNumber ?? order.shopifyOrderId,
+      });
       conversation.pendingAction = null; conversation.pendingData = null;
       conversation.turns = [...turns, { role: 'assistant', text: 'L’adresse de livraison a été mise à jour avec succès ✅', at: new Date().toISOString() }];
       await this.conversations.save(conversation);

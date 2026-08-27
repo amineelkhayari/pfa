@@ -2,9 +2,69 @@ import { Injectable } from '@nestjs/common';
 import { Product } from '../../stores/entities/product.entity';
 
 export type CommerceToolCall = { tool: string; input: Record<string, unknown>; result: Record<string, unknown> };
+export type CommerceFunctionTool = {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+};
 
 @Injectable()
 export class CommerceToolService {
+  definitions(): CommerceFunctionTool[] {
+    return [
+      this.tool('search_products', 'Search the current store catalogue. Use this before quoting products, prices, variants, availability, or selecting a product.', {
+        type: 'object', additionalProperties: false,
+        properties: { query: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 8 } },
+        required: ['query'],
+      }),
+      this.tool('get_product_details', 'Get verified details and variants for one product from this store.', {
+        type: 'object', additionalProperties: false,
+        properties: { product_id: { type: 'string' } }, required: ['product_id'],
+      }),
+      this.tool('list_customer_orders', 'List real orders belonging to the current WhatsApp phone number.', {
+        type: 'object', additionalProperties: false, properties: {},
+      }),
+      this.tool('get_order_details', 'Get a real customer order by its displayed order number.', {
+        type: 'object', additionalProperties: false,
+        properties: { order_number: { type: 'string' } }, required: ['order_number'],
+      }),
+      this.tool('start_new_order', 'Start a persisted checkout cart for a verified catalogue product. This does not create a Shopify/WooCommerce order. After the result, ask only for result.next_required.', {
+        type: 'object', additionalProperties: false,
+        properties: {
+          product_id: { type: 'string' },
+          variant_id: { type: 'string' },
+          quantity: { type: 'integer', minimum: 1, maximum: 99 },
+        },
+        required: ['product_id'],
+      }),
+      this.tool('get_active_cart', 'Read the persisted checkout state and identify the next required customer detail.', {
+        type: 'object', additionalProperties: false, properties: {},
+      }),
+      this.tool('get_store_information', 'Get verified public information about the connected store. Never request or expose credentials or secret settings.', {
+        type: 'object', additionalProperties: false, properties: {},
+      }),
+      this.tool('prepare_shipping_address_update', 'Validate and prepare a shipping-address change for one real customer order. This does not mutate Shopify/WooCommerce. Show the returned preview and ask the customer to reply CONFIRMER.', {
+        type: 'object', additionalProperties: false,
+        properties: {
+          order_number: { type: 'string' },
+          customer_name: { type: 'string' },
+          address1: { type: 'string' },
+          city: { type: 'string' },
+          postal_code: { type: 'string' },
+          country: { type: 'string' },
+        },
+        required: ['order_number', 'customer_name', 'address1', 'city'],
+      }),
+      this.tool('apply_shipping_address_update', 'Apply a previously prepared shipping update. Call only when the latest customer message explicitly says CONFIRMER and includes or clearly refers to the prepared order.', {
+        type: 'object', additionalProperties: false,
+        properties: { order_number: { type: 'string' } }, required: ['order_number'],
+      }),
+    ];
+  }
+
   stock(product: Product): number | null {
     const values = (product.variants ?? [])
       .map(variant => Number(variant.inventory_quantity ?? variant.inventoryQuantity))
@@ -51,5 +111,9 @@ export class CommerceToolService {
 
   private productText(product: Product): string {
     return this.normalize([product.title, product.productType, product.vendor, ...(product.tags ?? [])].filter(Boolean).join(' '));
+  }
+
+  private tool(name: string, description: string, parameters: Record<string, unknown>): CommerceFunctionTool {
+    return { type: 'function', function: { name, description, parameters } };
   }
 }

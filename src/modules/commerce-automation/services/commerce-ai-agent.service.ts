@@ -5,10 +5,12 @@ import { Order } from '../../stores/entities/order.entity';
 import { Product } from '../../stores/entities/product.entity';
 import { AiConversationTurn } from '../../stores/entities/order-ai-conversation.entity';
 import { Agent, fetch as undiciFetch } from 'undici';
+import type { CommerceFunctionTool } from './commerce-tool.service';
 
 export type OrderAiDecision = { action: 'continue' | 'confirm' | 'cancel' | 'escalate'; reply: string };
 type Json = Record<string, any>;
 type ProviderResponse = Awaited<ReturnType<typeof undiciFetch>>;
+export type NativeCommerceToolCall = { id: string; name: string; arguments: Record<string, unknown> };
 
 const decisionSchema = {
   type: 'object',
@@ -34,6 +36,88 @@ export class CommerceAiAgentService {
   timeoutHours() { return this.config.aiTimeoutHours(); }
   provider() { return this.config.aiProvider(); }
   model() { return this.config.aiModel(); }
+
+  /**
+   * OpenAI-compatible native function-calling loop used by OpenRouter/OmniRoute/custom gateways.
+   * The model can only propose calls; the supplied server-side executor remains authoritative.
+   */
+  async chatWithTools(
+    turns: AiConversationTurn[],
+    store: { name: string; language: string; products?: Product[]; orders?: Order[] },
+    tools: CommerceFunctionTool[],
+    execute: (call: NativeCommerceToolCall) => Promise<Record<string, unknown>>,
+  ): Promise<string> {
+    const provider = this.config.aiProvider();
+    if (!['openrouter', 'custom'].includes(provider)) {
+      return this.chat(turns, {
+        name: store.name,
+        language: store.language,
+        products: store.products ?? [],
+        orders: store.orders ?? [],
+      });
+    }
+    const key = this.config.aiApiKey();
+    const model = this.config.aiModel();
+    const url = this.config.aiBaseUrl().trim()
+      || (provider === 'openrouter' ? 'https://openrouter.ai/api/v1/chat/completions' : '');
+    if (!url) throw new ServiceUnavailableException('A custom Chat Completions endpoint URL is required');
+    if (/\/responses\/?(?:\?|$)/i.test(url)) {
+      throw new ServiceUnavailableException('Native commerce tools require a /chat/completions endpoint, not /responses');
+    }
+    const system = `You are the WhatsApp sales assistant for ${store.name}. Match the customer's language and Moroccan Darija naturally.
+Use tools for every catalogue, product, price, stock, cart, and order fact. Never invent an id, price, order number, status, address, or successful action.
+This application can take orders. To begin checkout, call start_new_order only after a product is unambiguous. The result is a cart, not a created provider order.
+For an address change, first call prepare_shipping_address_update and show its preview. Call apply_shipping_address_update only on a later turn when the customer's latest message explicitly confirms it. Never combine prepare and apply in one turn.
+After a tool result, describe only facts present in that result and ask for result.next_required when supplied.
+Never say an order was created or confirmed unless a tool result explicitly contains created:true and a real order_number.
+Keep replies concise and WhatsApp-friendly; never use Markdown tables.`;
+    const messages: Json[] = [
+      { role: 'system', content: system },
+      ...turns.slice(-16).map(turn => ({ role: turn.role === 'assistant' ? 'assistant' : 'user', content: turn.text })),
+    ];
+    const startedAt = Date.now();
+    const executed: Array<{ name: string; ok: boolean }> = [];
+    try {
+      for (let round = 0; round < 6; round += 1) {
+        const response = await this.fetchProvider(url, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model, messages, tools, tool_choice: 'auto', stream: false }),
+        });
+        const payload = await this.readChatCompletionPayload(response);
+        if (!response.ok) this.throwProviderError(provider, model, response, payload, `${provider} tool request failed`);
+        const message = payload.choices?.[0]?.message;
+        if (!message) throw new ServiceUnavailableException(`${provider} returned no assistant message`);
+        const calls = this.parseNativeToolCalls(message.tool_calls);
+        if (!calls.length) {
+          const finalText = this.extractProviderText(payload);
+          if (!finalText) throw new ServiceUnavailableException(`${provider} returned no final response after tools`);
+          this.logger.log('AI commerce tool loop completed', {
+            action: 'ai_commerce_tools_completed', provider, model, rounds: round + 1,
+            toolCalls: executed, duration: Date.now() - startedAt,
+          });
+          return finalText;
+        }
+        messages.push({ role: 'assistant', content: message.content ?? null, tool_calls: message.tool_calls });
+        for (const call of calls) {
+          let result: Record<string, unknown>;
+          try {
+            result = await execute(call);
+            executed.push({ name: call.name, ok: result.error === undefined });
+          } catch (error) {
+            result = { error: error instanceof Error ? error.message : 'Tool execution failed' };
+            executed.push({ name: call.name, ok: false });
+          }
+          messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+        }
+      }
+      throw new ServiceUnavailableException('AI commerce tool loop exceeded 6 rounds');
+    } catch (error) {
+      this.logCaughtError('ai_commerce_tools_failed', provider, model, startedAt, error);
+      if (error instanceof ServiceUnavailableException) throw error;
+      throw new ServiceUnavailableException(`Unable to run commerce tools: ${error instanceof Error ? error.message : 'unknown error'}`);
+    }
+  }
 
   async chat(turns: AiConversationTurn[], storeContext?: { name: string; language: string; products: Product[]; orders?: Order[] }): Promise<string> {
     const key = this.config.aiApiKey();
@@ -381,6 +465,53 @@ ${catalog || 'No products are currently available in the catalog.'}`
       else if (char === '}' && depth > 0) { depth -= 1; if (depth === 0 && start >= 0) results.push(value.slice(start, index + 1)); }
     }
     return results;
+  }
+  private parseNativeToolCalls(value: unknown): NativeCommerceToolCall[] {
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((raw: Json, index: number) => {
+      const name = raw.function?.name;
+      if (typeof name !== 'string' || !name.trim()) return [];
+      let args: unknown = raw.function?.arguments ?? {};
+      if (typeof args === 'string') {
+        try { args = JSON.parse(args || '{}'); } catch { args = {}; }
+      }
+      if (!args || typeof args !== 'object' || Array.isArray(args)) args = {};
+      return [{ id: String(raw.id ?? `tool-${index}`), name: name.trim(), arguments: args as Record<string, unknown> }];
+    });
+  }
+  private async readChatCompletionPayload(response: ProviderResponse): Promise<Json> {
+    const contentType = response.headers.get('content-type') ?? '';
+    if (!contentType.includes('text/event-stream')) return this.readJson(response);
+    const body = await response.text();
+    let content = '';
+    const toolCalls: Json[] = [];
+    let finishReason: unknown;
+    for (const rawLine of body.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line.startsWith('data:')) continue;
+      const encoded = line.slice(5).trim();
+      if (!encoded || encoded === '[DONE]') continue;
+      let event: Json;
+      try { event = JSON.parse(encoded); } catch { continue; }
+      const choice = event.choices?.[0];
+      if (!choice) continue;
+      finishReason = choice.finish_reason ?? finishReason;
+      const delta = choice.delta ?? {};
+      if (typeof delta.content === 'string') content += delta.content;
+      for (const fragment of delta.tool_calls ?? []) {
+        const index = Number(fragment.index ?? 0);
+        toolCalls[index] ??= { id: '', type: 'function', function: { name: '', arguments: '' } };
+        if (fragment.id) toolCalls[index].id = fragment.id;
+        if (fragment.function?.name) toolCalls[index].function.name += fragment.function.name;
+        if (fragment.function?.arguments) toolCalls[index].function.arguments += fragment.function.arguments;
+      }
+    }
+    return {
+      choices: [{
+        finish_reason: finishReason,
+        message: { role: 'assistant', content: content || null, tool_calls: toolCalls.filter(Boolean) },
+      }],
+    };
   }
   private async readJson(response: ProviderResponse): Promise<Json> { return response.json().catch(() => ({})) as Promise<Json>; }
 }
