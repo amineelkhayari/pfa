@@ -79,9 +79,19 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
     // Looking up an existing order is never a request to create a new one. Previously the bare word
     // "order" started a cart before this distinction was made, trapping all later messages in the
     // numbered product menu.
+    const productSelectionIntent = this.hasProductSelectionIntent(reply, catalog);
     if (
       !this.isGeneralOrderQuery(reply)
-      && await this.handleNewOrder(sessionId, store, message, reply, sender, catalog, customerOrders)
+      && await this.handleNewOrder(
+        sessionId,
+        store,
+        message,
+        reply,
+        sender,
+        catalog,
+        customerOrders,
+        productSelectionIntent,
+      )
     ) return;
     const pending = customerOrders.filter(candidate => candidate.confirmationStatus === 'pending');
     const referencedOrder = customerOrders.find(candidate => {
@@ -234,20 +244,29 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
         await this.orders.save(order);
       }
       await this.conversations.save(conversation);
+      const safeDecisionReply = decision.action === 'continue' && this.hasUnverifiedMutationClaim(decision.reply)
+        ? this.orderFallbackReply(customerText, order, store.language)
+        : decision.reply;
       const text = decision.action === 'confirm'
         ? await this.confirmationMessage(store, order, decision.reply)
-        : decision.reply;
+        : safeDecisionReply;
       await this.messages.sendText(sessionId, { chatId, text });
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'AI conversation failed';
+      const providerMutationFailed = order.confirmationStatus === 'processing_reply';
       conversation.lastError = reason;
       conversation.turns = turns;
       await this.conversations.save(conversation);
-      if (order.confirmationStatus === 'processing_reply') {
+      if (providerMutationFailed) {
         order.confirmationStatus = 'pending'; order.confirmationError = reason; await this.orders.save(order);
       }
       this.logger.error(`AI order reply failed (order=${order.id}): ${reason}`);
-      await this.messages.sendText(sessionId, { chatId, text: 'Je transfère votre demande à un conseiller. Votre commande reste en attente.' });
+      await this.messages.sendText(sessionId, {
+        chatId,
+        text: providerMutationFailed
+          ? `Je n’ai pas pu mettre à jour la commande ${order.orderNumber ?? order.shopifyOrderId} pour le moment. Elle reste en attente; vous pouvez réessayer dans un instant.`
+          : this.orderFallbackReply(customerText, order, store.language),
+      });
     }
   }
 
@@ -272,9 +291,10 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
     if (settings.catalogAssistantEnabled === false) return;
     const chatId = message.chatId ?? message.from;
     if (!chatId) return;
+    let products: Product[] = [];
     try {
       const catalog = await this.storeProducts(store.id);
-      const products = this.tools.searchProducts(text, catalog, store.currency, 8).products;
+      products = this.tools.searchProducts(text, catalog, store.currency, 8).products;
       const history = await this.messages.getMessages(sessionId, { chatId, limit: 10 });
       const turns = history.messages
         .filter(item => item.type === 'text' && Boolean(item.body?.trim()))
@@ -291,10 +311,74 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
         turns,
         { name: store.name, language: store.language, products, orders: customerOrders },
       );
-      await this.messages.sendText(sessionId, { chatId, text: answer.slice(0, 1500) });
+      const safeAnswer = this.hasUnverifiedMutationClaim(answer)
+        ? this.catalogFallbackReply(text, products, customerOrders, store)
+        : answer;
+      await this.messages.sendText(sessionId, { chatId, text: safeAnswer.slice(0, 1500) });
     } catch (error) {
       this.logger.error(`AI catalog reply failed (store=${store.id}): ${error instanceof Error ? error.message : 'unknown error'}`);
+      const fallback = this.catalogFallbackReply(text, products, customerOrders, store);
+      await this.messages.sendText(sessionId, { chatId, text: fallback });
     }
+  }
+
+  /**
+   * Keep WhatsApp useful during a provider outage/rate-limit. A technical AI failure is not a
+   * human handoff: answer factual order questions locally and leave the order actionable.
+   */
+  private orderFallbackReply(text: string, order: Order, language?: string): string {
+    const normalized = text.toLowerCase();
+    const reference = order.orderNumber ?? order.shopifyOrderId;
+    const darija = /\b(?:salam|ch7al|chnou|chno|fin|bghit|wach|dyali|3ndi)\b|[\u0600-\u06ff]/i.test(text);
+    const items = (order.lineItems ?? [])
+      .map(item => `${item.quantity ?? 1}× ${item.title ?? item.name ?? 'produit'}`)
+      .join(', ');
+    if (/total|price|prix|montant|ch7al|ثمن|المجموع/i.test(normalized)) {
+      return darija
+        ? `Total dyal commande ${reference} هو ${order.totalPrice} ${order.currency}.`
+        : `Le total de la commande ${reference} est de ${order.totalPrice} ${order.currency}.`;
+    }
+    if (/status|statut|état|etat|fin وصل|فين وصل|confirmation/i.test(normalized)) {
+      return darija
+        ? `Commande ${reference}: statut ${order.status}, confirmation ${order.confirmationStatus}.`
+        : `Commande ${reference} : statut ${order.status}, confirmation WhatsApp ${order.confirmationStatus}.`;
+    }
+    if (/produit|article|item|شنو|اش خديت|commande فيها/i.test(normalized) && items) {
+      return darija ? `Commande ${reference} فيها: ${items}.` : `La commande ${reference} contient : ${items}.`;
+    }
+    if (/adresse|address|livraison|عنوان/i.test(normalized)) {
+      const address = order.shippingAddress ?? {};
+      const rendered = [address.name, address.address1, address.city, address.zip, address.country].filter(Boolean).join(', ');
+      return rendered
+        ? `Adresse de livraison de la commande ${reference} : ${rendered}.`
+        : `L’adresse de livraison de la commande ${reference} n’est pas disponible.`;
+    }
+    if (/^(?:salam|bonjour|bonsoir|hello|hi|السلام|سلام)[\s!.?]*$/i.test(text.trim())) {
+      return darija
+        ? `وعليكم السلام 😊 كيفاش نقدر نعاونك فالطلب ${reference}؟`
+        : `Bonjour 😊 Comment puis-je vous aider avec la commande ${reference} ?`;
+    }
+    return darija
+      ? `نقدر نعاونك فالطلب ${reference}: المجموع ${order.totalPrice} ${order.currency}. واش بغيتي تأكدها، تلغيها، ولا تسول على شي معلومة؟`
+      : `Je peux vous aider avec la commande ${reference} (${order.totalPrice} ${order.currency}). Souhaitez-vous la confirmer, l’annuler ou vérifier une information ?`;
+  }
+
+  private catalogFallbackReply(text: string, products: Product[], orders: Order[], store: Store): string {
+    const normalized = text.toLowerCase();
+    const darija = /\b(?:salam|ch7al|chnou|chno|fin|bghit|wach|dyali|3ndi)\b|[\u0600-\u06ff]/i.test(text);
+    if (this.isGeneralOrderQuery(text)) {
+      if (!orders.length) return darija ? 'ما لقيت حتى طلب مربوط بهاد الرقم.' : 'Je n’ai trouvé aucune commande liée à votre numéro.';
+      const lines = orders.slice(0, 5).map(order => `• ${order.orderNumber ?? order.shopifyOrderId} — ${order.totalPrice} ${order.currency} — ${order.status}`).join('\n');
+      return `${darija ? 'هادو هما الطلبات ديالك:' : 'Voici vos commandes :'}\n${lines}`;
+    }
+    const matches = this.tools.searchProducts(text, products, store.currency, 5).products;
+    if (/produit|catalog|article|شنو|اش عندكم|3ndkom/i.test(normalized) || matches.length) {
+      const choices = (matches.length ? matches : products).slice(0, 5)
+        .map((product, index) => `${index + 1}. ${product.title} — ${product.price} ${store.currency}`)
+        .join('\n');
+      if (choices) return `${darija ? 'ها بعض المنتجات المتوفرة:' : 'Voici quelques produits disponibles :'}\n${choices}`;
+    }
+    return darija ? 'مرحبا 😊 قول ليا شنو بغيتي تعرف على المنتجات ولا الطلبات ديالك؟' : 'Bonjour 😊 Que souhaitez-vous savoir sur nos produits ou vos commandes ?';
   }
 
   private async storeProducts(storeId: string): Promise<Product[]> {
@@ -319,12 +403,16 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
     phone: string,
     products: Product[],
     customerOrders: Order[],
+    forceStart = false,
   ): Promise<boolean> {
     const chatId = message.chatId ?? message.from;
     if (!chatId) return false;
     let cart = await this.carts.findOneBy({ storeId: store.id, phone });
-    if (!cart && !this.hasPurchaseIntent(text)) return false;
-    cart ??= this.carts.create({ storeId: store.id, phone, step: 'product', quantity: 1, country: 'Morocco' });
+    if (!cart && !forceStart && !this.hasPurchaseIntent(text)) return false;
+    if (!cart) {
+      cart = this.carts.create({ storeId: store.id, phone, step: 'product', quantity: 1, country: 'Morocco' });
+      this.logToolCall('start_new_order', store.id, phone, { sourceText: text.slice(0, 120) });
+    }
     const cancel = /\b(cancel|annul|stop|ncancel|ma bghit|la ma bghitch)\w*\b|إلغاء|الغاء|لا أريد/i.test(text);
     if (cancel) {
       if (cart.id) await this.carts.delete(cart.id);
@@ -351,6 +439,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
         return true;
       }
       cart.productId = product.id;
+      this.logToolCall('select_product', store.id, phone, { productId: product.id, productName: product.title });
       const variants = product.variants ?? [];
       if (variants.length > 1) {
         cart.step = 'variant'; await this.carts.save(cart);
@@ -417,6 +506,12 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
               postalCode: cart.postalCode, country: cart.country,
             });
         await this.carts.delete(cart.id);
+        this.logToolCall('create_order', store.id, phone, {
+          productId: product.id,
+          quantity: cart.quantity,
+          provider: store.provider,
+          orderNumber: result.orderName ?? null,
+        });
         await this.messages.sendText(sessionId, { chatId, text: `Votre commande ${result.orderName ?? ''} a été créée et confirmée avec succès ✅` });
       } catch (error) {
         this.logger.error(`Chat order creation failed (store=${store.id}, customer=${phone.slice(-4)}): ${error instanceof Error ? error.message : 'unknown error'}`);
@@ -430,7 +525,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
   private hasPurchaseIntent(text: string): boolean {
     // Require a clear creation/buying verb. A bare "order/commande/طلب" is commonly an existing
     // order enquiry and must remain conversational.
-    return /\b(?:buy|purchase|commander|acheter|achete|nchri|nakhod|nakhdo|nakhdoh|ncommandi)\b|\b(?:i want|i need|want to|would like to)\s+(?:buy|purchase|order)\b|\b(?:je veux|je voudrais)\s+(?:commander|acheter)\b|\bbghit\s+(?:nchri|nakhod|nakhdo|nakhdoh|ncommandi)\b|(?:بغيت|أريد)\s+(?:نشتري|نطلب|شراء|ناخد|ناخدو|ناخذه)/i.test(text);
+    return /\b(?:buy|purchase|commander|acheter|achete|nchri|nakhod|nakhdo|nakhdoh|ncommandi)\b|\b(?:i want|i need|want to|would like to)\s+(?:buy|purchase|order|create|place)\b|\b(?:create|place|make|start|continue|complete)\s+(?:a\s+|an\s+|new\s+)?(?:order|purchase)\b|\b(?:je veux|je voudrais|j aimerais|on peut|peux tu|pouvez vous)\s+(?:commander|acheter|créer|creer|faire|passer|démarrer|demarrer|continuer)\b|\b(?:créer|creer|faire|passer|démarrer|demarrer|continuer|finaliser)\s+(?:une?\s+)?(?:commande|order)\b|\bbghit\s+(?:nchri|nakhod|nakhdo|nakhdoh|ncommandi|ndir|ndor|ndiro|ncreer|nkml|nkemel)\b|\b(?:ndir|ndor|ndiro|ncreer|cree|créer|nkml|nkemel|tkmel)\s+(?:order|commande|talab|talabiya)\b|\b(?:commande|order|talab|talabiya)\s+(?:jdida|jdid|nouvelle|new)\b|(?:بغيت|أريد)\s+(?:نشتري|نطلب|شراء|ناخد|ناخدو|ناخذه|ندير)|(?:ندير|نكمل|دير|دوز|أنشئ|انشئ)\s+(?:طلب|الطلب|طلبية)/i.test(text);
   }
 
   private hasAddressChangeIntent(text: string): boolean {
@@ -506,7 +601,27 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
   }
 
   private hasReferentialPurchaseIntent(text: string): boolean {
-    return /\b(?:nakhod|nakhdo|nakhdoh|take it|buy it|this one)\b|(?:ناخد|ناخدو|ناخذه|هذا|هادا)/i.test(text);
+    return /\b(?:nakhod|nakhdo|nakhdoh|take it|buy it|this one|nkml|nkemel|tkmel|continue|complete)\b|(?:ناخد|ناخدو|ناخذه|هذا|هادا|نكمل|كمل)/i.test(text);
+  }
+
+  private hasProductSelectionIntent(text: string, products: Product[]): boolean {
+    if (!this.matchProduct(text, products)) return false;
+    return /\b(?:je veux|je prends|je choisis|i want|i ll take|i will take|bghit|nakhod|nakhdo|khdit|choix|option)\b|(?:بغيت|ناخد|نختار|أريد)/i.test(text);
+  }
+
+  /** Never forward an AI-only mutation claim; only provider tool results may authorize one. */
+  private hasUnverifiedMutationClaim(text: string): boolean {
+    return /(?:commande|order|طلب(?:ية)?)\s*(?:#?\w+\s*)?(?:a été|est|was|has been|تمت|راه|tqaddat)?\s*(?:cré[ée]e?|cree|created|confirm[ée]e?|confirmed|enregistr[ée]e?|saved|تأكد|تسجل|تسجلات)|(?:cré[ée]e?|cree|created|confirm[ée]e?|confirmed|enregistr[ée]e?|saved)\s+(?:la\s+|votre\s+|your\s+)?(?:commande|order)|(?:tqaddat|tsajlat|tconfirmat)\b/i.test(text);
+  }
+
+  private logToolCall(tool: string, storeId: string, phone: string, input: Record<string, unknown>): void {
+    this.logger.log('Commerce tool executed', {
+      action: 'commerce_tool_executed',
+      tool,
+      storeId,
+      customer: phone.slice(-4),
+      input,
+    });
   }
 
   private async recentlyMentionedProduct(sessionId: string, chatId: string, products: Product[]): Promise<Product | undefined> {
