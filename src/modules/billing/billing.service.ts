@@ -1,10 +1,11 @@
 import { BadGatewayException, BadRequestException, Injectable, NotFoundException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHmac, timingSafeEqual } from 'crypto';
-import { Repository } from 'typeorm';
+import { Brackets, In, Repository } from 'typeorm';
 import { UserAccount, UserPlan } from '../auth/entities/user-account.entity';
 import { BillingProvider, BillingSubscription } from './entities/subscription.entity';
 import { BillingConfigService } from './billing-config.service';
+import { PaymentStatus, PaymentTransaction } from './entities/payment-transaction.entity';
 
 type Json = Record<string, any>;
 
@@ -12,12 +13,110 @@ type Json = Record<string, any>;
 export class BillingService {
   constructor(
     @InjectRepository(BillingSubscription, 'data') private readonly subscriptions: Repository<BillingSubscription>,
+    @InjectRepository(PaymentTransaction, 'data') private readonly transactions: Repository<PaymentTransaction>,
     @InjectRepository(UserAccount, 'data') private readonly users: Repository<UserAccount>,
     private readonly config: BillingConfigService,
   ) {}
 
   status(userId: string) {
     return this.subscriptions.find({ where: { userId }, order: { updatedAt: 'DESC' } });
+  }
+
+  history(userId: string, query: PaymentHistoryQuery = {}) { return this.queryTransactions({ ...query, userId }); }
+
+  async listSubscriptions(query: SubscriptionQuery = {}) {
+    const qb = this.subscriptions.createQueryBuilder('subscription').orderBy('subscription.updatedAt', 'DESC');
+    if (query.provider) qb.andWhere('subscription.provider = :provider', { provider: query.provider });
+    if (query.status) qb.andWhere('LOWER(subscription.status) = :status', { status: query.status.toLowerCase() });
+    if (query.userId) qb.andWhere('subscription.userId = :userId', { userId: query.userId });
+    const rows = await qb.getMany();
+    const users = await this.users.findBy({ id: In([...new Set(rows.map(row => row.userId))]) });
+    const lookup = new Map(users.map(user => [user.id, { id: user.id, name: user.name, email: user.email, username: user.username, plan: user.plan }]));
+    return rows.map(row => ({ ...row, user: lookup.get(row.userId) ?? null }));
+  }
+
+  async cancelSubscription(subscriptionId: string, userId?: string, immediate = false, reason = 'Requested by account owner') {
+    const row = await this.subscriptionForAction(subscriptionId, userId);
+    if (!row.providerSubscriptionId) throw new BadRequestException('Subscription is not connected to a payment provider');
+    if (row.provider === BillingProvider.STRIPE) {
+      const response = immediate
+        ? await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(row.providerSubscriptionId)}`, { method: 'DELETE', headers: { Authorization: `Bearer ${this.config.required('stripeSecretKey', 'STRIPE_SECRET_KEY')}` } })
+        : await this.stripeUpdateSubscription(row.providerSubscriptionId, { cancel_at_period_end: 'true', 'cancellation_details[comment]': reason.slice(0, 500) });
+      const data = await this.json(response);
+      if (!response.ok) throw new BadGatewayException(data.error?.message ?? 'Stripe cancellation failed');
+      row.cancelAtPeriodEnd = !immediate;
+      row.status = immediate ? 'cancelled' : String(data.status ?? row.status);
+      if (data.current_period_end) row.currentPeriodEnd = new Date(Number(data.current_period_end) * 1000);
+    } else {
+      const token = await this.payPalToken();
+      const response = await fetch(`${this.payPalBase()}/v1/billing/subscriptions/${encodeURIComponent(row.providerSubscriptionId)}/cancel`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: reason.slice(0, 128) }) });
+      if (!response.ok && response.status !== 204) { const data = await this.json(response); throw new BadGatewayException(data.message ?? 'PayPal cancellation failed'); }
+      row.status = 'cancelled'; row.cancelAtPeriodEnd = false; row.currentPeriodEnd = new Date();
+    }
+    await this.subscriptions.save(row); await this.refreshUserPlan(row.userId);
+    return row;
+  }
+
+  async reactivateSubscription(subscriptionId: string, userId?: string) {
+    const row = await this.subscriptionForAction(subscriptionId, userId);
+    if (row.provider !== BillingProvider.STRIPE) throw new BadRequestException('A cancelled PayPal subscription cannot be reactivated; create a new subscription');
+    if (!row.cancelAtPeriodEnd) throw new BadRequestException('This subscription is not scheduled for cancellation');
+    const response = await this.stripeUpdateSubscription(String(row.providerSubscriptionId), { cancel_at_period_end: 'false' });
+    const data = await this.json(response);
+    if (!response.ok) throw new BadGatewayException(data.error?.message ?? 'Stripe reactivation failed');
+    row.cancelAtPeriodEnd = false; row.status = String(data.status ?? 'active');
+    await this.subscriptions.save(row); await this.refreshUserPlan(row.userId);
+    return row;
+  }
+
+  async refundPayment(transactionId: string, amount?: number, reason = 'Requested by administrator') {
+    const payment = await this.transactions.findOneBy({ id: transactionId });
+    if (!payment || payment.status !== PaymentStatus.SUCCEEDED) throw new BadRequestException('Only a successful payment can be refunded');
+    if (!payment.providerPaymentId) throw new BadRequestException('The provider payment identifier is missing');
+    const prior = await this.transactions.find({ where: { parentTransactionId: payment.id, status: PaymentStatus.REFUNDED } });
+    const remaining = payment.amount - prior.reduce((sum, row) => sum + row.amount, 0);
+    const refundAmount = amount == null ? remaining : Math.round(amount);
+    if (refundAmount <= 0 || refundAmount > remaining) throw new BadRequestException(`Refund amount must be between 1 and ${remaining} minor currency units`);
+    let providerRefundId: string; let providerStatus = 'pending';
+    if (payment.provider === BillingProvider.STRIPE) {
+      const body = new URLSearchParams({ payment_intent: payment.providerPaymentId, amount: String(refundAmount), reason: 'requested_by_customer', 'metadata[reason]': reason.slice(0, 500) });
+      const response = await fetch('https://api.stripe.com/v1/refunds', { method: 'POST', headers: { Authorization: `Bearer ${this.config.required('stripeSecretKey', 'STRIPE_SECRET_KEY')}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+      const data = await this.json(response); if (!response.ok || !data.id) throw new BadGatewayException(data.error?.message ?? 'Stripe refund failed');
+      providerRefundId = data.id; providerStatus = data.status === 'succeeded' ? 'succeeded' : String(data.status ?? 'pending');
+    } else {
+      const token = await this.payPalToken();
+      const body = { amount: { total: (refundAmount / 100).toFixed(2), currency: payment.currency }, description: reason.slice(0, 255) };
+      const response = await fetch(`${this.payPalBase()}/v1/payments/sale/${encodeURIComponent(payment.providerPaymentId)}/refund`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'PayPal-Request-Id': `refund-${payment.id}-${refundAmount}` }, body: JSON.stringify(body) });
+      const data = await this.json(response); if (!response.ok || !data.id) throw new BadGatewayException(data.message ?? 'PayPal refund failed');
+      providerRefundId = data.id; providerStatus = String(data.state ?? 'pending');
+    }
+    const refund = this.transactions.create({ userId: payment.userId, provider: payment.provider, providerEventId: `manual-refund:${providerRefundId}`, providerPaymentId: providerRefundId, providerSubscriptionId: payment.providerSubscriptionId, parentTransactionId: payment.id, status: PaymentStatus.REFUNDED, amount: refundAmount, currency: payment.currency, description: `${reason} (${providerStatus})`, paidAt: new Date() });
+    await this.transactions.save(refund); return refund;
+  }
+
+  async adminHistory(query: PaymentHistoryQuery = {}) {
+    const result = await this.queryTransactions(query, true);
+    const summaryQuery = this.filteredTransactions(query);
+    const rows = await summaryQuery.getMany();
+    const succeeded = rows.filter(row => row.status === PaymentStatus.SUCCEEDED);
+    const refunded = rows.filter(row => row.status === PaymentStatus.REFUNDED);
+    const currencyTotals = new Map<string, number>();
+    for (const row of [...succeeded, ...refunded]) {
+      const direction = row.status === PaymentStatus.REFUNDED ? -1 : 1;
+      currencyTotals.set(row.currency, (currencyTotals.get(row.currency) ?? 0) + direction * row.amount);
+    }
+    const activeResult = await this.subscriptions.createQueryBuilder('subscription').select('COUNT(DISTINCT subscription.userId)', 'count').where('LOWER(subscription.status) IN (:...statuses)', { statuses: ['active', 'trialing'] }).getRawOne<{ count: string }>();
+    const activeSubscribers = Number(activeResult?.count ?? 0);
+    return {
+      ...result,
+      summary: {
+        payments: rows.length,
+        successful: succeeded.length,
+        failed: rows.filter(row => row.status === PaymentStatus.FAILED).length,
+        activeSubscribers,
+        earnings: [...currencyTotals].map(([currency, amount]) => ({ currency, amount })),
+      },
+    };
   }
 
   async createStripeCheckout(user: UserAccount): Promise<{ url: string }> {
@@ -75,8 +174,10 @@ export class BillingService {
       const userId = object.metadata?.userId ?? existing?.userId;
       if (!userId) return;
       const status = event.type === 'customer.subscription.deleted' ? 'cancelled' : String(object.status ?? 'pending');
-      await this.upsert(userId, BillingProvider.STRIPE, object.id, object.customer, status, object.current_period_end);
+      await this.upsert(userId, BillingProvider.STRIPE, object.id, object.customer, status, object.current_period_end, Boolean(object.cancel_at_period_end));
+      return;
     }
+    if (['invoice.paid', 'invoice.payment_failed', 'charge.refunded'].includes(String(event.type))) await this.recordStripePayment(event, object);
   }
 
   async createPayPalSubscription(user: UserAccount): Promise<{ id: string; url: string }> {
@@ -100,29 +201,115 @@ export class BillingService {
     if (!(await this.verifyPayPal(headers, event))) throw new UnauthorizedException('Invalid PayPal webhook signature');
     const resource = event.resource as Json | undefined;
     if (!resource) return;
-    const existing = resource.id ? await this.subscriptions.findOneBy({ provider: BillingProvider.PAYPAL, providerSubscriptionId: resource.id }) : null;
+    const resourceSubscriptionId = resource.billing_agreement_id ?? resource.id;
+    const existing = resourceSubscriptionId ? await this.subscriptions.findOneBy({ provider: BillingProvider.PAYPAL, providerSubscriptionId: resourceSubscriptionId }) : null;
     const userId = resource.custom_id ?? existing?.userId;
     if (!userId) return;
+    const eventType = String(event.event_type);
     const statusByEvent: Record<string, string> = {
       'BILLING.SUBSCRIPTION.ACTIVATED': 'active', 'BILLING.SUBSCRIPTION.CANCELLED': 'cancelled',
       'BILLING.SUBSCRIPTION.SUSPENDED': 'suspended', 'BILLING.SUBSCRIPTION.EXPIRED': 'expired',
       'BILLING.SUBSCRIPTION.PAYMENT.FAILED': 'past_due',
     };
-    await this.upsert(userId, BillingProvider.PAYPAL, resource.id, resource.subscriber?.payer_id ?? null, statusByEvent[event.event_type] ?? String(resource.status ?? 'pending').toLowerCase());
+    const subscriptionId = resourceSubscriptionId;
+    if (eventType.startsWith('BILLING.SUBSCRIPTION.')) await this.upsert(userId, BillingProvider.PAYPAL, subscriptionId, resource.subscriber?.payer_id ?? null, statusByEvent[eventType] ?? String(resource.status ?? 'pending').toLowerCase());
+    if (['PAYMENT.SALE.COMPLETED', 'PAYMENT.SALE.DENIED', 'PAYMENT.SALE.REFUNDED', 'PAYMENT.SALE.REVERSED', 'BILLING.SUBSCRIPTION.PAYMENT.FAILED'].includes(eventType)) {
+      const amount = resource.amount ?? resource.amount_with_breakdown?.gross_amount ?? {};
+      const originalPaymentId = resource.sale_id ?? resource.id;
+      const parent = ['PAYMENT.SALE.REFUNDED', 'PAYMENT.SALE.REVERSED'].includes(eventType) ? await this.transactions.findOneBy({ provider: BillingProvider.PAYPAL, providerPaymentId: originalPaymentId, status: PaymentStatus.SUCCEEDED }) : null;
+      await this.recordTransaction({
+        userId, provider: BillingProvider.PAYPAL, providerEventId: String(event.id),
+        providerPaymentId: resource.id ?? null, providerSubscriptionId: subscriptionId ?? null, parentTransactionId: parent?.id ?? null,
+        status: eventType === 'PAYMENT.SALE.COMPLETED' ? PaymentStatus.SUCCEEDED : ['PAYMENT.SALE.REFUNDED', 'PAYMENT.SALE.REVERSED'].includes(eventType) ? PaymentStatus.REFUNDED : PaymentStatus.FAILED,
+        amount: this.decimalToMinor(amount.total ?? amount.value), currency: String(amount.currency ?? amount.currency_code ?? 'USD').toUpperCase(),
+        description: resource.note ?? 'Pro monthly subscription', paidAt: new Date(event.create_time ?? Date.now()),
+      });
+    }
   }
 
-  private async upsert(userId: string, provider: BillingProvider, subscriptionId: string, customerId: string | null, status: string, periodEnd?: number) {
+  private async recordStripePayment(event: Json, object: Json) {
+    const subscriptionId = typeof object.subscription === 'string' ? object.subscription : object.subscription?.id;
+    const existing = subscriptionId ? await this.subscriptions.findOneBy({ provider: BillingProvider.STRIPE, providerSubscriptionId: subscriptionId }) : null;
+    const previousPayment = !existing && object.payment_intent ? await this.transactions.findOneBy({ provider: BillingProvider.STRIPE, providerPaymentId: object.payment_intent }) : null;
+    const userId = object.metadata?.userId ?? existing?.userId ?? previousPayment?.userId;
+    if (!userId) return;
+    const refunded = event.type === 'charge.refunded';
+    let amount = Number(refunded ? object.amount_refunded : object.amount_paid ?? object.amount_due ?? 0);
+    let parentTransactionId: string | null = null;
+    if (refunded && previousPayment) {
+      parentTransactionId = previousPayment.id;
+      const recorded = await this.transactions.find({ where: { parentTransactionId, status: PaymentStatus.REFUNDED } });
+      amount -= recorded.reduce((sum, row) => sum + row.amount, 0);
+      if (amount <= 0) return;
+    }
+    await this.recordTransaction({
+      userId, provider: BillingProvider.STRIPE, providerEventId: String(event.id), providerPaymentId: object.payment_intent ?? object.id ?? null,
+      providerSubscriptionId: subscriptionId ?? null, parentTransactionId,
+      status: refunded ? PaymentStatus.REFUNDED : event.type === 'invoice.paid' ? PaymentStatus.SUCCEEDED : PaymentStatus.FAILED,
+      amount,
+      currency: String(object.currency ?? 'USD').toUpperCase(), description: object.description ?? 'Pro monthly subscription',
+      paidAt: new Date(Number(object.status_transitions?.paid_at ?? object.created ?? event.created ?? Date.now() / 1000) * 1000),
+    });
+  }
+
+  private async recordTransaction(input: Partial<PaymentTransaction> & Pick<PaymentTransaction, 'userId' | 'provider' | 'providerEventId' | 'status' | 'amount' | 'currency'>) {
+    if (await this.transactions.findOneBy({ provider: input.provider, providerEventId: input.providerEventId })) return;
+    if (input.status === PaymentStatus.REFUNDED && input.providerPaymentId && await this.transactions.findOneBy({ provider: input.provider, providerPaymentId: input.providerPaymentId, status: PaymentStatus.REFUNDED })) return;
+    await this.transactions.save(this.transactions.create(input));
+  }
+
+  private filteredTransactions(query: PaymentHistoryQuery) {
+    const qb = this.transactions.createQueryBuilder('payment');
+    if (query.userId) qb.andWhere('payment.userId = :userId', { userId: query.userId });
+    if (query.provider) qb.andWhere('payment.provider = :provider', { provider: query.provider });
+    if (query.status) qb.andWhere('payment.status = :status', { status: query.status });
+    if (query.from) qb.andWhere('payment.createdAt >= :from', { from: new Date(query.from) });
+    if (query.to) { const to = new Date(query.to); if (/^\d{4}-\d{2}-\d{2}$/.test(query.to)) to.setHours(23, 59, 59, 999); qb.andWhere('payment.createdAt <= :to', { to }); }
+    if (query.search) qb.andWhere(new Brackets(inner => inner.where('payment.providerPaymentId LIKE :search', { search: `%${query.search}%` }).orWhere('payment.providerSubscriptionId LIKE :search', { search: `%${query.search}%` })));
+    return qb;
+  }
+
+  private async queryTransactions(query: PaymentHistoryQuery, includeUser = false) {
+    const page = Math.max(1, Number(query.page) || 1); const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
+    const qb = this.filteredTransactions(query).orderBy('payment.createdAt', 'DESC').skip((page - 1) * limit).take(limit);
+    const [items, total] = await qb.getManyAndCount();
+    const refunds = items.length ? await this.transactions.find({ where: { parentTransactionId: In(items.map(item => item.id)), status: PaymentStatus.REFUNDED } }) : [];
+    const refundedByPayment = new Map<string, number>();
+    for (const refund of refunds) refundedByPayment.set(String(refund.parentTransactionId), (refundedByPayment.get(String(refund.parentTransactionId)) ?? 0) + refund.amount);
+    const enriched = items.map(item => ({ ...item, refundedAmount: refundedByPayment.get(item.id) ?? 0 }));
+    if (!includeUser) return { items: enriched, total, page, limit };
+    const users = await this.users.findBy({ id: In([...new Set(items.map(item => item.userId))]) });
+    const lookup = new Map(users.map(user => [user.id, { id: user.id, name: user.name, email: user.email, username: user.username }]));
+    return { items: enriched.map(item => ({ ...item, user: lookup.get(item.userId) ?? null })), total, page, limit };
+  }
+
+  private decimalToMinor(value: unknown) { const number = Number(value); return Number.isFinite(number) ? Math.round(number * 100) : 0; }
+
+  private async upsert(userId: string, provider: BillingProvider, subscriptionId: string, customerId: string | null, status: string, periodEnd?: number, cancelAtPeriodEnd?: boolean) {
     const user = await this.users.findOneBy({ id: userId });
     if (!user) return;
     let row = await this.subscriptions.findOne({ where: [{ provider, providerSubscriptionId: subscriptionId }, { provider, userId }] });
     row ??= this.subscriptions.create({ userId, provider });
-    Object.assign(row, { providerSubscriptionId: subscriptionId, providerCustomerId: customerId, status, currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000) : row.currentPeriodEnd });
+    Object.assign(row, { providerSubscriptionId: subscriptionId, providerCustomerId: customerId, status, currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000) : row.currentPeriodEnd, ...(cancelAtPeriodEnd === undefined ? {} : { cancelAtPeriodEnd }) });
     await this.subscriptions.save(row);
-    const all = await this.subscriptions.find({ where: { userId } });
-    user.plan = all.some(subscription => ['active', 'trialing'].includes(subscription.status.toLowerCase()))
-      ? UserPlan.PRO
-      : UserPlan.FREE;
+    await this.refreshUserPlan(userId);
+  }
+
+  private async refreshUserPlan(userId: string) {
+    const user = await this.users.findOneBy({ id: userId }); if (!user) return;
+    const all = await this.subscriptions.find({ where: { userId } }); const now = Date.now();
+    user.plan = all.some(subscription => ['active', 'trialing'].includes(subscription.status.toLowerCase()) && (!subscription.currentPeriodEnd || subscription.currentPeriodEnd.getTime() > now)) ? UserPlan.PRO : UserPlan.FREE;
     await this.users.save(user);
+  }
+
+  private async subscriptionForAction(id: string, userId?: string) {
+    const row = await this.subscriptions.findOneBy({ id });
+    if (!row || (userId && row.userId !== userId)) throw new NotFoundException('Subscription not found');
+    return row;
+  }
+
+  private stripeUpdateSubscription(id: string, values: Record<string, string>) {
+    return fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(id)}`, { method: 'POST', headers: { Authorization: `Bearer ${this.config.required('stripeSecretKey', 'STRIPE_SECRET_KEY')}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(values) });
   }
 
   private verifyStripe(raw: Buffer, header?: string) {
@@ -159,3 +346,8 @@ export class BillingService {
   private appUrl() { return String(this.config.value('publicAppUrl', 'PUBLIC_APP_URL') || 'http://localhost:2886').replace(/\/$/, ''); }
   private async json(response: Response): Promise<Json> { return response.json().catch(() => ({})) as Promise<Json>; }
 }
+
+export interface PaymentHistoryQuery {
+  userId?: string; provider?: BillingProvider; status?: PaymentStatus; from?: string; to?: string; search?: string; page?: number; limit?: number;
+}
+export interface SubscriptionQuery { userId?: string; provider?: BillingProvider; status?: string; }

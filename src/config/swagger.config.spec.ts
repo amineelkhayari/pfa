@@ -1,6 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { createSwaggerConfig, exemptPublicOperations, PUBLIC_PATHS, METRICS_BEARER_SCHEME } from './swagger.config';
+import {
+  ACCOUNT_JWT_SECURITY_SCHEME,
+  createSwaggerConfig,
+  exemptPublicOperations,
+  PUBLIC_PATHS,
+  METRICS_BEARER_SCHEME,
+} from './swagger.config';
 import type { OpenAPIObject } from '@nestjs/swagger';
 
 describe('createSwaggerConfig', () => {
@@ -10,6 +16,18 @@ describe('createSwaggerConfig', () => {
   it('applies the X-API-Key security scheme as a global requirement', () => {
     const config = createSwaggerConfig();
 
+    expect(config.security).toContainEqual({ 'X-API-Key': [] });
+  });
+
+  it('defines account JWT authentication as an alternative global requirement', () => {
+    const config = createSwaggerConfig();
+
+    expect(config.components?.securitySchemes?.[ACCOUNT_JWT_SECURITY_SCHEME]).toMatchObject({
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+    });
+    expect(config.security).toContainEqual({ [ACCOUNT_JWT_SECURITY_SCHEME]: [] });
     expect(config.security).toContainEqual({ 'X-API-Key': [] });
   });
 
@@ -82,9 +100,14 @@ describe('exemptPublicOperations', () => {
 describe('PUBLIC_PATHS drift guard', () => {
   const EXPECTED_PUBLIC_CONTROLLERS = [
     'src/modules/health/health.controller.ts',
+    'src/modules/auth/user-auth.controller.ts',
+    'src/modules/billing/billing.controller.ts',
     'src/modules/infra/infra-status.controller.ts',
     'src/modules/integration/ingress.controller.ts',
     'src/modules/metrics/metrics.controller.ts',
+    'src/modules/shopify/controllers/shopify.controller.ts',
+    'src/modules/shopify/controllers/shopify.webhook.controller.ts',
+    'src/modules/woocommerce/woocommerce.controller.ts',
   ];
 
   function listTsFiles(dir: string, out: string[] = []): string[] {
@@ -118,6 +141,15 @@ describe('PUBLIC_PATHS drift guard', () => {
         '/api/health/live',
         '/api/health/ready',
         '/api/infra/health',
+        '/api/auth/signup',
+        '/api/auth/signin',
+        '/api/billing/webhooks/stripe',
+        '/api/billing/webhooks/paypal',
+        '/api/shopify/oauth/install',
+        '/api/shopify/oauth/callback',
+        '/api/shopify/webhooks/orders-create',
+        '/api/shopify/webhooks/app-uninstalled',
+        '/api/woocommerce/webhooks/{storeId}/order-created',
         '/api/ingress/{pluginId}/{instanceId}/{path}',
       ]),
     );

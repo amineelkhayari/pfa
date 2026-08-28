@@ -6,6 +6,9 @@ import { DocumentBuilder, OpenAPIObject } from '@nestjs/swagger';
  */
 export const API_KEY_SECURITY_SCHEME = 'X-API-Key';
 
+/** Bearer JWT returned by the account sign-in/sign-up endpoints. */
+export const ACCOUNT_JWT_SECURITY_SCHEME = 'account-jwt';
+
 /**
  * Security scheme name for the METRICS_TOKEN bearer that gates `GET /api/metrics`.
  * The endpoint is @Public() at the API-key guard and enforces the token itself, so the
@@ -22,6 +25,15 @@ export const PUBLIC_PATHS = [
   '/api/health/live',
   '/api/health/ready',
   '/api/infra/health',
+  '/api/auth/signup',
+  '/api/auth/signin',
+  '/api/billing/webhooks/stripe',
+  '/api/billing/webhooks/paypal',
+  '/api/shopify/oauth/install',
+  '/api/shopify/oauth/callback',
+  '/api/shopify/webhooks/orders-create',
+  '/api/shopify/webhooks/app-uninstalled',
+  '/api/woocommerce/webhooks/{storeId}/order-created',
   '/api/ingress/{pluginId}/{instanceId}/{path}',
 ];
 
@@ -59,6 +71,15 @@ export function createSwaggerConfig(): Omit<OpenAPIObject, 'paths'> {
       .setDescription('Open Source WhatsApp API Gateway - Free, Self-Hosted HTTP API')
       .setVersion(version)
       .addApiKey({ type: 'apiKey', name: 'X-API-Key', in: 'header' }, API_KEY_SECURITY_SCHEME)
+      .addBearerAuth(
+        {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'Account access token returned by POST /api/auth/signin or POST /api/auth/signup',
+        },
+        ACCOUNT_JWT_SECURITY_SCHEME,
+      )
       // The METRICS_TOKEN bearer gates only GET /api/metrics (applied per-operation there —
       // NOT as a global requirement, since every other route uses the API key).
       .addBearerAuth(
@@ -73,6 +94,9 @@ export function createSwaggerConfig(): Omit<OpenAPIObject, 'paths'> {
       // Apply the scheme globally so Swagger UI sends the key with every request
       // (mirrors the global ApiKeyGuard). Without this, "Authorize" is cosmetic.
       .addSecurityRequirements(API_KEY_SECURITY_SCHEME)
+      // A protected operation accepts either an account JWT or an API key. Separate
+      // requirement objects are OR alternatives in OpenAPI (one object would mean AND).
+      .addSecurityRequirements(ACCOUNT_JWT_SECURITY_SCHEME)
       .setContact('OpenWA', 'https://github.com/rmyndharis/OpenWA', 'yudhi@rmyndharis.com')
       .addTag('sessions', 'WhatsApp session management')
       .addTag('messages', 'Send and manage messages')
@@ -92,7 +116,7 @@ export function createSwaggerConfig(): Omit<OpenAPIObject, 'paths'> {
       .addTag('settings', 'Application settings')
       .addTag('infrastructure', 'Infrastructure & datastore management')
       .addTag('integration', 'Integration Fabric (provider webhooks & instances)')
-      .addTag('auth', 'API key management')
+      .addTag('auth', 'Account authentication and API key management')
       .addTag('audit', 'Audit log')
       .addTag('metrics', 'Prometheus metrics')
       .addTag('health', 'Health check endpoints')

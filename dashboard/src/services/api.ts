@@ -1640,11 +1640,35 @@ export interface BillingSubscription {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
 }
+export interface PaymentTransaction {
+  id: string;
+  userId: string;
+  provider: 'stripe' | 'paypal';
+  providerPaymentId: string | null;
+  providerSubscriptionId: string | null;
+  status: 'succeeded' | 'failed' | 'pending' | 'refunded';
+  amount: number;
+  refundedAmount: number;
+  currency: string;
+  description: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  user?: { id: string; name: string; email: string; username: string } | null;
+}
+export interface PaymentHistory {
+  items: PaymentTransaction[];
+  total: number;
+  page: number;
+  limit: number;
+}
 export const billingApi = {
   status: () => request<BillingSubscription[]>('/billing/status'),
+  history: () => request<PaymentHistory>('/billing/history'),
   stripeCheckout: () => request<{ url: string }>('/billing/stripe/checkout', { method: 'POST' }),
   stripePortal: () => request<{ url: string }>('/billing/stripe/portal', { method: 'POST' }),
   paypalSubscription: () => request<{ id: string; url: string }>('/billing/paypal/subscription', { method: 'POST' }),
+  cancelSubscription: (id: string, reason?: string) => request<BillingSubscription>(`/billing/subscriptions/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  reactivateSubscription: (id: string) => request<BillingSubscription>(`/billing/subscriptions/${id}/reactivate`, { method: 'POST' }),
 };
 
 export interface AdminPaymentSettings {
@@ -1658,6 +1682,17 @@ export const adminBillingApi = {
   get: () => request<AdminPaymentSettings>('/admin/billing-settings'),
   update: (body: Record<string, unknown>) =>
     request<AdminPaymentSettings>('/admin/billing-settings', { method: 'PUT', body: JSON.stringify(body) }),
+  history: (filters: Record<string, string | number | undefined>) => {
+    const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)]));
+    return request<PaymentHistory & { summary: { payments: number; successful: number; failed: number; activeSubscribers: number; earnings: Array<{ currency: string; amount: number }> } }>(`/admin/billing-settings/history?${query}`);
+  },
+  subscriptions: (filters: Record<string, string | undefined> = {}) => {
+    const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value).map(([key, value]) => [key, String(value)]));
+    return request<Array<BillingSubscription & { user: { id: string; name: string; email: string; username: string; plan: string } | null }>>(`/admin/billing-settings/subscriptions?${query}`);
+  },
+  cancelSubscription: (id: string, immediate: boolean, reason?: string) => request<BillingSubscription>(`/admin/billing-settings/subscriptions/${id}/cancel`, { method: 'POST', body: JSON.stringify({ immediate, reason }) }),
+  reactivateSubscription: (id: string) => request<BillingSubscription>(`/admin/billing-settings/subscriptions/${id}/reactivate`, { method: 'POST' }),
+  refund: (id: string, amount?: number, reason?: string) => request<PaymentTransaction>(`/admin/billing-settings/payments/${id}/refund`, { method: 'POST', body: JSON.stringify({ amount, reason }) }),
 };
 
 export interface AdminAiSettings {

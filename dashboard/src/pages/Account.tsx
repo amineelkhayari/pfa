@@ -9,6 +9,7 @@ export function Account() {
   const isUserLogin = Boolean(sessionStorage.getItem('openwa_access_token'));
   const { data: user, isLoading } = useQuery({ queryKey: ['account', 'me'], queryFn: accountApi.me, enabled: isUserLogin });
   const { data: subscriptions = [] } = useQuery({ queryKey: ['billing', 'status'], queryFn: billingApi.status, enabled: isUserLogin });
+  const { data: payments } = useQuery({ queryKey: ['billing', 'history'], queryFn: billingApi.history, enabled: isUserLogin });
   const [name, setName] = useState('');
   const [language, setLanguage] = useState('fr');
   useEffect(() => {
@@ -23,6 +24,10 @@ export function Account() {
   const checkout = useMutation({
     mutationFn: (provider: 'stripe' | 'paypal' | 'portal') => provider === 'stripe' ? billingApi.stripeCheckout() : provider === 'paypal' ? billingApi.paypalSubscription() : billingApi.stripePortal(),
     onSuccess: result => window.location.assign(result.url),
+  });
+  const subscriptionAction = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: 'cancel' | 'reactivate' }) => action === 'cancel' ? billingApi.cancelSubscription(id, 'Cancelled from account settings') : billingApi.reactivateSubscription(id),
+    onSuccess: () => { void client.invalidateQueries({ queryKey: ['billing'] }); void client.invalidateQueries({ queryKey: ['account'] }); },
   });
 
   if (!isUserLogin) return <div className="account-page"><PageHeader title="Account" subtitle="This API-key session has no customer profile." /></div>;
@@ -48,8 +53,16 @@ export function Account() {
           <button className="account-secondary" onClick={() => checkout.mutate('paypal')} disabled={checkout.isPending}>Pay with PayPal</button>
         </div> : <button className="account-secondary" onClick={() => checkout.mutate('portal')} disabled={checkout.isPending}>Manage Stripe billing</button>}
         {checkout.isError && <small className="billing-error">{checkout.error.message}</small>}
-        {subscriptions.map(subscription => <small key={subscription.id}><strong>{subscription.provider}</strong>: {subscription.status}{subscription.currentPeriodEnd ? ` · renews ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}` : ''}</small>)}
+        {subscriptions.map(subscription => <div className="subscription-row" key={subscription.id}><span><strong>{subscription.provider}</strong>: {subscription.status}{subscription.currentPeriodEnd ? ` · ${subscription.cancelAtPeriodEnd ? 'ends' : 'renews'} ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}` : ''}</span><div>{subscription.cancelAtPeriodEnd ? <button className="subscription-link" disabled={subscriptionAction.isPending} onClick={() => subscriptionAction.mutate({ id: subscription.id, action: 'reactivate' })}>Keep subscription</button> : ['active', 'trialing'].includes(subscription.status.toLowerCase()) && <button className="subscription-link danger" disabled={subscriptionAction.isPending} onClick={() => { const warning = subscription.provider === 'paypal' ? 'PayPal cancellation is immediate and Pro access will end now. Continue?' : 'Automatic renewal will stop, but Pro access remains until the paid period ends. Continue?'; if (window.confirm(warning)) subscriptionAction.mutate({ id: subscription.id, action: 'cancel' }); }}>Cancel subscription</button>}</div></div>)}
+        {subscriptionAction.isError && <small className="billing-error">{subscriptionAction.error.message}</small>}
       </div>
     </div>
+    <section className="account-card payment-history-card">
+      <div className="payment-history-heading"><div><h2>Payment history</h2><p>Your subscription charges and renewal attempts.</p></div><strong>{payments?.total ?? 0} payments</strong></div>
+      <div className="payment-table-wrap"><table className="payment-table"><thead><tr><th>Date</th><th>Provider</th><th>Description</th><th>Status</th><th>Amount</th></tr></thead><tbody>
+        {payments?.items.map(payment => <tr key={payment.id}><td>{new Date(payment.paidAt ?? payment.createdAt).toLocaleDateString()}</td><td className="payment-provider">{payment.provider}</td><td>{payment.description ?? 'Pro subscription'}</td><td><span className={`payment-status ${payment.status}`}>{payment.status}</span></td><td>{new Intl.NumberFormat(undefined, { style: 'currency', currency: payment.currency }).format(payment.amount / 100)}</td></tr>)}
+        {!payments?.items.length && <tr><td colSpan={5} className="payment-empty">No payment recorded yet. Payments appear after a provider webhook is received.</td></tr>}
+      </tbody></table></div>
+    </section>
   </div>;
 }

@@ -1,8 +1,13 @@
-import { Controller, Get, Headers, Post, Req, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post, Query, Req, UnauthorizedException } from '@nestjs/common';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 import type { Request } from 'express';
 import { Public } from '../auth/decorators/auth.decorators';
 import { UserAccount } from '../auth/entities/user-account.entity';
 import { BillingService } from './billing.service';
+
+class CancelSubscriptionDto {
+  @IsOptional() @IsString() @MaxLength(128) reason?: string;
+}
 
 @Controller('billing')
 export class BillingController {
@@ -11,6 +16,21 @@ export class BillingController {
   @Get('status')
   status(@Req() req: Request & { user?: UserAccount }) {
     return this.billing.status(this.user(req).id);
+  }
+
+  @Get('history')
+  history(@Req() req: Request & { user?: UserAccount }, @Query() query: Record<string, string>) {
+    return this.billing.history(this.user(req).id, query as any);
+  }
+
+  @Post('subscriptions/:id/cancel')
+  cancel(@Req() req: Request & { user?: UserAccount }, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelSubscriptionDto) {
+    return this.billing.cancelSubscription(id, this.user(req).id, false, dto.reason);
+  }
+
+  @Post('subscriptions/:id/reactivate')
+  reactivate(@Req() req: Request & { user?: UserAccount }, @Param('id', ParseUUIDPipe) id: string) {
+    return this.billing.reactivateSubscription(id, this.user(req).id);
   }
 
   @Post('stripe/checkout')
