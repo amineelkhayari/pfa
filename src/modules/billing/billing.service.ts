@@ -1,4 +1,4 @@
-import { BadGatewayException, BadRequestException, Injectable, NotFoundException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { Brackets, In, Repository } from 'typeorm';
@@ -11,6 +11,7 @@ type Json = Record<string, any>;
 
 @Injectable()
 export class BillingService {
+  private readonly logger = new Logger(BillingService.name);
   constructor(
     @InjectRepository(BillingSubscription, 'data') private readonly subscriptions: Repository<BillingSubscription>,
     @InjectRepository(PaymentTransaction, 'data') private readonly transactions: Repository<PaymentTransaction>,
@@ -161,23 +162,32 @@ export class BillingService {
     const event = JSON.parse(raw.toString('utf8')) as Json;
     const object = event.data?.object as Json | undefined;
     if (!object) return;
+    this.logger.log(`Stripe webhook received type=${String(event.type)} eventId=${String(event.id ?? 'unknown')}`);
     if (event.type === 'checkout.session.completed') {
       const userId = object.client_reference_id ?? object.metadata?.userId;
       const paid = ['paid', 'no_payment_required'].includes(String(object.payment_status));
       if (userId && object.subscription) {
         await this.upsert(userId, BillingProvider.STRIPE, object.subscription, object.customer, paid ? 'active' : 'pending');
-      }
+        if (paid && Number(object.amount_total) > 0) {
+          await this.recordTransaction({
+            userId, provider: BillingProvider.STRIPE, providerEventId: String(event.id),
+            providerPaymentId: object.payment_intent ?? object.id ?? null, providerSubscriptionId: String(object.subscription),
+            status: PaymentStatus.SUCCEEDED, amount: Number(object.amount_total), currency: String(object.currency ?? 'USD').toUpperCase(),
+            description: 'Pro monthly subscription', paidAt: new Date(Number(object.created ?? event.created ?? Date.now() / 1000) * 1000),
+          });
+        }
+      } else this.logger.warn(`Stripe checkout could not be linked to a user eventId=${String(event.id)} userId=${String(userId ?? '')} subscriptionId=${String(object.subscription ?? '')}`);
       return;
     }
     if (String(event.type).startsWith('customer.subscription.')) {
       const existing = await this.subscriptions.findOneBy({ provider: BillingProvider.STRIPE, providerSubscriptionId: object.id });
       const userId = object.metadata?.userId ?? existing?.userId;
-      if (!userId) return;
+      if (!userId) { this.logger.warn(`Stripe subscription webhook could not be linked eventId=${String(event.id ?? 'unknown')} subscriptionId=${String(object.id ?? '')}`); return; }
       const status = event.type === 'customer.subscription.deleted' ? 'cancelled' : String(object.status ?? 'pending');
       await this.upsert(userId, BillingProvider.STRIPE, object.id, object.customer, status, object.current_period_end, Boolean(object.cancel_at_period_end));
       return;
     }
-    if (['invoice.paid', 'invoice.payment_failed', 'charge.refunded'].includes(String(event.type))) await this.recordStripePayment(event, object);
+    if (['invoice.paid', 'invoice.payment_succeeded', 'invoice.payment_failed', 'charge.refunded'].includes(String(event.type))) await this.recordStripePayment(event, object);
   }
 
   async createPayPalSubscription(user: UserAccount): Promise<{ id: string; url: string }> {
@@ -204,8 +214,9 @@ export class BillingService {
     const resourceSubscriptionId = resource.billing_agreement_id ?? resource.id;
     const existing = resourceSubscriptionId ? await this.subscriptions.findOneBy({ provider: BillingProvider.PAYPAL, providerSubscriptionId: resourceSubscriptionId }) : null;
     const userId = resource.custom_id ?? existing?.userId;
-    if (!userId) return;
+    if (!userId) { this.logger.warn(`PayPal webhook could not be linked to a user type=${String(event.event_type)} eventId=${String(event.id ?? 'unknown')} subscriptionId=${String(resourceSubscriptionId ?? '')}`); return; }
     const eventType = String(event.event_type);
+    this.logger.log(`PayPal webhook received type=${eventType} eventId=${String(event.id ?? 'unknown')}`);
     const statusByEvent: Record<string, string> = {
       'BILLING.SUBSCRIPTION.ACTIVATED': 'active', 'BILLING.SUBSCRIPTION.CANCELLED': 'cancelled',
       'BILLING.SUBSCRIPTION.SUSPENDED': 'suspended', 'BILLING.SUBSCRIPTION.EXPIRED': 'expired',
@@ -232,7 +243,7 @@ export class BillingService {
     const existing = subscriptionId ? await this.subscriptions.findOneBy({ provider: BillingProvider.STRIPE, providerSubscriptionId: subscriptionId }) : null;
     const previousPayment = !existing && object.payment_intent ? await this.transactions.findOneBy({ provider: BillingProvider.STRIPE, providerPaymentId: object.payment_intent }) : null;
     const userId = object.metadata?.userId ?? existing?.userId ?? previousPayment?.userId;
-    if (!userId) return;
+    if (!userId) { this.logger.warn(`Stripe payment could not be linked to a user type=${String(event.type)} eventId=${String(event.id ?? 'unknown')} subscriptionId=${String(subscriptionId ?? '')}`); return; }
     const refunded = event.type === 'charge.refunded';
     let amount = Number(refunded ? object.amount_refunded : object.amount_paid ?? object.amount_due ?? 0);
     let parentTransactionId: string | null = null;
@@ -245,7 +256,7 @@ export class BillingService {
     await this.recordTransaction({
       userId, provider: BillingProvider.STRIPE, providerEventId: String(event.id), providerPaymentId: object.payment_intent ?? object.id ?? null,
       providerSubscriptionId: subscriptionId ?? null, parentTransactionId,
-      status: refunded ? PaymentStatus.REFUNDED : event.type === 'invoice.paid' ? PaymentStatus.SUCCEEDED : PaymentStatus.FAILED,
+      status: refunded ? PaymentStatus.REFUNDED : ['invoice.paid', 'invoice.payment_succeeded'].includes(String(event.type)) ? PaymentStatus.SUCCEEDED : PaymentStatus.FAILED,
       amount,
       currency: String(object.currency ?? 'USD').toUpperCase(), description: object.description ?? 'Pro monthly subscription',
       paidAt: new Date(Number(object.status_transitions?.paid_at ?? object.created ?? event.created ?? Date.now() / 1000) * 1000),
@@ -253,9 +264,17 @@ export class BillingService {
   }
 
   private async recordTransaction(input: Partial<PaymentTransaction> & Pick<PaymentTransaction, 'userId' | 'provider' | 'providerEventId' | 'status' | 'amount' | 'currency'>) {
-    if (await this.transactions.findOneBy({ provider: input.provider, providerEventId: input.providerEventId })) return;
-    if (input.status === PaymentStatus.REFUNDED && input.providerPaymentId && await this.transactions.findOneBy({ provider: input.provider, providerPaymentId: input.providerPaymentId, status: PaymentStatus.REFUNDED })) return;
-    await this.transactions.save(this.transactions.create(input));
+    if (await this.transactions.findOneBy({ provider: input.provider, providerEventId: input.providerEventId })) { this.logger.debug(`Payment webhook already recorded provider=${input.provider} eventId=${input.providerEventId}`); return; }
+    if (input.status === PaymentStatus.REFUNDED && input.providerPaymentId && await this.transactions.findOneBy({ provider: input.provider, providerPaymentId: input.providerPaymentId, status: PaymentStatus.REFUNDED })) { this.logger.debug(`Refund already recorded provider=${input.provider} paymentId=${input.providerPaymentId}`); return; }
+    if (input.status === PaymentStatus.SUCCEEDED && input.providerSubscriptionId) {
+      const recent = await this.transactions.createQueryBuilder('payment').where('payment.provider = :provider', { provider: input.provider }).andWhere('payment.providerSubscriptionId = :subscriptionId', { subscriptionId: input.providerSubscriptionId }).andWhere('payment.status = :status', { status: PaymentStatus.SUCCEEDED }).andWhere('payment.amount = :amount', { amount: input.amount }).andWhere('payment.createdAt >= :recent', { recent: new Date(Date.now() - 15 * 60 * 1000) }).orderBy('payment.createdAt', 'DESC').getOne();
+      if (recent) {
+        if ((!recent.providerPaymentId || recent.providerPaymentId.startsWith('cs_')) && input.providerPaymentId) { recent.providerPaymentId = input.providerPaymentId; await this.transactions.save(recent); }
+        this.logger.debug(`Successful payment matched existing checkout provider=${input.provider} subscriptionId=${input.providerSubscriptionId}`); return;
+      }
+    }
+    const saved = await this.transactions.save(this.transactions.create(input));
+    this.logger.log(`Payment recorded id=${saved.id} provider=${saved.provider} status=${saved.status} amount=${saved.amount} currency=${saved.currency} userId=${saved.userId}`);
   }
 
   private filteredTransactions(query: PaymentHistoryQuery) {

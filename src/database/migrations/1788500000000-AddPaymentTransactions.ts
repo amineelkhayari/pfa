@@ -7,7 +7,7 @@ export class AddPaymentTransactions1788500000000 implements MigrationInterface {
     await q.createTable(new Table({
       name: 'payment_transactions',
       columns: [
-        { name: 'id', type: id, ...(id === 'varchar' ? { length: '36' } : {}), isPrimary: true },
+        { name: 'id', type: id, ...(id === 'varchar' ? { length: '36' } : { default: 'gen_random_uuid()' }), isPrimary: true },
         { name: 'userId', type: id, ...(id === 'varchar' ? { length: '36' } : {}) },
         { name: 'provider', type: 'varchar', length: '20' },
         { name: 'providerEventId', type: 'varchar', length: '255' },

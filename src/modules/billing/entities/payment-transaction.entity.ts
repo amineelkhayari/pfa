@@ -2,6 +2,7 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 
 import { dateColumnType } from '../../../common/utils/column-types';
 import { DateTransformer } from '../../../common/transformers/date.transformer';
 import { BillingProvider } from './subscription.entity';
+import { randomUUID } from 'crypto';
 
 export enum PaymentStatus {
   SUCCEEDED = 'succeeded',
@@ -13,7 +14,9 @@ export enum PaymentStatus {
 @Entity('payment_transactions')
 @Index(['provider', 'providerEventId'], { unique: true })
 export class PaymentTransaction {
-  @PrimaryGeneratedColumn('uuid') id: string;
+  // The table is created by a cross-database migration. Generate client-side as
+  // well so an already-migrated PostgreSQL table without a UUID default remains safe.
+  @PrimaryGeneratedColumn('uuid') id: string = randomUUID();
   @Index() @Column('uuid') userId: string;
   @Column({ type: 'varchar', length: 20 }) provider: BillingProvider;
   @Column({ type: 'varchar', length: 255 }) providerEventId: string;
