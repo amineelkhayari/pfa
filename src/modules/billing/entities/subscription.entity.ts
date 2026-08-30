@@ -13,6 +13,7 @@ export class BillingSubscription {
   @Column({ type: 'varchar', length: 255, nullable: true }) providerCustomerId: string | null;
   @Column({ type: 'varchar', length: 255, nullable: true }) providerSubscriptionId: string | null;
   @Column({ type: 'varchar', length: 40, default: 'pending' }) status: string;
+  @Column({ type: 'varchar', length: 50, default: 'pro' }) planSlug: string;
   @Column({ type: dateColumnType(), nullable: true, transformer: DateTransformer }) currentPeriodEnd: Date | null;
   @Column({ type: 'boolean', default: false }) cancelAtPeriodEnd: boolean;
   @CreateDateColumn() createdAt: Date;

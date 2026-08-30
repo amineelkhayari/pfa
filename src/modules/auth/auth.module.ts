@@ -19,10 +19,12 @@ import { Order } from '../stores/entities/order.entity';
 import { PlanUsageService } from './plan-usage.service';
 import { AdminUsersController } from './admin-users.controller';
 import { BillingSubscription } from '../billing/entities/subscription.entity';
+import { BillingModule } from '../billing/billing.module';
 
 @Global()
 @Module({
   imports: [
+    BillingModule,
     TypeOrmModule.forFeature([ApiKey, UserAccount, UserLoginSession, BillingSubscription], 'data'),
     TypeOrmModule.forFeature([Session, Store, Product, Order], 'data'),
   ],

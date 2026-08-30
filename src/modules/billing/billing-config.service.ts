@@ -11,6 +11,9 @@ export interface PaymentSettings {
   aiOrderConfirmationEnabled?: boolean; openAiApiKey?: string; openAiOrderModel?: string;
   aiOrderMaxTurns?: number; aiOrderConversationTimeoutHours?: number;
   aiProvider?: 'openai' | 'openrouter' | 'gemini' | 'custom'; aiBaseUrl?: string;
+  freeTrialDays?: number; freeSessionLimit?: number; freeStoreLimit?: number;
+  freeSentMessageLimit?: number; freeReceivedMessageLimit?: number; freeAiTokenLimit?: number;
+  proAiTokenLimit?: number;
 }
 
 @Injectable()
@@ -19,7 +22,7 @@ export class BillingConfigService implements OnModuleInit {
   constructor(@InjectRepository(BillingConfig, 'data') private readonly repo: Repository<BillingConfig>) {}
   async onModuleInit() { const row = await this.repo.findOneBy({ id: 'default' }); if (row) this.current = this.decrypt(row.encryptedSettings); }
   view() {
-    return { publicAppUrl: this.value('publicAppUrl', 'PUBLIC_APP_URL'), stripeEnabled: this.enabled('stripe'), paypalEnabled: this.enabled('paypal'), paypalEnvironment: this.value('paypalEnvironment', 'PAYPAL_ENV') ?? 'sandbox',
+    return { publicAppUrl: this.value('publicAppUrl', 'PUBLIC_APP_URL'), stripeEnabled: this.enabled('stripe'), paypalEnabled: this.enabled('paypal'), paypalEnvironment: this.value('paypalEnvironment', 'PAYPAL_ENV') ?? 'sandbox', ...this.planPolicy(),
       configured: { stripeSecretKey: Boolean(this.value('stripeSecretKey', 'STRIPE_SECRET_KEY')), stripePriceId: Boolean(this.value('stripePriceId', 'STRIPE_PRO_PRICE_ID')), stripeWebhookSecret: Boolean(this.value('stripeWebhookSecret', 'STRIPE_WEBHOOK_SECRET')), paypalClientId: Boolean(this.value('paypalClientId', 'PAYPAL_CLIENT_ID')), paypalClientSecret: Boolean(this.value('paypalClientSecret', 'PAYPAL_CLIENT_SECRET')), paypalPlanId: Boolean(this.value('paypalPlanId', 'PAYPAL_PRO_PLAN_ID')), paypalWebhookId: Boolean(this.value('paypalWebhookId', 'PAYPAL_WEBHOOK_ID')) } };
   }
   async update(patch: PaymentSettings) {
@@ -60,6 +63,17 @@ export class BillingConfigService implements OnModuleInit {
   aiBaseUrl() { return String(this.current.aiBaseUrl ?? ''); }
   aiMaxTurns() { return this.numberValue('aiOrderMaxTurns', 'AI_ORDER_MAX_TURNS', 8, 2, 50); }
   aiTimeoutHours() { return this.numberValue('aiOrderConversationTimeoutHours', 'AI_ORDER_CONVERSATION_TIMEOUT_HOURS', 24, 1, 720); }
+  planPolicy() {
+    return {
+      freeTrialDays: this.numberValue('freeTrialDays', 'FREE_TRIAL_DAYS', 1, 1, 365),
+      freeSessionLimit: this.numberValue('freeSessionLimit', 'FREE_SESSION_LIMIT', 1, 0, 100),
+      freeStoreLimit: this.numberValue('freeStoreLimit', 'FREE_STORE_LIMIT', 1, 0, 100),
+      freeSentMessageLimit: this.numberValue('freeSentMessageLimit', 'FREE_SENT_MESSAGE_LIMIT', 20, 0, 1_000_000),
+      freeReceivedMessageLimit: this.numberValue('freeReceivedMessageLimit', 'FREE_RECEIVED_MESSAGE_LIMIT', 20, 0, 1_000_000),
+      freeAiTokenLimit: this.numberValue('freeAiTokenLimit', 'FREE_AI_TOKEN_LIMIT', 5000, 0, 100_000_000),
+      proAiTokenLimit: this.numberValue('proAiTokenLimit', 'PRO_AI_TOKEN_LIMIT', 100000, 0, 100_000_000),
+    };
+  }
   enabled(provider: 'stripe' | 'paypal') { const key = `${provider}Enabled` as keyof PaymentSettings; return this.current[key] === true || (this.current[key] === undefined && Boolean(provider === 'stripe' ? process.env.STRIPE_SECRET_KEY : process.env.PAYPAL_CLIENT_ID)); }
   required(key: keyof PaymentSettings, env: string): string { const value = this.value(key, env); if (!value) throw new ServiceUnavailableException(`${env} is not configured`); return String(value); }
   value(key: keyof PaymentSettings, env: string): any { return this.current[key] ?? process.env[env]; }

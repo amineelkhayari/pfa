@@ -22,6 +22,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
+import { PlanUpgradeNotice, usePlanLimit } from '../components/PlanLimitGate';
 import { useRole } from '../hooks/useRole';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import {
@@ -69,6 +70,7 @@ const emptyForm: StorePayload = {
 };
 
 export function Stores() {
+  const storeLimit = usePlanLimit('stores');
   const { t } = useTranslation();
   useDocumentTitle(t('stores.title'));
   const { canWrite } = useRole();
@@ -314,12 +316,14 @@ export function Stores() {
         subtitle={t('stores.subtitle')}
         actions={
           canWrite ? (
-            <button className="btn-primary" onClick={openCreate} disabled={!availableSessions.length}>
+            <button className="btn-primary" onClick={openCreate} disabled={storeLimit.blocked || !availableSessions.length} title={storeLimit.reason ?? undefined}>
               <Plus size={16} /> {t('stores.addStore')}
             </button>
           ) : undefined
         }
       />
+
+      {storeLimit.reason && <PlanUpgradeNotice reason={storeLimit.reason} />}
 
       {!availableSessions.length && !stores.length && !isLoading && (
         <div className="stores-notice">
@@ -466,7 +470,7 @@ export function Stores() {
             <button className="btn-secondary" onClick={() => setShowForm(false)}>
               Cancel
             </button>
-            <button className="btn-primary" disabled={!valid || saving} onClick={submit}>
+            <button className="btn-primary" disabled={storeLimit.blocked || !valid || saving} onClick={submit}>
               {saving && <Loader2 className="animate-spin" size={16} />} Save
             </button>
           </>

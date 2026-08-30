@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Loader2, RotateCcw, Send, Wrench } from 'lucide-react';
 import { aiTestApi, storesApi, type StoreProduct } from '../services/api';
 import { PageHeader } from '../components/PageHeader';
+import { PlanUpgradeNotice, usePlanLimit } from '../components/PlanLimitGate';
 import './AiTestChat.css';
 
 type ToolContext = { tool: string; input: Record<string, unknown>; result: Record<string, unknown> };
@@ -14,6 +15,7 @@ function stock(product: StoreProduct): number | null {
 }
 
 export function AiTestChat() {
+  const aiLimit = usePlanLimit('aiTokens');
   const stores = useQuery({ queryKey: ['stores'], queryFn: storesApi.listAll });
   const [storeId, setStoreId] = useState('');
   const products = useQuery({ queryKey: ['stores', storeId, 'products'], queryFn: () => storesApi.products(storeId), enabled: !!storeId });
@@ -44,7 +46,7 @@ export function AiTestChat() {
   };
 
   const currency = stores.data?.find(item => item.id === storeId)?.currency || 'MAD';
-  return <div className="ai-test-page"><PageHeader title="Test AI agent" subtitle="Test a realistic store conversation without sending WhatsApp messages or changing a real order"/><div className="agent-demo">
+  return <div className="ai-test-page"><PageHeader title="Test AI agent" subtitle="Test a realistic store conversation without sending WhatsApp messages or changing a real order"/>{aiLimit.reason && <PlanUpgradeNotice reason={aiLimit.reason}/>}<div className="agent-demo">
     <aside className="agent-catalog"><h2>Catalogue importé</h2><p>{products.data?.length ?? 0} produits depuis la boutique sélectionnée</p><div className="agent-product-list">
       {products.isLoading && <span className="agent-muted">Chargement du catalogue…</span>}
       {products.data?.map(product => { const quantity = stock(product); return <article className="agent-product" key={product.id}><strong>{product.title}</strong><small>{product.productType || 'produit'} · {Number(product.price).toFixed(2)} {currency}</small><span className={quantity === 0 ? 'out' : quantity !== null && quantity <= 5 ? 'low' : 'ok'}>{quantity === null ? 'Stock non communiqué' : quantity === 0 ? 'Rupture' : `${quantity} en stock`}</span></article>; })}
@@ -55,7 +57,7 @@ export function AiTestChat() {
       <header className="agent-header"><h1><span/> Assistant Boutique</h1><p>Test sécurisé avec le catalogue réel. Aucun message WhatsApp et aucune commande réelle ne sont créés.</p></header>
       <section className="agent-messages">{turns.map((turn, index) => <div className="agent-turn-wrap" key={index}>{turn.toolCalls?.map((call, toolIndex) => <div className="agent-tool" key={`${index}-${toolIndex}`}><strong><Wrench size={14}/> Tool appelé : {call.tool}</strong><small>input →</small><pre>{JSON.stringify(call.input, null, 2)}</pre><small>résultat →</small><pre>{JSON.stringify(call.result, null, 2)}</pre></div>)}<div className={`agent-message ${turn.role}`}>{turn.text}</div></div>)}{sending && <div className="agent-typing"><Loader2 className="animate-spin" size={16}/> L’assistant réfléchit…</div>}<div ref={endRef}/></section>
       {error && <div className="agent-error">Erreur : {error}</div>}
-      <form className="agent-input" onSubmit={send}><input value={message} maxLength={1000} onChange={event => setMessage(event.target.value)} placeholder="Ex: quels produits avez-vous ? / je cherche un produit à moins de 500 MAD"/><button disabled={!message.trim() || sending || !storeId}><Send size={17}/> Envoyer</button></form>
+      <form className="agent-input" onSubmit={send}><input value={message} maxLength={1000} disabled={aiLimit.blocked} onChange={event => setMessage(event.target.value)} placeholder={aiLimit.reason ?? 'Ex: quels produits avez-vous ? / je cherche un produit à moins de 500 MAD'}/><button disabled={aiLimit.blocked || !message.trim() || sending || !storeId}><Send size={17}/> Envoyer</button></form>
     </main>
   </div></div>;
 }

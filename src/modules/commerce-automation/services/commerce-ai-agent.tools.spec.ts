@@ -17,7 +17,8 @@ describe('CommerceAiAgentService native tool loop', () => {
       aiModel: () => 'auto',
       aiBaseUrl: () => 'https://example.test/api/v1/chat/completions',
     };
-    const agent = new CommerceAiAgentService(config as never);
+    const planUsage = { consumeAiContextTokens: jest.fn().mockResolvedValue(undefined) };
+    const agent = new CommerceAiAgentService(config as never, planUsage as never);
     const fetchProvider = jest
       .fn()
       .mockResolvedValueOnce(response({

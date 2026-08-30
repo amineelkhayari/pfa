@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowRight,
   BarChart3,
@@ -19,6 +19,7 @@ import {
   Zap,
 } from 'lucide-react';
 import './Landing.css';
+import { billingApi, type BillingPlan } from '../services/api';
 
 interface LandingProps {
   onSignIn: () => void;
@@ -84,6 +85,8 @@ const faqs = [
 export function Landing({ onSignIn, onSignUp }: LandingProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState(0);
+  const [plans, setPlans] = useState<BillingPlan[]>([]);
+  useEffect(() => { billingApi.plans().then(setPlans).catch(() => undefined); }, []);
   return (
     <div className="landing">
       <nav className="landing-nav">
@@ -484,67 +487,12 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
             <p>No complicated tiers. Both plans include the core ecommerce automation workspace.</p>
           </div>
           <div className="pricing-grid">
-            <article>
-              <div className="price-head">
-                <div>
-                  <h3>Free</h3>
-                  <p>For testing your first workflows.</p>
-                </div>
-                <strong>
-                  $0<small>/month</small>
-                </strong>
-              </div>
-              <button onClick={onSignUp}>Start free</button>
-              <ul>
-                <li>
-                  <Check /> 2 WhatsApp sessions
-                </li>
-                <li>
-                  <Check /> 2 ecommerce stores
-                </li>
-                <li>
-                  <Check /> 500 sent messages/month
-                </li>
-                <li>
-                  <Check /> 500 received messages/month
-                </li>
-                <li>
-                  <Check /> Campaigns, chats, templates & reports
-                </li>
-              </ul>
-            </article>
-            <article className="featured">
-              <div className="popular">MOST POPULAR</div>
-              <div className="price-head">
-                <div>
-                  <h3>Pro</h3>
-                  <p>For active ecommerce businesses.</p>
-                </div>
-                <strong>
-                  $5<small>/month</small>
-                </strong>
-              </div>
-              <button onClick={onSignUp}>
-                Choose Pro <ArrowRight />
-              </button>
-              <ul>
-                <li>
-                  <Check /> 5 WhatsApp sessions
-                </li>
-                <li>
-                  <Check /> 5 ecommerce stores
-                </li>
-                <li>
-                  <Check /> 1,250 sent messages/month
-                </li>
-                <li>
-                  <Check /> 1,250 received messages/month
-                </li>
-                <li>
-                  <Check /> Everything in Free
-                </li>
-              </ul>
-            </article>
+            {(plans.length ? plans : [{ id: 'free', slug: 'free', name: 'Free', description: 'Try your first workflows.', priceMonthly: 0, currency: 'USD', limits: { sessions: 1, stores: 1, sentMessages: 20, receivedMessages: 20, aiTokens: 5000 }, features: ['WhatsApp commerce automation', 'AI order assistant'], trialDays: 1, active: true, highlighted: false, sortOrder: 0, stripePriceId: null, paypalPlanId: null }]).map(plan => <article className={plan.highlighted ? 'featured' : ''} key={plan.id}>
+              {plan.highlighted && <div className="popular">MOST POPULAR</div>}
+              <div className="price-head"><div><h3>{plan.name}</h3><p>{plan.description}</p></div><strong>{new Intl.NumberFormat('en', { style: 'currency', currency: plan.currency, maximumFractionDigits: 2 }).format(plan.priceMonthly / 100)}<small>/month</small></strong></div>
+              <button onClick={onSignUp}>{plan.priceMonthly ? `Choose ${plan.name}` : 'Start free'} <ArrowRight /></button>
+              <ul>{plan.features.map(feature => <li key={feature}><Check/> {feature}</li>)}<li><Check/> {plan.limits.sessions} WhatsApp session{plan.limits.sessions === 1 ? '' : 's'}</li><li><Check/> {plan.limits.stores} ecommerce store{plan.limits.stores === 1 ? '' : 's'}</li><li><Check/> {plan.limits.sentMessages.toLocaleString()} sent messages</li><li><Check/> {plan.limits.aiTokens.toLocaleString()} AI tokens</li></ul>
+            </article>)}
           </div>
         </section>
 

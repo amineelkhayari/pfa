@@ -1,0 +1,6 @@
+.plan-limit-notice { display:flex; align-items:center; gap:.75rem; margin:0 0 1rem; padding:.85rem 1rem; border:1px solid rgba(245,158,11,.35); border-radius:10px; background:rgba(245,158,11,.09); color:#b45309; }
+.plan-limit-notice > span { display:flex; flex:1; flex-direction:column; gap:.15rem; }
+.plan-limit-notice small { color:var(--text-secondary); }
+.plan-limit-notice button { display:inline-flex; align-items:center; gap:.35rem; border:0; border-radius:7px; padding:.55rem .75rem; background:var(--primary); color:#fff; font-weight:700; cursor:pointer; }
+.plan-limit-notice.compact { margin:.5rem 0; padding:.65rem .75rem; }
+@media (max-width:650px) { .plan-limit-notice { align-items:flex-start; flex-wrap:wrap; } .plan-limit-notice button { width:100%; justify-content:center; } }

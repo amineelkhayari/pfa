@@ -1586,10 +1586,13 @@ export const woocommerceApi = {
 };
 
 export interface AccountUsage {
-  plan: 'free' | 'pro';
-  limits: { sessions: number; stores: number; sentMessages: number; receivedMessages: number };
-  usage: { sessions: number; stores: number; sentMessages: number; receivedMessages: number };
+  plan: string;
+  limits: { sessions: number; stores: number; sentMessages: number; receivedMessages: number; aiTokens: number };
+  usage: { sessions: number; stores: number; sentMessages: number; receivedMessages: number; aiTokens: number };
   periodStart: string;
+  trialEndsAt: string | null;
+  trialExpired: boolean;
+  renewable: boolean;
 }
 
 export interface AccountUser {
@@ -1598,11 +1601,12 @@ export interface AccountUser {
   email: string;
   username: string;
   role: string;
-  plan: 'free' | 'pro' | null;
+  plan: string | null;
   status: string;
   settings: Record<string, unknown> | null;
   sentMessages: number;
   receivedMessages: number;
+  aiTokensUsed: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -1617,11 +1621,11 @@ export const accountApi = {
 export const adminUsersApi = {
   list: () => request<AccountUser[]>('/admin/users'),
   summary: () =>
-    request<{ total: number; active: number; suspended: number; free: number; pro: number }>('/admin/users/summary'),
+    request<{ total: number; active: number; suspended: number; free: number; pro: number; byPlan: Record<string, number> }>('/admin/users/summary'),
   resources: () =>
     request<{ sessions: number; stores: number; products: number; orders: number }>('/admin/users/resources'),
   details: (id: string) => request<AdminUserDetails>(`/admin/users/${id}/details`),
-  update: (id: string, body: { plan?: 'free' | 'pro'; status?: 'active' | 'suspended' }) =>
+  update: (id: string, body: { plan?: string; status?: 'active' | 'suspended' }) =>
     request<AccountUser>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 };
 
@@ -1639,6 +1643,14 @@ export interface BillingSubscription {
   status: string;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  planSlug: string;
+}
+export interface BillingPlan {
+  id: string; slug: string; name: string; description: string; priceMonthly: number; currency: string;
+  limits: { sessions: number; stores: number; sentMessages: number; receivedMessages: number; aiTokens: number };
+  features: string[]; trialDays: number; active: boolean; highlighted: boolean; sortOrder: number;
+  stripePriceId: string | null; paypalPlanId: string | null;
+  createdAt?: string; updatedAt?: string;
 }
 export interface PaymentTransaction {
   id: string;
@@ -1662,11 +1674,12 @@ export interface PaymentHistory {
   limit: number;
 }
 export const billingApi = {
+  plans: () => request<BillingPlan[]>('/billing/plans'),
   status: () => request<BillingSubscription[]>('/billing/status'),
   history: () => request<PaymentHistory>('/billing/history'),
-  stripeCheckout: () => request<{ url: string }>('/billing/stripe/checkout', { method: 'POST' }),
+  stripeCheckout: (plan = 'pro') => request<{ url: string }>('/billing/stripe/checkout', { method: 'POST', body: JSON.stringify({ plan }) }),
   stripePortal: () => request<{ url: string }>('/billing/stripe/portal', { method: 'POST' }),
-  paypalSubscription: () => request<{ id: string; url: string }>('/billing/paypal/subscription', { method: 'POST' }),
+  paypalSubscription: (plan = 'pro') => request<{ id: string; url: string }>('/billing/paypal/subscription', { method: 'POST', body: JSON.stringify({ plan }) }),
   cancelSubscription: (id: string, reason?: string) => request<BillingSubscription>(`/billing/subscriptions/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   reactivateSubscription: (id: string) => request<BillingSubscription>(`/billing/subscriptions/${id}/reactivate`, { method: 'POST' }),
 };
@@ -1677,8 +1690,19 @@ export interface AdminPaymentSettings {
   paypalEnabled: boolean;
   paypalEnvironment: 'sandbox' | 'live';
   configured: Record<string, boolean>;
+  freeTrialDays: number;
+  freeSessionLimit: number;
+  freeStoreLimit: number;
+  freeSentMessageLimit: number;
+  freeReceivedMessageLimit: number;
+  freeAiTokenLimit: number;
+  proAiTokenLimit: number;
 }
 export const adminBillingApi = {
+  plans: () => request<BillingPlan[]>('/admin/billing-settings/plans'),
+  createPlan: (body: Omit<BillingPlan, 'id' | 'createdAt' | 'updatedAt'>) => request<BillingPlan>('/admin/billing-settings/plans', { method: 'POST', body: JSON.stringify(body) }),
+  updatePlan: (id: string, body: Omit<BillingPlan, 'id' | 'createdAt' | 'updatedAt'>) => request<BillingPlan>(`/admin/billing-settings/plans/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deletePlan: (id: string) => request<{ deleted: boolean }>(`/admin/billing-settings/plans/${id}`, { method: 'DELETE' }),
   get: () => request<AdminPaymentSettings>('/admin/billing-settings'),
   update: (body: Record<string, unknown>) =>
     request<AdminPaymentSettings>('/admin/billing-settings', { method: 'PUT', body: JSON.stringify(body) }),

@@ -16,6 +16,7 @@ import { useRole } from '../hooks/useRole';
 import { useSessionsQuery, useSessionGroupsQuery } from '../hooks/queries';
 import { parseBulkRecipients, BULK_MAX_RECIPIENTS } from '../utils/bulkRecipients';
 import { PageHeader } from '../components/PageHeader';
+import { PlanUpgradeNotice, usePlanLimit } from '../components/PlanLimitGate';
 import './MessageTester.css';
 
 interface ApiResponse {
@@ -89,6 +90,7 @@ const MEDIA_UPLOAD_MAX_BYTES = 18 * 1024 * 1024;
 const TERMINAL_BATCH_STATUSES: readonly BatchStatus[] = ['completed', 'cancelled', 'failed'];
 
 export function MessageTester() {
+  const messageLimit = usePlanLimit('sentMessages');
   const { t } = useTranslation();
   useDocumentTitle(t('messageTester.title'));
   const { canWrite } = useRole();
@@ -277,6 +279,7 @@ export function MessageTester() {
   }
 
   const isSendDisabled =
+    messageLimit.blocked ||
     !canWrite ||
     isLoading ||
     !session ||
@@ -450,6 +453,7 @@ export function MessageTester() {
   return (
     <div className="message-tester">
       <PageHeader title={t('messageTester.title')} subtitle={t('messageTester.subtitle')} />
+      {messageLimit.reason && <PlanUpgradeNotice reason={messageLimit.reason} />}
 
       <div className="tester-panels">
         <div className="compose-panel">

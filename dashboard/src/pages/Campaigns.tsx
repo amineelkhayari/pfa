@@ -13,11 +13,13 @@ import {
 } from 'lucide-react';
 import { campaignApi, sessionApi, templateApi } from '../services/api';
 import { useToast } from '../hooks/useToast';
+import { PlanUpgradeNotice, usePlanLimit } from '../components/PlanLimitGate';
 import './Campaigns.css';
 
 export function Campaigns() {
   const qc = useQueryClient(),
     toast = useToast();
+  const messageLimit = usePlanLimit('sentMessages');
   const report = useQuery({ queryKey: ['campaign-report'], queryFn: campaignApi.report, refetchInterval: 5000 });
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: sessionApi.list });
   const [form, setForm] = useState({ name: '', message: '', sessionId: '', delayBetweenMessages: 4000 });
@@ -51,6 +53,7 @@ export function Campaigns() {
   const data = report.data;
   const submit = (e: FormEvent) => {
     e.preventDefault();
+    if (messageLimit.blocked) return;
     launch.mutate({ ...form, excludedRecipients: excluded });
   };
   const customers = audience.data?.customers ?? [];
@@ -79,6 +82,7 @@ export function Campaigns() {
         <h1>WhatsApp report</h1>
         <p>Campaign delivery, device health, and automation activity in one place.</p>
       </header>
+      {messageLimit.reason && <PlanUpgradeNotice reason={messageLimit.reason} />}
       {report.isLoading ? (
         <div className="campaign-panel">Loading report…</div>
       ) : (
@@ -304,7 +308,11 @@ export function Campaigns() {
             />
             <small>4–8 seconds is safer for WhatsApp account health.</small>
           </label>
-          <button className="launch" disabled={launch.isPending || !selectedCount}>
+          <button
+            className="launch"
+            disabled={launch.isPending || !selectedCount || messageLimit.blocked}
+            title={messageLimit.reason ?? undefined}
+          >
             <Send size={17} />
             {launch.isPending ? 'Launching…' : `Launch to ${selectedCount} customer${selectedCount === 1 ? '' : 's'}`}
           </button>

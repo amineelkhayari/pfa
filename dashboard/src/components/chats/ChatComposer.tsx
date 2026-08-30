@@ -9,6 +9,7 @@ import { messagesQueryKey, useChatMessagesActions } from '../../hooks/useChatMes
 import { useRole } from '../../hooks/useRole';
 import { useToast } from '../../hooks/useToast';
 import type { ScrollDirection } from '../../utils/scrollDecision';
+import { PlanUpgradeNotice, usePlanLimit } from '../PlanLimitGate';
 
 // Map an attachment MIME type to the neutral MessageType for the optimistic outgoing bubble, so the
 // placeholder matches what the backend will persist (e.g. a PDF is `document`, not `application`).
@@ -103,7 +104,8 @@ function ChatComposer({
   const { error: showErrorToast } = useToast();
   const { appendMessage, updateMessage } = useChatMessagesActions();
   const queryClient = useQueryClient();
-  const canCompose = canWrite && !automationLocked;
+  const messageLimit = usePlanLimit('sentMessages');
+  const canCompose = canWrite && !automationLocked && !messageLimit.blocked;
 
   const [sending, setSending] = useState<boolean>(false);
   const [composerType, setComposerType] = useState<ComposerType>('text');
@@ -417,6 +419,7 @@ function ChatComposer({
 
   return (
     <>
+      {messageLimit.reason && <PlanUpgradeNotice reason={messageLimit.reason} compact />}
       {/* Attachment preview banner */}
       {attachment && (
         <div className="attachment-preview-banner">

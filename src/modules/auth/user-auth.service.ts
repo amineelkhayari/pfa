@@ -10,6 +10,7 @@ import { UserLoginSession } from './entities/user-login-session.entity';
 import { SignInDto, SignUpDto, UpdateUserProfileDto } from './dto/user-auth.dto';
 import { createLogger } from '../../common/services/logger.service';
 import { AdminUpdateUserDto } from './dto/admin-user.dto';
+import { PlanCatalogService } from '../billing/plan-catalog.service';
 
 const scrypt = promisify(scryptCallback);
 
@@ -20,6 +21,7 @@ export class UserAuthService implements OnModuleInit {
   constructor(
     @InjectRepository(UserAccount, 'data') private readonly users: Repository<UserAccount>,
     @InjectRepository(UserLoginSession, 'data') private readonly sessions: Repository<UserLoginSession>,
+    private readonly plans: PlanCatalogService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -139,12 +141,14 @@ export class UserAuthService implements OnModuleInit {
       .addGroupBy('user.status')
       .getRawMany<{ plan: UserPlan; status: string; count: string }>();
     const total = rows.reduce((sum, row) => sum + Number(row.count), 0);
+    const byPlan = rows.filter(row => row.plan).reduce<Record<string, number>>((totals, row) => { totals[row.plan] = (totals[row.plan] ?? 0) + Number(row.count); return totals; }, {});
     return {
       total,
       active: rows.filter(row => row.status === 'active').reduce((sum, row) => sum + Number(row.count), 0),
       suspended: rows.filter(row => row.status === 'suspended').reduce((sum, row) => sum + Number(row.count), 0),
       free: rows.filter(row => row.plan === UserPlan.FREE).reduce((sum, row) => sum + Number(row.count), 0),
       pro: rows.filter(row => row.plan === UserPlan.PRO).reduce((sum, row) => sum + Number(row.count), 0),
+      byPlan,
     };
   }
 
@@ -156,6 +160,7 @@ export class UserAuthService implements OnModuleInit {
     }
     if (dto.plan) {
       if (user.role === ApiKeyRole.ADMIN) throw new BadRequestException('Administrators do not have customer plans');
+      this.plans.require(dto.plan);
       user.plan = dto.plan;
     }
     if (dto.status) {

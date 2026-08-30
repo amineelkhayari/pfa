@@ -574,7 +574,7 @@ export class MessageService {
     const session = await this.sessionService.findOne(sessionId);
     const reserved = quotaAlreadyReserved || ((await this.planUsage?.reserveOutgoingMessage(sessionId)) ?? true);
     if (!reserved) {
-      throw new BadRequestException('Monthly outgoing message limit reached. Upgrade or renew your plan to continue.');
+      throw new BadRequestException('Message allowance or trial period has ended. Upgrade to Pro to continue.');
     }
     const message = this.messageRepository.create({
       sessionId,

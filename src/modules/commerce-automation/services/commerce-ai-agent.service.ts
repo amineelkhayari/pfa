@@ -6,6 +6,7 @@ import { Product } from '../../stores/entities/product.entity';
 import { AiConversationTurn } from '../../stores/entities/order-ai-conversation.entity';
 import { Agent, fetch as undiciFetch } from 'undici';
 import type { CommerceFunctionTool } from './commerce-tool.service';
+import { PlanUsageService } from '../../auth/plan-usage.service';
 
 export type OrderAiDecision = { action: 'continue' | 'confirm' | 'cancel' | 'escalate'; reply: string };
 type Json = Record<string, any>;
@@ -30,7 +31,7 @@ export class CommerceAiAgentService {
   // on IPv4 rather than making a process-wide networking change.
   private readonly providerDispatcher = new Agent({ connect: { family: 4 } });
 
-  constructor(private readonly config: BillingConfigService) {}
+  constructor(private readonly config: BillingConfigService, private readonly planUsage: PlanUsageService) {}
   enabled() { return this.config.aiEnabled(); }
   maxTurns() { return this.config.aiMaxTurns(); }
   timeoutHours() { return this.config.aiTimeoutHours(); }
@@ -46,6 +47,7 @@ export class CommerceAiAgentService {
     store: { name: string; language: string; products?: Product[]; orders?: Order[] },
     tools: CommerceFunctionTool[],
     execute: (call: NativeCommerceToolCall) => Promise<Record<string, unknown>>,
+    usageSessionId?: string,
   ): Promise<string> {
     const provider = this.config.aiProvider();
     if (!['openrouter', 'custom'].includes(provider)) {
@@ -79,6 +81,7 @@ Keep replies concise and WhatsApp-friendly; never use Markdown tables.`;
     const executed: Array<{ name: string; ok: boolean }> = [];
     try {
       for (let round = 0; round < 6; round += 1) {
+        await this.planUsage.consumeAiContextTokens(usageSessionId, this.estimateContextTokens(messages));
         const response = await this.fetchProvider(url, {
           method: 'POST',
           headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
@@ -119,7 +122,7 @@ Keep replies concise and WhatsApp-friendly; never use Markdown tables.`;
     }
   }
 
-  async chat(turns: AiConversationTurn[], storeContext?: { name: string; language: string; products: Product[]; orders?: Order[] }): Promise<string> {
+  async chat(turns: AiConversationTurn[], storeContext?: { name: string; language: string; products: Product[]; orders?: Order[] }, usageSessionId?: string): Promise<string> {
     const key = this.config.aiApiKey();
     const provider = this.config.aiProvider();
     const model = this.config.aiModel();
@@ -153,6 +156,7 @@ STORE CATALOG (${storeContext.language || 'fr'}):
 ${catalog || 'No products are currently available in the catalog.'}`
       : 'You are a friendly ecommerce assistant. Talk naturally and helpfully. Automatically answer in the language and dialect used by the customer. If they use Moroccan Darija, reply in natural Moroccan Darija, in Arabic or Latin script matching them. Keep answers concise. This is a safe test chat: do not claim that a real order was changed, confirmed, or cancelled.';
     try {
+      await this.planUsage.consumeAiContextTokens(usageSessionId, this.estimateContextTokens({ instructions, turns: turns.slice(-16) }));
       if (provider === 'gemini') {
         const base = this.config.aiBaseUrl().trim() || 'https://generativelanguage.googleapis.com/v1beta';
         const normalizedModel = model.trim().replace(/^models\//i, '');
@@ -203,6 +207,7 @@ ${catalog || 'No products are currently available in the catalog.'}`
     language: string,
     turns: AiConversationTurn[],
     storeContext?: { name: string; products: Product[] },
+    usageSessionId?: string,
   ): Promise<OrderAiDecision> {
     const key = this.config.aiApiKey();
     const provider = this.config.aiProvider();
@@ -221,6 +226,7 @@ ${catalog || 'No products are currently available in the catalog.'}`
     const input = `Order ${order.orderNumber ?? order.shopifyOrderId}; customer ${order.customerName ?? 'customer'}; items ${items || 'not listed'}; total ${order.totalPrice} ${order.currency}; shipping ${JSON.stringify(order.shippingAddress ?? {})}.\nStore catalog:\n${this.catalogText(storeContext?.products ?? [])}\nConversation:\n${transcript}`;
 
     try {
+      await this.planUsage.consumeAiContextTokens(usageSessionId, this.estimateContextTokens({ instructions, input }));
       let raw: string;
       if (provider === 'gemini') raw = await this.gemini(key, model, instructions, input);
       else if (provider === 'openrouter') raw = await this.chatCompatible(
@@ -243,7 +249,7 @@ ${catalog || 'No products are currently available in the catalog.'}`
         });
         const reply = await this.chat(turns, {
           name: storeContext?.name ?? 'the store', language, products: storeContext?.products ?? [], orders: [order],
-        });
+        }, usageSessionId);
         decision = { action: 'continue', reply: reply.slice(0, 350) };
       }
       this.logger.log('AI order decision completed', { action: 'ai_order_completed', provider, model, orderId: order.id, decision: decision.action, duration: Date.now() - startedAt });
@@ -514,4 +520,9 @@ ${catalog || 'No products are currently available in the catalog.'}`
     };
   }
   private async readJson(response: ProviderResponse): Promise<Json> { return response.json().catch(() => ({})) as Promise<Json>; }
+  private estimateContextTokens(value: unknown): number {
+    // Provider tokenizers differ; 4 UTF-8-ish characters per token is a conservative,
+    // provider-neutral context estimate suitable for enforcing plan quotas before spend.
+    return Math.max(1, Math.ceil(JSON.stringify(value).length / 4));
+  }
 }

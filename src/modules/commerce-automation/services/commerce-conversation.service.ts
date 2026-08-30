@@ -239,7 +239,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
     }
     try {
       const catalog = this.relevantProducts(await this.storeProducts(store.id), customerText, order);
-      const decision = await this.ai.respond(order, store.language, turns.slice(-8), { name: store.name, products: catalog });
+      const decision = await this.ai.respond(order, store.language, turns.slice(-8), { name: store.name, products: catalog }, sessionId);
       conversation.turnCount = (conversation.turnCount ?? 0) + 1;
       conversation.turns = [...turns, { role: 'assistant', text: decision.reply, at: new Date().toISOString() }];
       conversation.lastError = null;
@@ -327,6 +327,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
         { name: store.name, language: store.language, products, orders: customerOrders },
         this.tools.definitions(),
         call => this.executeCommerceTool(call.name, call.arguments, store, customerPhone, catalog, customerOrders, text),
+        sessionId,
       );
       const safeAnswer = this.hasUnverifiedMutationClaim(answer)
         ? this.catalogFallbackReply(text, products, customerOrders, store)

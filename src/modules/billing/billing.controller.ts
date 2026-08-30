@@ -4,14 +4,18 @@ import type { Request } from 'express';
 import { Public } from '../auth/decorators/auth.decorators';
 import { UserAccount } from '../auth/entities/user-account.entity';
 import { BillingService } from './billing.service';
+import { PlanCatalogService } from './plan-catalog.service';
 
 class CancelSubscriptionDto {
   @IsOptional() @IsString() @MaxLength(128) reason?: string;
 }
+class CheckoutPlanDto { @IsOptional() @IsString() plan?: string; }
 
 @Controller('billing')
 export class BillingController {
-  constructor(private readonly billing: BillingService) {}
+  constructor(private readonly billing: BillingService, private readonly plans: PlanCatalogService) {}
+
+  @Get('plans') @Public() plansList() { return this.plans.list(); }
 
   @Get('status')
   status(@Req() req: Request & { user?: UserAccount }) {
@@ -34,8 +38,8 @@ export class BillingController {
   }
 
   @Post('stripe/checkout')
-  stripeCheckout(@Req() req: Request & { user?: UserAccount }) {
-    return this.billing.createStripeCheckout(this.user(req));
+  stripeCheckout(@Req() req: Request & { user?: UserAccount }, @Body() dto: CheckoutPlanDto) {
+    return this.billing.createStripeCheckout(this.user(req), dto.plan ?? 'pro');
   }
 
   @Post('stripe/portal')
@@ -44,8 +48,8 @@ export class BillingController {
   }
 
   @Post('paypal/subscription')
-  paypal(@Req() req: Request & { user?: UserAccount }) {
-    return this.billing.createPayPalSubscription(this.user(req));
+  paypal(@Req() req: Request & { user?: UserAccount }, @Body() dto: CheckoutPlanDto) {
+    return this.billing.createPayPalSubscription(this.user(req), dto.plan ?? 'pro');
   }
 
   @Post('webhooks/stripe')

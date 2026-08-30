@@ -31,7 +31,7 @@ export class UserAccount {
   role: ApiKeyRole;
 
   @Column({ type: 'varchar', length: 20, nullable: true, default: UserPlan.FREE })
-  plan: UserPlan | null;
+  plan: string | null;
 
   @Column({ type: 'varchar', length: 20, default: 'active' })
   status: string;
@@ -44,6 +44,9 @@ export class UserAccount {
 
   @Column({ type: 'int', default: 0 })
   receivedMessages: number;
+
+  @Column({ type: 'int', default: 0 })
+  aiTokensUsed: number;
 
   @Column({ type: dateColumnType(), transformer: DateTransformer })
   usagePeriodStart: Date;

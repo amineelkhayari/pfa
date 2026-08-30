@@ -38,6 +38,7 @@ import {
 import { PageHeader } from '../components/PageHeader';
 import { CustomSelect } from '../components/CustomSelect';
 import { Modal } from '../components/Modal';
+import { PlanUpgradeNotice, usePlanLimit } from '../components/PlanLimitGate';
 import './Sessions.css';
 
 export function Sessions() {
@@ -46,6 +47,7 @@ export function Sessions() {
   const toast = useToast();
   const { canWrite } = useRole();
   const queryClient = useQueryClient();
+  const sessionLimit = usePlanLimit('sessions');
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -528,13 +530,15 @@ export function Sessions() {
         subtitle={t('sessions.subtitle')}
         actions={
           canWrite && (
-            <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
+            <button className="btn-primary" onClick={() => setShowCreateModal(true)} disabled={sessionLimit.blocked} title={sessionLimit.reason ?? undefined}>
               <Plus size={18} />
               {t('sessions.newSession')}
             </button>
           )
         }
       />
+
+      {sessionLimit.reason && <PlanUpgradeNotice reason={sessionLimit.reason} />}
 
       <div className="filters-bar">
         <div className="search-input">
@@ -590,7 +594,7 @@ export function Sessions() {
               <button
                 className="btn-primary"
                 onClick={handleCreate}
-                disabled={creating || !canCreateSession(newSessionName, existingSessionNames)}
+                disabled={sessionLimit.blocked || creating || !canCreateSession(newSessionName, existingSessionNames)}
               >
                 {creating ? <Loader2 className="animate-spin" size={16} /> : t('common.create')}
               </button>

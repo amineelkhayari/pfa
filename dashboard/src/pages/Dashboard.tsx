@@ -30,6 +30,7 @@ import {
   useAccountUsageQuery,
 } from '../hooks/queries';
 import { PageHeader } from '../components/PageHeader';
+import { PlanUpgradeNotice, planLimitReason } from '../components/PlanLimitGate';
 import './Dashboard.css';
 
 // recharts is heavy (~150kB gzip); load the analytics section on demand so it never bloats the
@@ -53,6 +54,7 @@ export function Dashboard() {
     type: orderType,
   });
   const { data: accountUsage } = useAccountUsageQuery();
+  const accountLimitReason = accountUsage ? planLimitReason(accountUsage, 'receivedMessages') || planLimitReason(accountUsage, 'sentMessages') || planLimitReason(accountUsage, 'aiTokens') || planLimitReason(accountUsage, 'sessions') || planLimitReason(accountUsage, 'stores') : null;
   const stopMutation = useStopSessionMutation();
   const messagesToday = overview ? overview.messages.today.sent + overview.messages.today.received : '—';
   const totalMessages = overview ? overview.messages.sent + overview.messages.received : '—';
@@ -159,9 +161,9 @@ export function Dashboard() {
           <div className="section-header">
             <div>
               <h2>{accountUsage.plan === 'pro' ? 'Pro plan' : 'Free plan'}</h2>
-              <span className="section-subtitle">Current monthly subscription usage</span>
+              <span className="section-subtitle">{accountUsage.plan === 'free' ? accountUsage.trialExpired ? 'Trial expired — upgrade required' : `One-time trial ends ${new Date(accountUsage.trialEndsAt!).toLocaleString()}` : 'Current monthly subscription usage'}</span>
             </div>
-            {accountUsage.plan === 'free' && <button className="btn-sm">Upgrade to Pro · $5/month</button>}
+            {accountUsage.plan === 'free' && <button className="btn-sm" onClick={() => navigate('/account')}>Upgrade to Pro · $5/month</button>}
           </div>
           <div className="usage-grid">
             {([
@@ -169,10 +171,11 @@ export function Dashboard() {
               ['Connected stores', 'stores'],
               ['Messages sent', 'sentMessages'],
               ['Messages received', 'receivedMessages'],
+              ['AI context tokens', 'aiTokens'],
             ] as const).map(([label, key]) => {
               const used = accountUsage.usage[key];
               const limit = accountUsage.limits[key];
-              const percent = Math.min(100, Math.round((used / limit) * 100));
+              const percent = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 100;
               return <div className="usage-item" key={key}>
                 <div><span>{label}</span><strong>{used.toLocaleString()} / {limit.toLocaleString()}</strong></div>
                 <div className="usage-track"><span style={{ width: `${percent}%` }} /></div>
@@ -181,6 +184,7 @@ export function Dashboard() {
           </div>
         </section>
       )}
+      {accountLimitReason && <PlanUpgradeNotice reason={accountLimitReason} />}
 
       <section className="commerce-summary">
         <div className="section-header">
