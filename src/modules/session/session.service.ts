@@ -54,6 +54,8 @@ export {
 @Injectable()
 export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicationBootstrap {
   private readonly logger = createLogger('SessionService');
+  private planExpiryTimer?: NodeJS.Timeout;
+  private planExpirySweepRunning = false;
 
   // Live engine instances, owned by the shared EngineRegistry (the narrow port feature modules
   // inject instead of this whole service). SessionEngineLifecycle is the only writer; the query
@@ -85,6 +87,8 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
    * because the engines are not running yet after restart
    */
   async onModuleInit(): Promise<void> {
+    this.planExpiryTimer = setInterval(() => void this.stopExpiredPlanSessions(), 60_000);
+    this.planExpiryTimer.unref?.();
     const activeStatuses = [
       SessionStatus.READY,
       SessionStatus.INITIALIZING,
@@ -149,6 +153,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
   }
 
   async onModuleDestroy(): Promise<void> {
+    if (this.planExpiryTimer) clearInterval(this.planExpiryTimer);
     // Stop the watchdog FIRST (before any teardown below can hang): no new probe/disconnect handling
     // may start mid-shutdown. stop() is idempotent, so a second onModuleDestroy call stays safe.
     this.watchdog.stop();
@@ -215,6 +220,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
   }
 
   async findAll(allowedSessions?: string[] | null, opts: ListOptions = {}): Promise<Session[]> {
+    await this.stopExpiredPlanSessions();
     // A session-restricted key only lists its own sessions; an unrestricted key (null/empty
     // allowlist) lists all — mirroring the ApiKeyGuard allowedSessions model so a scoped key
     // cannot enumerate every session through this aggregate route.
@@ -263,6 +269,8 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
   }
 
   async start(id: string): Promise<Session> {
+    await this.stopExpiredPlanSessions();
+    await this.planUsage.assertSessionPlanActive(id);
     return this.engineLifecycle.start(id);
   }
 
@@ -280,6 +288,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
   }
 
   async getQRCode(id: string): Promise<{ qrCode: string; status: SessionStatus }> {
+    await this.planUsage.assertSessionPlanActive(id);
     const session = await this.findOne(id);
     const engine = this.engines.get(id);
 
@@ -307,6 +316,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
    * The session must be started but not yet authenticated.
    */
   async requestPairingCode(id: string, phoneNumber: string): Promise<{ pairingCode: string; status: SessionStatus }> {
+    await this.planUsage.assertSessionPlanActive(id);
     const session = await this.findOne(id);
     const engine = this.engines.get(id);
 
@@ -329,6 +339,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
     id: string,
     opts: ListOptions = {},
   ): Promise<{ id: string; name: string; linkedParentJID?: string | null }[]> {
+    await this.planUsage.assertSessionPlanActive(id);
     await this.findOne(id); // Verify session exists
     const engine = this.engines.get(id);
 
@@ -346,6 +357,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
   }
 
   async getChats(id: string, opts: ListOptions = {}): Promise<ChatSummary[]> {
+    await this.planUsage.assertSessionPlanActive(id);
     await this.findOne(id); // Verify session exists
     const engine = this.engines.get(id);
 
@@ -360,6 +372,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
   }
 
   async sendSeen(id: string, chatId: string): Promise<boolean> {
+    await this.planUsage.assertSessionPlanActive(id);
     await this.findOne(id); // Verify session exists
     const engine = this.engines.get(id);
 
@@ -371,6 +384,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
   }
 
   async markUnread(id: string, chatId: string): Promise<boolean> {
+    await this.planUsage.assertSessionPlanActive(id);
     await this.findOne(id); // Verify session exists
     const engine = this.engines.get(id);
 
@@ -382,6 +396,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
   }
 
   async deleteChat(id: string, chatId: string): Promise<boolean> {
+    await this.planUsage.assertSessionPlanActive(id);
     await this.findOne(id); // Verify session exists
     const engine = this.engines.get(id);
 
@@ -393,6 +408,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
   }
 
   async sendChatState(id: string, chatId: string, state: ChatState): Promise<void> {
+    await this.planUsage.assertSessionPlanActive(id);
     await this.findOne(id); // Verify session exists
     const engine = this.engines.get(id);
 
@@ -401,6 +417,24 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
     }
 
     await engine.sendChatState(chatId, state);
+  }
+
+  private async stopExpiredPlanSessions(): Promise<void> {
+    if (this.planExpirySweepRunning) return;
+    this.planExpirySweepRunning = true;
+    try {
+      for (const id of await this.planUsage.expiredSessionIds()) {
+        if (!this.isActive(id)) continue;
+        try {
+          await this.engineLifecycle.stop(id);
+          this.logger.warn('Stopped WhatsApp session because its plan trial expired', { sessionId: id, action: 'plan_expired_stop' });
+        } catch (error) {
+          this.logger.error('Failed to stop expired-plan session', error instanceof Error ? error.message : String(error), { sessionId: id, action: 'plan_expired_stop_failed' });
+        }
+      }
+    } finally {
+      this.planExpirySweepRunning = false;
+    }
   }
 
   /**

@@ -195,10 +195,12 @@ export class StoreService {
       ordersByStore.set(row.storeId, current);
     }
     const aiByStore = new Map<string, Record<string, number>>();
+    const aiTotals: Record<string, number> = {};
     for (const row of aiRows) {
       const current = aiByStore.get(row.storeId) ?? {};
       current[row.status] = Number(row.count);
       aiByStore.set(row.storeId, current);
+      aiTotals[row.status] = (aiTotals[row.status] ?? 0) + Number(row.count);
     }
     const storeMetrics = stores.map(store => {
       const messages = messageBySession.get(store.sessionId);
@@ -274,6 +276,18 @@ export class StoreService {
         }),
         { sent: 0, received: 0, failed: 0 },
       ),
+      aiPerformance: {
+        conversations: Object.values(aiTotals).reduce((sum, count) => sum + count, 0),
+        confirmed: aiTotals.confirmed ?? 0,
+        cancelled: aiTotals.cancelled ?? 0,
+        active: aiTotals.active ?? 0,
+        escalated: aiTotals.escalated ?? 0,
+        expired: aiTotals.expired ?? 0,
+        confirmationRate:
+          (aiTotals.confirmed ?? 0) + (aiTotals.cancelled ?? 0) > 0
+            ? Math.round(((aiTotals.confirmed ?? 0) / ((aiTotals.confirmed ?? 0) + (aiTotals.cancelled ?? 0))) * 1000) / 10
+            : 0,
+      },
     };
   }
 
@@ -344,6 +358,7 @@ export class StoreService {
   }
 
   async setOrderConversationHandoff(storeId: string, orderId: string, handoff: boolean) {
+    await this.planUsage.assertCurrentPlanActive();
     await this.findOneById(storeId);
     const order = await this.orderRepository.findOneBy({ id: orderId, storeId });
     if (!order) throw new NotFoundException('Order not found.');
@@ -364,6 +379,7 @@ export class StoreService {
   }
 
   async sendOrderReminder(storeId: string, orderId: string): Promise<Order> {
+    await this.planUsage.assertCurrentPlanActive();
     const store = await this.findOneById(storeId);
     const order = await this.orderRepository.findOneBy({ id: orderId, storeId });
     if (!order) throw new NotFoundException('Order not found.');
@@ -388,6 +404,7 @@ export class StoreService {
   }
 
   async update(id: string, dto: UpdateStoreDto): Promise<Store> {
+    await this.planUsage.assertCurrentPlanActive();
     const store = await this.findOneById(id);
 
     if (dto.sessionId && dto.sessionId !== store.sessionId) {
@@ -421,6 +438,7 @@ export class StoreService {
     await this.storeRepository.remove(store);
   }
   async updateIntegrationCredentials(storeId: string, provider: string, credentials: Record<string, any>) {
+    await this.planUsage.assertCurrentPlanActive();
     const connection = await this.getIntegrationConnection(storeId, provider);
 
     connection.settings = this.credentialEncryption.protectSettings(credentials);

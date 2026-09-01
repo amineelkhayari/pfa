@@ -22,6 +22,7 @@ import { StoreService } from '../../stores/store.service';
 import { Public, RequireRole } from '../../auth/decorators/auth.decorators';
 import { ApiKeyRole } from '../../auth/entities/api-key.entity';
 import { CredentialEncryptionService } from '../../../common/security/credential-encryption.service';
+import { PlanUsageService } from '../../auth/plan-usage.service';
 
 interface ShopifyStoreSettings {
   shopDomain?: string;
@@ -44,6 +45,7 @@ export class ShopifyController {
     private readonly storeService: StoreService,
     private readonly configService: ConfigService,
     private readonly credentialEncryption: CredentialEncryptionService,
+    private readonly planUsage: PlanUsageService,
   ) {}
 
   private settings(store: Store): ShopifyStoreSettings | undefined {
@@ -52,7 +54,6 @@ export class ShopifyController {
   }
 
   @Get('oauth/install')
-  @Public()
   @ApiOperation({
     summary: 'Start Shopify OAuth installation',
   })
@@ -71,6 +72,7 @@ export class ShopifyController {
     description: 'Invalid configuration.',
   })
   async install(@Query('storeId') storeId: string, @Res() res: Response) {
+    await this.planUsage.assertCurrentPlanActive();
     if (!storeId) {
       throw new BadRequestException('storeId is required.');
     }
@@ -231,6 +233,7 @@ export class ShopifyController {
   @Post(':storeId/sync')
   @RequireRole(ApiKeyRole.OPERATOR)
   async sync(@Param('storeId', ParseUUIDPipe) storeId: string) {
+    await this.planUsage.assertCurrentPlanActive();
     const store = await this.storeService.getIntegrationConnection(storeId, 'shopify');
     const credentials = this.settings(store);
     if (!credentials?.shopDomain || !credentials.accessToken) {

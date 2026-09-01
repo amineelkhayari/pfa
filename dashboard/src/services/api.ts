@@ -274,6 +274,7 @@ export interface OrderConfirmationSummary {
   totalProducts: number;
   periodDays: number | null;
   messageTotals: { sent: number; received: number; failed: number };
+  aiPerformance: { conversations: number; confirmed: number; cancelled: number; active: number; escalated: number; expired: number; confirmationRate: number };
   sessions: Array<{
     id: string;
     name: string;

@@ -129,6 +129,14 @@
 }
 
 .dashboard .plan-usage { margin-bottom: 2rem; }
+.dashboard .ai-performance { margin-bottom: 2rem; }
+.dashboard .ai-performance-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+.dashboard .ai-performance-card { display: flex; flex-direction: column; gap: .45rem; padding: 1rem; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-white); box-shadow: var(--shadow-sm); }
+.dashboard .ai-performance-card > span { display: flex; align-items: center; gap: .45rem; color: var(--text-secondary); font-size: .78rem; font-weight: 650; }
+.dashboard .ai-performance-card > span svg { color: var(--primary); }
+.dashboard .ai-performance-card strong { font-size: 1.65rem; line-height: 1.1; }
+.dashboard .ai-performance-card small { color: var(--text-secondary); }
+.dashboard .ai-performance-card.success { background: linear-gradient(145deg, var(--bg-white), rgba(37,211,102,.07)); border-color: rgba(37,211,102,.3); }
 .dashboard .usage-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
 .dashboard .usage-item { background: var(--bg-white); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
 .dashboard .usage-item > div:first-child { display: flex; justify-content: space-between; gap: .75rem; font-size: .78rem; color: var(--text-secondary); }
@@ -137,7 +145,9 @@
 .dashboard .usage-track span { display: block; height: 100%; background: var(--primary); border-radius: inherit; }
 
 @media (max-width: 900px) { .dashboard .usage-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .dashboard .ai-performance-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 480px) { .dashboard .usage-grid { grid-template-columns: 1fr; } }
+@media (max-width: 480px) { .dashboard .ai-performance-grid { grid-template-columns: 1fr; } }
 
 .dashboard .commerce-stats-grid {
   display: grid;

@@ -48,6 +48,7 @@ export function Sessions() {
   const { canWrite } = useRole();
   const queryClient = useQueryClient();
   const sessionLimit = usePlanLimit('sessions');
+  const trialGate = usePlanLimit();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -977,12 +978,12 @@ export function Sessions() {
                   </button>
                 ) : canWrite &&
                   (session.status === 'created' || session.status === 'disconnected') ? (
-                  <button className="btn-action" onClick={() => handleStart(session.id)} disabled={startingId === session.id}>
+                  <button className="btn-action" onClick={() => handleStart(session.id)} disabled={startingId === session.id || trialGate.blocked} title={trialGate.reason ?? undefined}>
                     {startingId === session.id ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
                     {startingId === session.id ? t('sessions.qr.loading') : t('sessions.actions.start')}
                   </button>
                 ) : canWrite ? (
-                  <button className="btn-action" onClick={() => handleStart(session.id)} disabled={startingId === session.id}>
+                  <button className="btn-action" onClick={() => handleStart(session.id)} disabled={startingId === session.id || trialGate.blocked} title={trialGate.reason ?? undefined}>
                     {startingId === session.id ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
                     {startingId === session.id ? t('sessions.qr.loading') : t('sessions.actions.reconnect')}
                   </button>

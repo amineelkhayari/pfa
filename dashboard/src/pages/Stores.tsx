@@ -71,6 +71,7 @@ const emptyForm: StorePayload = {
 
 export function Stores() {
   const storeLimit = usePlanLimit('stores');
+  const trialGate = usePlanLimit();
   const { t } = useTranslation();
   useDocumentTitle(t('stores.title'));
   const { canWrite } = useRole();
@@ -362,6 +363,8 @@ export function Stores() {
                     <button
                       className="btn-secondary"
                       onClick={() => window.location.assign(shopifyApi.installUrl(store.id))}
+                      disabled={trialGate.blocked}
+                      title={trialGate.reason ?? undefined}
                     >
                       <ExternalLink size={15} /> Install
                     </button>
@@ -370,7 +373,8 @@ export function Stores() {
                     <button
                       className="btn-secondary"
                       onClick={() => connectWooStore(store)}
-                      disabled={syncingId === store.id}
+                      disabled={syncingId === store.id || trialGate.blocked}
+                      title={trialGate.reason ?? undefined}
                     >
                       <ExternalLink size={15} /> Connect
                     </button>
@@ -379,7 +383,8 @@ export function Stores() {
                     <button
                       className="btn-secondary"
                       onClick={() => syncStore(store)}
-                      disabled={syncingId === store.id}
+                      disabled={syncingId === store.id || trialGate.blocked}
+                      title={trialGate.reason ?? undefined}
                     >
                       <RefreshCw className={syncingId === store.id ? 'animate-spin' : ''} size={15} /> Sync
                     </button>
@@ -395,7 +400,7 @@ export function Stores() {
                     </button>
                   )}
                   {canWrite && (
-                    <button className="icon-btn" onClick={() => openEdit(store)} aria-label="Edit store">
+                    <button className="icon-btn" onClick={() => openEdit(store)} aria-label="Edit store" disabled={trialGate.blocked} title={trialGate.reason ?? undefined}>
                       <Edit size={16} />
                     </button>
                   )}
@@ -470,7 +475,7 @@ export function Stores() {
             <button className="btn-secondary" onClick={() => setShowForm(false)}>
               Cancel
             </button>
-            <button className="btn-primary" disabled={storeLimit.blocked || !valid || saving} onClick={submit}>
+            <button className="btn-primary" disabled={storeLimit.blocked || trialGate.blocked || !valid || saving} onClick={submit}>
               {saving && <Loader2 className="animate-spin" size={16} />} Save
             </button>
           </>
@@ -911,7 +916,7 @@ export function Stores() {
                           <dd>
                             <button
                               className="btn-secondary"
-                              disabled={remindingOrderId === order.id}
+                              disabled={remindingOrderId === order.id || trialGate.blocked}
                               onClick={() => remindOrder(order)}
                             >
                               {remindingOrderId === order.id ? (
@@ -923,7 +928,7 @@ export function Stores() {
                             </button>
                             <button
                               className="btn-secondary"
-                              disabled={handoffOrderId === order.id}
+                              disabled={handoffOrderId === order.id || trialGate.blocked}
                               onClick={() => toggleHandoff(order)}
                             >
                               {handoffOrderId === order.id && <Loader2 className="animate-spin" size={15} />}

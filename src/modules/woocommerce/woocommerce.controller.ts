@@ -17,6 +17,7 @@ import { StoreService } from '../stores/store.service';
 import { MessageService } from '../message/message.service';
 import { CredentialEncryptionService } from '../../common/security/credential-encryption.service';
 import { WooCommerceService, WooCredentials } from './services/woocommerce.service';
+import { PlanUsageService } from '../auth/plan-usage.service';
 
 @Controller('woocommerce')
 export class WooCommerceController {
@@ -25,11 +26,13 @@ export class WooCommerceController {
     private readonly woo: WooCommerceService,
     private readonly messages: MessageService,
     private readonly encryption: CredentialEncryptionService,
+    private readonly planUsage: PlanUsageService,
   ) {}
 
   @Post(':storeId/connect')
   @RequireRole(ApiKeyRole.OPERATOR)
   async connect(@Param('storeId', ParseUUIDPipe) storeId: string) {
+    await this.planUsage.assertCurrentPlanActive();
     const store = await this.stores.getIntegrationConnection(storeId, 'woocommerce');
     const settings = this.credentials(store);
     settings.webhookSecret ||= randomBytes(32).toString('hex');
@@ -49,6 +52,7 @@ export class WooCommerceController {
   @Post(':storeId/sync')
   @RequireRole(ApiKeyRole.OPERATOR)
   async sync(@Param('storeId', ParseUUIDPipe) storeId: string) {
+    await this.planUsage.assertCurrentPlanActive();
     const store = await this.stores.getIntegrationConnection(storeId, 'woocommerce');
     const settings = this.credentials(store);
     const imported = await this.woo.sync(settings, storeId);

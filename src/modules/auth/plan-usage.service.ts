@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, IsNull, Not, Repository } from 'typeorm';
 import { getRequestUserScope } from '../../common/services/request-context';
 import { Session } from '../session/entities/session.entity';
 import { Store } from '../stores/entities/store.entity';
@@ -152,6 +152,28 @@ export class PlanUsageService {
     await this.resetUsagePeriodIfNeeded(user);
     const limit = this.limitsFor(user).receivedMessages;
     await this.users.createQueryBuilder().update(UserAccount).set({ receivedMessages: () => '"receivedMessages" + 1' }).where('id = :id', { id: user.id }).andWhere('"receivedMessages" < :limit', { limit }).execute();
+  }
+
+  async assertCurrentPlanActive(): Promise<void> {
+    const user = await this.currentLimitedUser();
+    if (!user) return;
+    this.assertTrialActive(user);
+  }
+
+  async assertSessionPlanActive(sessionId: string): Promise<void> {
+    const user = await this.userForSession(sessionId);
+    if (!user || user.role === ApiKeyRole.ADMIN) return;
+    await this.resetUsagePeriodIfNeeded(user);
+    this.assertTrialActive(user);
+  }
+
+  async expiredSessionIds(): Promise<string[]> {
+    const sessions = await this.sessions.find({ select: { id: true, userId: true }, where: { userId: Not(IsNull()) } });
+    const userIds = [...new Set(sessions.map(session => session.userId).filter((id): id is string => Boolean(id)))];
+    if (!userIds.length) return [];
+    const users = await this.users.findBy({ id: In(userIds) });
+    const expired = new Set(users.filter(user => user.role !== ApiKeyRole.ADMIN && this.isTrialExpired(user)).map(user => user.id));
+    return sessions.filter(session => session.userId && expired.has(session.userId)).map(session => session.id);
   }
 
   async consumeAiContextTokens(sessionId: string | undefined, tokens: number): Promise<void> {

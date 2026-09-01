@@ -18,6 +18,8 @@ import {
   Bot,
   ArrowUpRight,
   ArrowDownLeft,
+  BrainCircuit,
+  Gauge,
 } from 'lucide-react';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import {
@@ -185,6 +187,21 @@ export function Dashboard() {
         </section>
       )}
       {accountLimitReason && <PlanUpgradeNotice reason={accountLimitReason} />}
+
+      {accountUsage && (
+        <section className="ai-performance">
+          <div className="section-header">
+            <div><h2>AI performance</h2><span className="section-subtitle">Context usage and order-confirmation outcomes for the selected period</span></div>
+            <button className="btn-sm" onClick={() => navigate('/ai-test')}>Test AI agent</button>
+          </div>
+          <div className="ai-performance-grid">
+            <div className="ai-performance-card"><span><BrainCircuit size={19}/> AI tokens used</span><strong>{accountUsage.usage.aiTokens.toLocaleString()}</strong><small>of {accountUsage.limits.aiTokens.toLocaleString()} plan tokens</small></div>
+            <div className="ai-performance-card"><span><Gauge size={19}/> Token utilization</span><strong>{accountUsage.limits.aiTokens > 0 ? Math.min(100, Math.round(accountUsage.usage.aiTokens / accountUsage.limits.aiTokens * 100)) : 100}%</strong><small>{Math.max(0, accountUsage.limits.aiTokens - accountUsage.usage.aiTokens).toLocaleString()} tokens remaining</small></div>
+            <div className="ai-performance-card success"><span><CircleCheck size={19}/> AI confirmation rate</span><strong>{orderSummary?.aiPerformance.confirmationRate ?? 0}%</strong><small>{orderSummary?.aiPerformance.confirmed ?? 0} confirmed of {(orderSummary?.aiPerformance.confirmed ?? 0) + (orderSummary?.aiPerformance.cancelled ?? 0)} completed decisions</small></div>
+            <div className="ai-performance-card"><span><Bot size={19}/> AI conversations</span><strong>{orderSummary?.aiPerformance.conversations ?? 0}</strong><small>{orderSummary?.aiPerformance.active ?? 0} active · {orderSummary?.aiPerformance.escalated ?? 0} handed off</small></div>
+          </div>
+        </section>
+      )}
 
       <section className="commerce-summary">
         <div className="section-header">
