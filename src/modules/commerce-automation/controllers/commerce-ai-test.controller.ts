@@ -1,4 +1,7 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, Res, StreamableFile, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiConsumes } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { IsArray, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { RequireRole, RequireUnscopedKey } from '../../auth/decorators/auth.decorators';
 import { ApiKeyRole } from '../../auth/entities/api-key.entity';
@@ -7,11 +10,16 @@ import { CommerceAiAgentService } from '../services/commerce-ai-agent.service';
 import { AiConversationTurn } from '../../stores/entities/order-ai-conversation.entity';
 import { StoreService } from '../../stores/store.service';
 import { CommerceToolService } from '../services/commerce-tool.service';
+import { AudioTranscriptionService } from '../services/audio-transcription.service';
 
 class TestAiDto {
   @IsOptional() @IsString() @MaxLength(1000) message?: string;
   @IsOptional() @IsArray() history?: Array<{ role?: string; text?: string }>;
   @IsOptional() @IsUUID() storeId?: string;
+}
+
+class TestSpeechDto {
+  @IsString() @MaxLength(4096) text!: string;
 }
 
 const sampleOrder = {
@@ -44,7 +52,24 @@ export class UserAiTestController {
     private readonly agent: CommerceAiAgentService,
     private readonly stores: StoreService,
     private readonly tools: CommerceToolService,
+    private readonly audio: AudioTranscriptionService,
   ) {}
+
+  @Post('test-chat/transcribe')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024, files: 1 } }))
+  transcribe(@UploadedFile() file?: { buffer?: Buffer; mimetype?: string; originalname?: string; size?: number }) {
+    return this.audio.transcribe(file);
+  }
+
+  @Post('test-chat/speech')
+  async speech(@Body() dto: TestSpeechDto, @Res({ passthrough: true }) response: Response) {
+    const audio = await this.audio.synthesize(dto.text);
+    response.setHeader('Content-Type', audio.contentType);
+    response.setHeader('Content-Disposition', 'inline; filename="ai-reply.mp3"');
+    response.setHeader('X-Audio-Model', audio.model);
+    return new StreamableFile(audio.data);
+  }
 
   @Post('test-chat')
   async chat(@Body() dto: TestAiDto) {

@@ -892,16 +892,18 @@ async function requestText(endpoint: string): Promise<string> {
 }
 
 /** Like {@link request} but returns a Blob — e.g. for status media downloads. */
-async function requestBlob(endpoint: string): Promise<Blob> {
+async function requestBlob(endpoint: string, options: RequestInit = {}): Promise<Blob> {
   const url = `${API_BASE_URL}${endpoint}`;
 
   const accessToken = sessionStorage.getItem('openwa_access_token');
 
   const headers: HeadersInit = {
+    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
     ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    ...options.headers,
   };
 
-  const response = await fetch(url, { headers });
+  const response = await fetch(url, { ...options, headers });
 
   if (response.status === 401) {
     // The stored API key is invalid/expired/revoked — clear it and return to login
@@ -1781,6 +1783,14 @@ export interface AdminAiSettings {
   maxTurns: number;
   conversationTimeoutHours: number;
   apiKeyConfigured: boolean;
+  audio: {
+    provider: 'omniroute';
+    apiKeyConfigured: boolean;
+    sttModel: string;
+    ttsModel: string;
+    voiceId: string;
+    outputFormat: string;
+  };
 }
 export const adminAiApi = {
   get: () => request<AdminAiSettings>('/admin/ai-settings'),
@@ -1792,6 +1802,10 @@ export const adminAiApi = {
     model?: string;
     maxTurns?: number;
     conversationTimeoutHours?: number;
+    audioSttModel?: string;
+    audioTtsModel?: string;
+    audioVoice?: string;
+    audioOutputFormat?: string;
   }) => request<AdminAiSettings>('/admin/ai-settings', { method: 'PUT', body: JSON.stringify(body) }),
 };
 
@@ -1804,4 +1818,10 @@ export interface AiTestResult {
 export const aiTestApi = {
   chat: (message: string, history: Array<{ role: 'customer' | 'assistant'; text: string }>, storeId?: string) =>
     request<AiTestResult>('/ai/test-chat', { method: 'POST', body: JSON.stringify({ message, history, storeId }) }),
+  transcribe: (file: File) => {
+    const body = new FormData();
+    body.append('file', file);
+    return request<{ text: string; model: string }>('/ai/test-chat/transcribe', { method: 'POST', body });
+  },
+  speech: (text: string) => requestBlob('/ai/test-chat/speech', { method: 'POST', body: JSON.stringify({ text }) }),
 };

@@ -71,6 +71,10 @@ class UpdateAiSettingsDto {
   @IsOptional() @IsString() model?: string;
   @IsOptional() @IsInt() @Min(2) @Max(50) maxTurns?: number;
   @IsOptional() @IsInt() @Min(1) @Max(720) conversationTimeoutHours?: number;
+  @IsOptional() @IsString() audioSttModel?: string;
+  @IsOptional() @IsString() audioTtsModel?: string;
+  @IsOptional() @IsString() audioVoice?: string;
+  @IsOptional() @IsString() audioOutputFormat?: string;
 }
 
 @Controller('admin/ai-settings')
