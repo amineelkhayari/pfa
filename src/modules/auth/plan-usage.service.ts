@@ -17,11 +17,13 @@ export interface PlanLimits {
   sentMessages: number;
   receivedMessages: number;
   aiTokens: number;
+  audioTranscriptions: number;
+  audioReplies: number;
 }
 
 export const PLAN_LIMITS: Record<UserPlan, PlanLimits> = {
-  [UserPlan.FREE]: { sessions: 1, stores: 1, sentMessages: 20, receivedMessages: 20, aiTokens: 5000 },
-  [UserPlan.PRO]: { sessions: 5, stores: 5, sentMessages: 1250, receivedMessages: 1250, aiTokens: 100000 },
+  [UserPlan.FREE]: { sessions: 1, stores: 1, sentMessages: 20, receivedMessages: 20, aiTokens: 5000, audioTranscriptions: 0, audioReplies: 0 },
+  [UserPlan.PRO]: { sessions: 5, stores: 5, sentMessages: 1250, receivedMessages: 1250, aiTokens: 100000, audioTranscriptions: 200, audioReplies: 200 },
 };
 
 @Injectable()
@@ -69,7 +71,7 @@ export class PlanUsageService {
     return {
       plan: user.plan,
       limits: this.limitsFor(user),
-      usage: { sessions, stores, sentMessages: user.sentMessages, receivedMessages: user.receivedMessages, aiTokens: user.aiTokensUsed ?? 0 },
+      usage: { sessions, stores, sentMessages: user.sentMessages, receivedMessages: user.receivedMessages, aiTokens: user.aiTokensUsed ?? 0, audioTranscriptions: user.audioTranscriptionsUsed ?? 0, audioReplies: user.audioRepliesUsed ?? 0 },
       periodStart: user.usagePeriodStart,
       trialEndsAt,
       trialExpired: Boolean(trialEndsAt && trialEndsAt <= new Date()),
@@ -97,7 +99,7 @@ export class PlanUsageService {
     return {
       user: { id: user.id, name: user.name, email: user.email, username: user.username, role: user.role, plan: user.plan, status: user.status, settings: user.settings, createdAt: user.createdAt, updatedAt: user.updatedAt },
       limits: user.role === ApiKeyRole.ADMIN ? null : this.limitsFor(user),
-      usage: { sessions, stores, products, orders, sentMessages: user.sentMessages, receivedMessages: user.receivedMessages, aiTokens: user.aiTokensUsed ?? 0 },
+      usage: { sessions, stores, products, orders, sentMessages: user.sentMessages, receivedMessages: user.receivedMessages, aiTokens: user.aiTokensUsed ?? 0, audioTranscriptions: user.audioTranscriptionsUsed ?? 0, audioReplies: user.audioRepliesUsed ?? 0 },
       usagePeriodStart: user.usagePeriodStart,
       trialEndsAt: this.trialEndsAt(user),
       subscriptions,
@@ -188,6 +190,31 @@ export class PlanUsageService {
     if (!(result.affected ?? 0)) throw new ForbiddenException('AI context token limit reached. Choose a higher plan to continue using AI.');
   }
 
+  async reserveAudioTranscription(sessionId: string): Promise<boolean> {
+    return this.reserveAudioUsage(sessionId, 'audioTranscriptionsUsed', 'audioTranscriptions');
+  }
+
+  async reserveAudioReply(sessionId: string): Promise<boolean> {
+    return this.reserveAudioUsage(sessionId, 'audioRepliesUsed', 'audioReplies');
+  }
+
+  async releaseAudioTranscription(sessionId: string): Promise<void> {
+    return this.releaseAudioUsage(sessionId, 'audioTranscriptionsUsed');
+  }
+
+  async releaseAudioReply(sessionId: string): Promise<void> {
+    return this.releaseAudioUsage(sessionId, 'audioRepliesUsed');
+  }
+
+  private async releaseAudioUsage(sessionId: string, counter: 'audioTranscriptionsUsed' | 'audioRepliesUsed'): Promise<void> {
+    const user = await this.userForSession(sessionId);
+    if (!user || user.role === ApiKeyRole.ADMIN) return;
+    const escapedCounter = `"${counter}"`;
+    await this.users.createQueryBuilder().update(UserAccount)
+      .set({ [counter]: () => `CASE WHEN ${escapedCounter} > 0 THEN ${escapedCounter} - 1 ELSE 0 END` })
+      .where('id = :id', { id: user.id }).execute();
+  }
+
   private async currentLimitedUser(): Promise<UserAccount | null> {
     const scope = getRequestUserScope();
     if (!scope.userId || scope.isAdmin) return null;
@@ -211,12 +238,28 @@ export class PlanUsageService {
     user.sentMessages = 0;
     user.receivedMessages = 0;
     user.aiTokensUsed = 0;
+    user.audioTranscriptionsUsed = 0;
+    user.audioRepliesUsed = 0;
     user.usagePeriodStart = new Date();
     return this.users.save(user);
   }
 
   private limitsFor(user: UserAccount): PlanLimits {
-    return this.plans.get(user.plan).limits;
+    const limits = this.plans.get(user.plan).limits;
+    return { ...limits, audioTranscriptions: limits.audioTranscriptions ?? 0, audioReplies: limits.audioReplies ?? 0 };
+  }
+  private async reserveAudioUsage(userSessionId: string, counter: 'audioTranscriptionsUsed' | 'audioRepliesUsed', limitKey: 'audioTranscriptions' | 'audioReplies'): Promise<boolean> {
+    const user = await this.userForSession(userSessionId);
+    if (!user || user.role === ApiKeyRole.ADMIN) return true;
+    await this.resetUsagePeriodIfNeeded(user);
+    if (this.isTrialExpired(user)) return false;
+    const limit = this.limitsFor(user)[limitKey];
+    if (limit <= 0) return false;
+    const escapedCounter = `"${counter}"`;
+    const result = await this.users.createQueryBuilder().update(UserAccount)
+      .set({ [counter]: () => `${escapedCounter} + 1` })
+      .where('id = :id', { id: user.id }).andWhere(`${escapedCounter} < :limit`, { limit }).execute();
+    return (result.affected ?? 0) > 0;
   }
   private trialEndsAt(user: UserAccount): Date | null {
     const plan = this.plans.get(user.plan);

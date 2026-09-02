@@ -15,9 +15,13 @@ import { CommerceAiAgentService } from './commerce-ai-agent.service';
 import { StoreOrderCart } from '../../stores/entities/store-order-cart.entity';
 import { WooCommerceService, WooCredentials } from '../../woocommerce/services/woocommerce.service';
 import { CommerceToolService } from './commerce-tool.service';
+import { AudioTranscriptionService } from './audio-transcription.service';
+import { PlanUsageService } from '../../auth/plan-usage.service';
 
 interface IncomingReply {
   body?: string;
+  type?: string;
+  media?: { mimetype?: string; filename?: string; data?: string; omitted?: boolean };
   from?: string;
   chatId?: string;
   senderPhone?: string | null;
@@ -28,6 +32,7 @@ interface IncomingReply {
 export class CommerceConversationService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = createLogger('CommerceConversationService');
   private hookId?: string;
+  private readonly voiceReplyChats = new Map<string, number>();
 
   constructor(
     private readonly hooks: HookManager,
@@ -37,6 +42,8 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
     private readonly encryption: CredentialEncryptionService,
     private readonly ai: CommerceAiAgentService,
     private readonly tools: CommerceToolService,
+    private readonly audio: AudioTranscriptionService,
+    private readonly planUsage: PlanUsageService,
     @InjectRepository(Store, 'data') private readonly stores: Repository<Store>,
     @InjectRepository(Order, 'data') private readonly orders: Repository<Order>,
     @InjectRepository(Product, 'data') private readonly products: Repository<Product>,
@@ -61,8 +68,50 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
   }
 
   private async handleReply(sessionId: string | undefined, message: IncomingReply): Promise<void> {
-    const reply = message.body?.trim();
-    if (!sessionId || message.fromMe || !reply) return;
+    if (!sessionId || message.fromMe) return;
+    const chatId = message.chatId ?? message.from;
+    const isAudio = message.type === 'voice' || message.type === 'audio';
+    let reply = message.body?.trim();
+    if (isAudio) {
+      const audioStore = await this.stores.findOneBy({ sessionId });
+      if (!audioStore?.settings || ![Platform.SHOPIFY, Platform.WOOCOMMERCE].includes(audioStore.provider)) return;
+      if (!chatId || !message.media?.data || message.media.omitted) {
+        this.logger.warn(`Incoming voice note has no downloadable media sessionId=${sessionId}`);
+        return;
+      }
+      if (!await this.planUsage.reserveAudioTranscription(sessionId)) {
+        await this.messages.sendText(sessionId, { chatId, text: "La transcription des messages vocaux n’est pas incluse dans votre forfait ou votre quota est épuisé. Passez à un forfait supérieur pour l’activer." });
+        return;
+      }
+      try {
+        const result = await this.audio.transcribe({
+          buffer: Buffer.from(message.media.data, 'base64'),
+          mimetype: message.media.mimetype || 'audio/ogg',
+          originalname: message.media.filename || 'whatsapp-voice.ogg',
+        }, audioStore.language);
+        reply = result.text;
+      } catch (error) {
+        await this.planUsage.releaseAudioTranscription(sessionId);
+        this.logger.error(`WhatsApp voice transcription failed sessionId=${sessionId}: ${error instanceof Error ? error.message : String(error)}`);
+        await this.messages.sendText(sessionId, { chatId, text: "Je n’ai pas pu comprendre ce message vocal. Réessayez ou envoyez-moi un message texte." });
+        return;
+      }
+      this.voiceReplyChats.set(chatId, (this.voiceReplyChats.get(chatId) ?? 0) + 1);
+    }
+    if (!reply) return;
+
+    try {
+      await this.handleTranscribedReply(sessionId, message, reply);
+    } finally {
+      if (isAudio && chatId) {
+        const remaining = (this.voiceReplyChats.get(chatId) ?? 1) - 1;
+        if (remaining > 0) this.voiceReplyChats.set(chatId, remaining);
+        else this.voiceReplyChats.delete(chatId);
+      }
+    }
+  }
+
+  private async handleTranscribedReply(sessionId: string, message: IncomingReply, reply: string): Promise<void> {
 
     const store = await this.stores.findOneBy({ sessionId });
     if (!store?.settings || ![Platform.SHOPIFY, Platform.WOOCOMMERCE].includes(store.provider)) return;
@@ -144,7 +193,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       const chatId = message.chatId ?? message.from;
       if (chatId) {
         const choices = pending.slice(0, 5).map(candidate => `• ${candidate.orderNumber ?? candidate.shopifyOrderId} — ${candidate.totalPrice} ${candidate.currency}`).join('\n');
-        await this.messages.sendText(sessionId, { chatId, text: `Vous avez plusieurs commandes en attente. Indiquez le numéro de la commande concernée :\n${choices}` });
+        await this.sendReply(sessionId, { chatId, text: `Vous avez plusieurs commandes en attente. Indiquez le numéro de la commande concernée :\n${choices}` });
       }
       return;
     }
@@ -176,7 +225,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
 
       const chatId = message.chatId ?? message.from;
       if (chatId) {
-        await this.messages.sendText(sessionId, {
+        await this.sendReply(sessionId, {
           chatId,
           text:
             directAction === 'confirm'
@@ -218,7 +267,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       conversation.pendingData = null;
       conversation.turns = [...turns, { role: 'assistant', text: 'Envoyez la nouvelle livraison sous cette forme : Nom complet | Adresse | Ville | Code postal (optionnel) | Pays', at: new Date().toISOString() }];
       await this.conversations.save(conversation);
-      await this.messages.sendText(sessionId, { chatId, text: 'Bien sûr. Envoyez la nouvelle livraison sous cette forme :\n*Nom complet | Adresse | Ville | Code postal (optionnel) | Pays*\n\nExemple : Amine Alaoui | 15 rue Hassan II | Rabat | 10000 | Morocco' });
+      await this.sendReply(sessionId, { chatId, text: 'Bien sûr. Envoyez la nouvelle livraison sous cette forme :\n*Nom complet | Adresse | Ville | Code postal (optionnel) | Pays*\n\nExemple : Amine Alaoui | 15 rue Hassan II | Rabat | 10000 | Morocco' });
       return;
     }
     const timeoutHours = this.ai.timeoutHours();
@@ -226,7 +275,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       conversation.status = 'expired';
       conversation.turns = [...turns, { role: 'assistant', text: 'Cette conversation a expiré. Un conseiller va reprendre votre demande.', at: new Date().toISOString() }];
       await this.conversations.save(conversation);
-      await this.messages.sendText(sessionId, { chatId, text: 'Cette conversation a expiré. Un conseiller va reprendre votre demande.' });
+      await this.sendReply(sessionId, { chatId, text: 'Cette conversation a expiré. Un conseiller va reprendre votre demande.' });
       return;
     }
     const maxTurns = this.ai.maxTurns();
@@ -234,7 +283,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       conversation.status = 'escalated';
       conversation.turns = [...turns, { role: 'assistant', text: 'Un conseiller va reprendre cette conversation.', at: new Date().toISOString() }];
       await this.conversations.save(conversation);
-      await this.messages.sendText(sessionId, { chatId, text: 'Un conseiller va reprendre cette conversation.' });
+      await this.sendReply(sessionId, { chatId, text: 'Un conseiller va reprendre cette conversation.' });
       return;
     }
     try {
@@ -264,7 +313,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       const text = decision.action === 'confirm'
         ? await this.confirmationMessage(store, order, decision.reply)
         : safeDecisionReply;
-      await this.messages.sendText(sessionId, { chatId, text });
+      await this.sendReply(sessionId, { chatId, text });
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'AI conversation failed';
       const providerMutationFailed = order.confirmationStatus === 'processing_reply';
@@ -275,7 +324,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
         order.confirmationStatus = 'pending'; order.confirmationError = reason; await this.orders.save(order);
       }
       this.logger.error(`AI order reply failed (order=${order.id}): ${reason}`);
-      await this.messages.sendText(sessionId, {
+      await this.sendReply(sessionId, {
         chatId,
         text: providerMutationFailed
           ? `Je n’ai pas pu mettre à jour la commande ${order.orderNumber ?? order.shopifyOrderId} pour le moment. Elle reste en attente; vous pouvez réessayer dans un instant.`
@@ -332,11 +381,34 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       const safeAnswer = this.hasUnverifiedMutationClaim(answer)
         ? this.catalogFallbackReply(text, products, customerOrders, store)
         : answer;
-      await this.messages.sendText(sessionId, { chatId, text: safeAnswer.slice(0, 1500) });
+      await this.sendReply(sessionId, { chatId, text: safeAnswer.slice(0, 1500) });
     } catch (error) {
       this.logger.error(`AI catalog reply failed (store=${store.id}): ${error instanceof Error ? error.message : 'unknown error'}`);
       const fallback = this.catalogFallbackReply(text, products, customerOrders, store);
-      await this.messages.sendText(sessionId, { chatId, text: fallback });
+      await this.sendReply(sessionId, { chatId, text: fallback });
+    }
+  }
+
+  private async sendReply(sessionId: string, dto: { chatId: string; text: string }) {
+    if (!this.voiceReplyChats.has(dto.chatId)) return this.messages.sendText(sessionId, dto);
+    if (!await this.planUsage.reserveAudioReply(sessionId)) return this.messages.sendText(sessionId, dto);
+    try {
+      const speech = await this.audio.synthesize(dto.text);
+      const voiceNoteCompatible = /(?:audio\/(?:ogg|opus)|opus)/i.test(speech.contentType);
+      const extension = /wav/i.test(speech.contentType) ? 'wav' : voiceNoteCompatible ? 'ogg' : 'mp3';
+      return await this.messages.sendAudio(sessionId, {
+        chatId: dto.chatId,
+        base64: speech.data.toString('base64'),
+        mimetype: speech.contentType,
+        filename: `assistant-reply.${extension}`,
+        // WhatsApp PTT requires Ogg/Opus. Deepgram currently returns MP3/WAV through OmniRoute;
+        // sending those bytes as PTT creates an unreadable voice bubble. Keep them as playable audio.
+        ptt: voiceNoteCompatible,
+      });
+    } catch (error) {
+      await this.planUsage.releaseAudioReply(sessionId);
+      this.logger.error(`WhatsApp voice generation failed sessionId=${sessionId}: ${error instanceof Error ? error.message : String(error)}`);
+      return this.messages.sendText(sessionId, dto);
     }
   }
 
@@ -671,7 +743,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
     const cancel = /\b(cancel|annul|stop|ncancel|ma bghit|la ma bghitch)\w*\b|إلغاء|الغاء|لا أريد/i.test(text);
     if (cancel) {
       if (cart.id) await this.carts.delete(cart.id);
-      await this.messages.sendText(sessionId, { chatId, text: 'D’accord, la nouvelle commande a été annulée.' });
+      await this.sendReply(sessionId, { chatId, text: 'D’accord, la nouvelle commande a été annulée.' });
       return true;
     }
     if (cart.step === 'product') {
@@ -690,7 +762,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
           return true;
         }
         const choices = products.slice(0, 10).map((item, index) => `${index + 1}. ${item.title} — ${item.price} ${store.currency}`).join('\n');
-        await this.messages.sendText(sessionId, { chatId, text: `Quel produit souhaitez-vous commander ? Répondez avec le numéro :\n${choices}` });
+        await this.sendReply(sessionId, { chatId, text: `Quel produit souhaitez-vous commander ? Répondez avec le numéro :\n${choices}` });
         return true;
       }
       cart.productId = product.id;
@@ -698,14 +770,14 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       const variants = product.variants ?? [];
       if (variants.length > 1) {
         cart.step = 'variant'; await this.carts.save(cart);
-        await this.messages.sendText(sessionId, { chatId, text: `Choisissez une option pour ${product.title}. Répondez avec le numéro :\n${variants.slice(0, 10).map((item, index) => `${index + 1}. ${item.title} — ${item.price ?? product.price} ${store.currency}`).join('\n')}` });
+        await this.sendReply(sessionId, { chatId, text: `Choisissez une option pour ${product.title}. Répondez avec le numéro :\n${variants.slice(0, 10).map((item, index) => `${index + 1}. ${item.title} — ${item.price ?? product.price} ${store.currency}`).join('\n')}` });
       } else {
         const variant = variants[0];
         cart.variantId = store.provider === Platform.WOOCOMMERCE
           ? String(variant?.id ?? '')
           : String(variant?.admin_graphql_api_id ?? (variant?.id ? `gid://shopify/ProductVariant/${variant.id}` : ''));
         cart.variantTitle = String(variant?.title ?? 'Default Title'); cart.step = 'quantity'; await this.carts.save(cart);
-        await this.messages.sendText(sessionId, { chatId, text: `Combien d’unités de ${product.title} souhaitez-vous ?` });
+        await this.sendReply(sessionId, { chatId, text: `Combien d’unités de ${product.title} souhaitez-vous ?` });
       }
       return true;
     }
@@ -715,34 +787,34 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       const variants = product.variants ?? [];
       const selectedNumber = this.choiceNumber(text, variants.length);
       const variant = selectedNumber ? variants[selectedNumber - 1] : variants.find(item => text.toLowerCase().includes(String(item.title ?? '').toLowerCase()));
-      if (!variant) { await this.messages.sendText(sessionId, { chatId, text: `Je n’ai pas reconnu l’option. Répondez avec un numéro :\n${variants.slice(0, 10).map((item, index) => `${index + 1}. ${item.title}`).join('\n')}` }); return true; }
+      if (!variant) { await this.sendReply(sessionId, { chatId, text: `Je n’ai pas reconnu l’option. Répondez avec un numéro :\n${variants.slice(0, 10).map((item, index) => `${index + 1}. ${item.title}`).join('\n')}` }); return true; }
       cart.variantId = store.provider === Platform.WOOCOMMERCE
         ? String(variant.id ?? '')
         : String(variant.admin_graphql_api_id ?? `gid://shopify/ProductVariant/${variant.id}`); cart.variantTitle = String(variant.title); cart.step = 'quantity'; await this.carts.save(cart);
-      await this.messages.sendText(sessionId, { chatId, text: 'Quelle quantité souhaitez-vous ?' }); return true;
+      await this.sendReply(sessionId, { chatId, text: 'Quelle quantité souhaitez-vous ?' }); return true;
     }
     if (cart.step === 'quantity') {
       const affirmative = /^(?:yes|oui|نعم|اه|آه|wakha|واخا)$/i.test(text.trim());
       const quantity = affirmative ? 1 : Number(text.match(/\d+/)?.[0]);
-      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) { await this.messages.sendText(sessionId, { chatId, text: 'Indiquez une quantité entre 1 et 99.' }); return true; }
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) { await this.sendReply(sessionId, { chatId, text: 'Indiquez une quantité entre 1 et 99.' }); return true; }
       cart.quantity = quantity; cart.step = 'name'; await this.carts.save(cart);
-      await this.messages.sendText(sessionId, { chatId, text: 'Quel est votre nom complet pour la livraison ?' }); return true;
+      await this.sendReply(sessionId, { chatId, text: 'Quel est votre nom complet pour la livraison ?' }); return true;
     }
-    if (cart.step === 'name') { cart.customerName = text.slice(0, 150); cart.step = 'address'; await this.carts.save(cart); await this.messages.sendText(sessionId, { chatId, text: 'Quelle est votre adresse de livraison (rue, numéro et quartier) ?' }); return true; }
-    if (cart.step === 'address') { cart.address1 = text.slice(0, 300); cart.step = 'city'; await this.carts.save(cart); await this.messages.sendText(sessionId, { chatId, text: 'Dans quelle ville ?' }); return true; }
+    if (cart.step === 'name') { cart.customerName = text.slice(0, 150); cart.step = 'address'; await this.carts.save(cart); await this.sendReply(sessionId, { chatId, text: 'Quelle est votre adresse de livraison (rue, numéro et quartier) ?' }); return true; }
+    if (cart.step === 'address') { cart.address1 = text.slice(0, 300); cart.step = 'city'; await this.carts.save(cart); await this.sendReply(sessionId, { chatId, text: 'Dans quelle ville ?' }); return true; }
     if (cart.step === 'city') {
       cart.city = text.slice(0, 100); cart.step = 'confirm'; await this.carts.save(cart);
       const variant = (product.variants ?? []).find(item => String(item.admin_graphql_api_id ?? `gid://shopify/ProductVariant/${item.id}`) === cart.variantId);
       const unitPrice = Number(variant?.price ?? product.price);
       const summary = `Résumé de votre nouvelle commande :\n• ${product.title}${cart.variantTitle && cart.variantTitle !== 'Default Title' ? ` — ${cart.variantTitle}` : ''}\n• Quantité : ${cart.quantity}\n• Total produits : ${(unitPrice * cart.quantity).toFixed(2)} ${store.currency}\n• Livraison : ${cart.customerName}, ${cart.address1}, ${cart.city}\n• Téléphone : +${phone}`;
-      await this.messages.sendText(sessionId, {
+      await this.sendReply(sessionId, {
         chatId,
         text: `${summary}\n\n✅ Répondez *CONFIRMER* pour créer la commande.\n❌ Répondez *ANNULER* pour arrêter.`,
       });
       return true;
     }
     if (cart.step === 'confirm') {
-      if (!/\b(confirm|confirmer|confirme|nconfirm|yes|oui|wakha)\w*\b|تأكيد|أؤكد|اؤكد|نعم/i.test(text)) { await this.messages.sendText(sessionId, { chatId, text: 'Répondez CONFIRMER pour créer la commande, ou ANNULER pour arrêter.' }); return true; }
+      if (!/\b(confirm|confirmer|confirme|nconfirm|yes|oui|wakha)\w*\b|تأكيد|أؤكد|اؤكد|نعم/i.test(text)) { await this.sendReply(sessionId, { chatId, text: 'Répondez CONFIRMER pour créer la commande, ou ANNULER pour arrêter.' }); return true; }
       const settings = this.encryption.revealSettings(store.settings ?? {});
       try {
         const result = store.provider === Platform.WOOCOMMERCE
@@ -767,10 +839,10 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
           provider: store.provider,
           orderNumber: result.orderName ?? null,
         });
-        await this.messages.sendText(sessionId, { chatId, text: `Votre commande ${result.orderName ?? ''} a été créée et confirmée avec succès ✅` });
+        await this.sendReply(sessionId, { chatId, text: `Votre commande ${result.orderName ?? ''} a été créée et confirmée avec succès ✅` });
       } catch (error) {
         this.logger.error(`Chat order creation failed (store=${store.id}, customer=${phone.slice(-4)}): ${error instanceof Error ? error.message : 'unknown error'}`);
-        await this.messages.sendText(sessionId, { chatId, text: `Je n’ai pas pu créer la commande dans ${store.provider} pour le moment. Vos informations sont conservées; répondez CONFIRMER pour réessayer ou ANNULER.` });
+        await this.sendReply(sessionId, { chatId, text: `Je n’ai pas pu créer la commande dans ${store.provider} pour le moment. Vos informations sont conservées; répondez CONFIRMER pour réessayer ou ANNULER.` });
       }
       return true;
     }
@@ -802,13 +874,13 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       conversation.pendingAction = null; conversation.pendingData = null;
       conversation.turns = [...turns, { role: 'assistant', text: 'La modification de livraison a été annulée.', at: new Date().toISOString() }];
       await this.conversations.save(conversation);
-      await this.messages.sendText(sessionId, { chatId, text: 'D’accord, la modification de livraison a été annulée.' });
+      await this.sendReply(sessionId, { chatId, text: 'D’accord, la modification de livraison a été annulée.' });
       return true;
     }
     if (conversation.pendingAction === 'collect_shipping_address') {
       const parts = text.split('|').map(value => value.trim());
       if (parts.length < 3 || !parts[0] || !parts[1] || !parts[2]) {
-        await this.messages.sendText(sessionId, { chatId, text: 'Je n’ai pas pu lire toutes les informations. Utilisez :\n*Nom complet | Adresse | Ville | Code postal (optionnel) | Pays*' });
+        await this.sendReply(sessionId, { chatId, text: 'Je n’ai pas pu lire toutes les informations. Utilisez :\n*Nom complet | Adresse | Ville | Code postal (optionnel) | Pays*' });
         return true;
       }
       conversation.pendingData = {
@@ -820,12 +892,12 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       const preview = `Nouvelle livraison pour ${order.orderNumber ?? order.shopifyOrderId} :\n• ${parts[0]}\n• ${parts[1]}, ${parts[2]}${parts[3] ? `, ${parts[3]}` : ''}\n• ${parts[4] || order.shippingAddress?.country || 'Morocco'}\n\nRépondez *CONFIRMER* pour appliquer ou *ANNULER*.`;
       conversation.turns = [...turns, { role: 'assistant', text: preview, at: new Date().toISOString() }];
       await this.conversations.save(conversation);
-      await this.messages.sendText(sessionId, { chatId, text: preview });
+      await this.sendReply(sessionId, { chatId, text: preview });
       return true;
     }
     if (conversation.pendingAction === 'confirm_shipping_address') {
       if (!/^(?:confirmer|confirm|oui|yes|wakha|نعم|تأكيد)$/i.test(text.trim())) {
-        await this.messages.sendText(sessionId, { chatId, text: 'Répondez CONFIRMER pour appliquer la nouvelle adresse, ou ANNULER.' });
+        await this.sendReply(sessionId, { chatId, text: 'Répondez CONFIRMER pour appliquer la nouvelle adresse, ou ANNULER.' });
         return true;
       }
       const data = conversation.pendingData;
@@ -837,7 +909,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       conversation.pendingAction = null; conversation.pendingData = null;
       conversation.turns = [...turns, { role: 'assistant', text: 'L’adresse de livraison a été mise à jour avec succès ✅', at: new Date().toISOString() }];
       await this.conversations.save(conversation);
-      await this.messages.sendText(sessionId, { chatId, text: `L’adresse de livraison de la commande ${order.orderNumber ?? order.shopifyOrderId} a été mise à jour avec succès ✅` });
+      await this.sendReply(sessionId, { chatId, text: `L’adresse de livraison de la commande ${order.orderNumber ?? order.shopifyOrderId} a été mise à jour avec succès ✅` });
       return true;
     }
     return false;
@@ -966,3 +1038,4 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
     return comparableLength >= 8 && left.slice(-comparableLength) === right.slice(-comparableLength);
   }
 }
+

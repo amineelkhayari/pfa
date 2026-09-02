@@ -1643,8 +1643,8 @@ export const woocommerceApi = {
 
 export interface AccountUsage {
   plan: string;
-  limits: { sessions: number; stores: number; sentMessages: number; receivedMessages: number; aiTokens: number };
-  usage: { sessions: number; stores: number; sentMessages: number; receivedMessages: number; aiTokens: number };
+  limits: { sessions: number; stores: number; sentMessages: number; receivedMessages: number; aiTokens: number; audioTranscriptions: number; audioReplies: number };
+  usage: { sessions: number; stores: number; sentMessages: number; receivedMessages: number; aiTokens: number; audioTranscriptions: number; audioReplies: number };
   periodStart: string;
   trialEndsAt: string | null;
   trialExpired: boolean;
@@ -1663,6 +1663,8 @@ export interface AccountUser {
   sentMessages: number;
   receivedMessages: number;
   aiTokensUsed: number;
+  audioTranscriptionsUsed: number;
+  audioRepliesUsed: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -1703,7 +1705,7 @@ export interface BillingSubscription {
 }
 export interface BillingPlan {
   id: string; slug: string; name: string; description: string; priceMonthly: number; currency: string;
-  limits: { sessions: number; stores: number; sentMessages: number; receivedMessages: number; aiTokens: number };
+  limits: { sessions: number; stores: number; sentMessages: number; receivedMessages: number; aiTokens: number; audioTranscriptions: number; audioReplies: number };
   features: string[]; trialDays: number; active: boolean; highlighted: boolean; sortOrder: number;
   stripePriceId: string | null; paypalPlanId: string | null;
   createdAt?: string; updatedAt?: string;

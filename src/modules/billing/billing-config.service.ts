@@ -76,7 +76,7 @@ export class BillingConfigService implements OnModuleInit {
   aiBaseUrl() { return String(this.current.aiBaseUrl ?? ''); }
   audioSttModel() { return String(this.value('audioSttModel', 'AI_TRANSCRIPTION_MODEL') ?? 'deepgram/nova-3'); }
   audioTtsModel() { return String(this.value('audioTtsModel', 'AI_SPEECH_MODEL') ?? 'elevenlabs/eleven_multilingual_v2'); }
-  audioVoice() { return this.required('audioVoice', 'AI_SPEECH_VOICE'); }
+  audioVoice() { return String(this.value('audioVoice', 'AI_SPEECH_VOICE') ?? ''); }
   audioOutputFormat() { return String(this.value('audioOutputFormat', 'AI_SPEECH_FORMAT') ?? 'mp3'); }
   aiMaxTurns() { return this.numberValue('aiOrderMaxTurns', 'AI_ORDER_MAX_TURNS', 8, 2, 50); }
   aiTimeoutHours() { return this.numberValue('aiOrderConversationTimeoutHours', 'AI_ORDER_CONVERSATION_TIMEOUT_HOURS', 24, 1, 720); }

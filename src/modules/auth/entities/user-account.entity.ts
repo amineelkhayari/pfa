@@ -48,6 +48,12 @@ export class UserAccount {
   @Column({ type: 'int', default: 0 })
   aiTokensUsed: number;
 
+  @Column({ type: 'int', default: 0 })
+  audioTranscriptionsUsed: number;
+
+  @Column({ type: 'int', default: 0 })
+  audioRepliesUsed: number;
+
   @Column({ type: dateColumnType(), transformer: DateTransformer })
   usagePeriodStart: Date;
 

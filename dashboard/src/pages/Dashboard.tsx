@@ -174,6 +174,8 @@ export function Dashboard() {
               ['Messages sent', 'sentMessages'],
               ['Messages received', 'receivedMessages'],
               ['AI context tokens', 'aiTokens'],
+              ['Voice transcriptions', 'audioTranscriptions'],
+              ['Audio replies', 'audioReplies'],
             ] as const).map(([label, key]) => {
               const used = accountUsage.usage[key];
               const limit = accountUsage.limits[key];

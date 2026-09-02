@@ -3,6 +3,7 @@ import { jsonColumnType } from '../../../common/utils/column-types';
 
 export interface BillingPlanLimits {
   sessions: number; stores: number; sentMessages: number; receivedMessages: number; aiTokens: number;
+  audioTranscriptions: number; audioReplies: number;
 }
 
 @Entity('billing_plans')

@@ -7,7 +7,7 @@ const MAX_AUDIO_BYTES = 20 * 1024 * 1024;
 export class AudioTranscriptionService {
   constructor(private readonly config: BillingConfigService) {}
 
-  async transcribe(file?: { buffer?: Buffer; mimetype?: string; originalname?: string; size?: number }) {
+  async transcribe(file?: { buffer?: Buffer; mimetype?: string; originalname?: string; size?: number }, language?: string) {
     if (!file?.buffer?.length) throw new BadRequestException('An audio file is required.');
     if (file.buffer.length > MAX_AUDIO_BYTES) throw new BadRequestException('Audio files are limited to 20 MB.');
     const mime = String(file.mimetype ?? '').toLowerCase();
@@ -21,6 +21,7 @@ export class AudioTranscriptionService {
     const form = new FormData();
     form.append('file', new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }), file.originalname || 'voice.ogg');
     form.append('model', model);
+    if (language?.trim()) form.append('language', language.trim().toLowerCase().split(/[-_]/)[0]);
 
     let response: Response;
     try {
@@ -34,13 +35,14 @@ export class AudioTranscriptionService {
       throw new ServiceUnavailableException(`Unable to reach audio transcription provider: ${error instanceof Error ? error.message : 'request failed'}`);
     }
 
-    const payload = await response.json().catch(() => ({})) as { text?: unknown; error?: { message?: unknown }; message?: unknown; detail?: unknown };
+    const payload = await response.json().catch(() => ({})) as { text?: unknown; noSpeechDetected?: unknown; error?: { message?: unknown }; message?: unknown; detail?: unknown };
     if (!response.ok) {
       const detail = this.providerError(payload, response.status);
       throw new ServiceUnavailableException(`Audio transcription failed: ${detail}`);
     }
     if (typeof payload.text !== 'string' || !payload.text.trim()) {
-      throw new ServiceUnavailableException('Audio provider returned an empty transcription.');
+      const reason = payload.noSpeechDetected === true ? 'no recognizable speech was detected' : 'the provider returned no text';
+      throw new ServiceUnavailableException(`Audio provider returned an empty transcription (${reason}; model=${model}; mime=${file.mimetype || 'unknown'}; bytes=${file.buffer.length}).`);
     }
     return { text: payload.text.trim().slice(0, 1000), model };
   }

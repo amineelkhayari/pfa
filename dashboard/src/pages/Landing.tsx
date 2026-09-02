@@ -487,7 +487,7 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
             <p>No complicated tiers. Both plans include the core ecommerce automation workspace.</p>
           </div>
           <div className="pricing-grid">
-            {(plans.length ? plans : [{ id: 'free', slug: 'free', name: 'Free', description: 'Try your first workflows.', priceMonthly: 0, currency: 'USD', limits: { sessions: 1, stores: 1, sentMessages: 20, receivedMessages: 20, aiTokens: 5000 }, features: ['WhatsApp commerce automation', 'AI order assistant'], trialDays: 1, active: true, highlighted: false, sortOrder: 0, stripePriceId: null, paypalPlanId: null }]).map(plan => <article className={plan.highlighted ? 'featured' : ''} key={plan.id}>
+            {(plans.length ? plans : [{ id: 'free', slug: 'free', name: 'Free', description: 'Try your first workflows.', priceMonthly: 0, currency: 'USD', limits: { sessions: 1, stores: 1, sentMessages: 20, receivedMessages: 20, aiTokens: 5000, audioTranscriptions: 0, audioReplies: 0 }, features: ['WhatsApp commerce automation', 'AI order assistant'], trialDays: 1, active: true, highlighted: false, sortOrder: 0, stripePriceId: null, paypalPlanId: null }]).map(plan => <article className={plan.highlighted ? 'featured' : ''} key={plan.id}>
               {plan.highlighted && <div className="popular">MOST POPULAR</div>}
               <div className="price-head"><div><h3>{plan.name}</h3><p>{plan.description}</p></div><strong>{new Intl.NumberFormat('en', { style: 'currency', currency: plan.currency, maximumFractionDigits: 2 }).format(plan.priceMonthly / 100)}<small>/month</small></strong></div>
               <button onClick={onSignUp}>{plan.priceMonthly ? `Choose ${plan.name}` : 'Start free'} <ArrowRight /></button>
@@ -568,3 +568,4 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
     </div>
   );
 }
+

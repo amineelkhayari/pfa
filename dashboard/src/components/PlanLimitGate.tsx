@@ -10,7 +10,7 @@ export function planLimitReason(usage: AccountUsage | undefined, quota?: Quota):
   if (!usage) return null;
   if (usage.plan === 'free' && usage.trialExpired) return 'Your one-time free trial has expired.';
   if (quota && usage.usage[quota] >= usage.limits[quota]) {
-    const labels: Record<Quota, string> = { sessions: 'WhatsApp session', stores: 'connected store', sentMessages: 'sent message', receivedMessages: 'received message', aiTokens: 'AI context token' };
+    const labels: Record<Quota, string> = { sessions: 'WhatsApp session', stores: 'connected store', sentMessages: 'sent message', receivedMessages: 'received message', aiTokens: 'AI context token', audioTranscriptions: 'voice transcription', audioReplies: 'audio reply' };
     return `Your ${usage.plan} ${labels[quota]} allowance has been reached.`;
   }
   return null;
