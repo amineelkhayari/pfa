@@ -18,9 +18,11 @@ import {
   ShieldCheck,
   Link2,
   CheckCircle2,
+  Settings2,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '../components/Modal';
+import { StoreManager } from '../components/StoreManager';
 import { PageHeader } from '../components/PageHeader';
 import { PlanUpgradeNotice, usePlanLimit } from '../components/PlanLimitGate';
 import { useRole } from '../hooks/useRole';
@@ -94,6 +96,7 @@ export function Stores() {
   const [remindingOrderId, setRemindingOrderId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Record<string, OrderAiConversation | null>>({});
   const [handoffOrderId, setHandoffOrderId] = useState<string | null>(null);
+  const [managedStore, setManagedStore] = useState<Store | null>(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -400,6 +403,11 @@ export function Stores() {
                     </button>
                   )}
                   {canWrite && (
+                    <button className="btn-secondary" onClick={() => setManagedStore(store)}>
+                      <Settings2 size={15} /> Manage
+                    </button>
+                  )}
+                  {canWrite && (
                     <button className="icon-btn" onClick={() => openEdit(store)} aria-label="Edit store" disabled={trialGate.blocked} title={trialGate.reason ?? undefined}>
                       <Edit size={16} />
                     </button>
@@ -465,6 +473,27 @@ export function Stores() {
           ))}
         </div>
       )}
+
+      <StoreManager
+        open={Boolean(managedStore)}
+        store={managedStore}
+        sessions={sessions}
+        saving={updateStore.isPending}
+        syncing={managedStore ? syncingId === managedStore.id : false}
+        readOnly={!canWrite || trialGate.blocked}
+        onClose={() => setManagedStore(null)}
+        onSync={async () => { if (managedStore) await syncStore(managedStore); }}
+        onSave={async data => {
+          if (!managedStore) return;
+          try {
+            const updated = await updateStore.mutateAsync({ id: managedStore.id, data });
+            setManagedStore(updated);
+            setToast({ type: 'success', message: 'Store management settings saved.' });
+          } catch (error) {
+            setToast({ type: 'error', message: error instanceof Error ? error.message : 'Unable to save store settings.' });
+          }
+        }}
+      />
 
       <Modal
         open={showForm}
@@ -721,48 +750,6 @@ export function Stores() {
                 onChange={e => setField('settings', { ...form.settings, webhookBaseUrl: e.target.value.trim() })}
                 placeholder="https://your-public-domain.com"
               />
-            </label>
-          )}
-          {form.provider === 'shopify' && (
-            <label>
-              AI catalog assistant
-              <select
-                value={form.settings?.catalogAssistantEnabled === false ? 'false' : 'true'}
-                onChange={e =>
-                  setField('settings', { ...form.settings, catalogAssistantEnabled: e.target.value === 'true' })
-                }
-              >
-                <option value="true">Enabled</option>
-                <option value="false">Disabled</option>
-              </select>
-            </label>
-          )}
-          {form.provider === 'shopify' && (
-            <label className="store-form-full">
-              Confirmation message template
-              <textarea
-                rows={3}
-                value={form.settings?.confirmationSuccessTemplate ?? ''}
-                onChange={e => setField('settings', { ...form.settings, confirmationSuccessTemplate: e.target.value })}
-                placeholder="Merci {{customerName}}, votre commande {{orderNumber}} est confirmée ✅"
-              />
-              <small>
-                Available: {'{{customerName}}'}, {'{{orderNumber}}'}, {'{{storeName}}'}
-              </small>
-            </label>
-          )}
-          {form.provider === 'shopify' && (
-            <label className="store-form-full">
-              Related products template
-              <textarea
-                rows={4}
-                value={form.settings?.relatedProductsTemplate ?? ''}
-                onChange={e => setField('settings', { ...form.settings, relatedProductsTemplate: e.target.value })}
-                placeholder={'Vous pourriez aussi aimer :\n{{products}}'}
-              />
-              <small>
-                Available: {'{{products}}'}, {'{{orderNumber}}'}, {'{{storeName}}'}
-              </small>
             </label>
           )}
           <label>

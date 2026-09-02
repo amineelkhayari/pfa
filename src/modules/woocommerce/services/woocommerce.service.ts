@@ -51,14 +51,19 @@ export class WooCommerceService {
   }
 
   saveOrder(order: Order): Promise<Order> { return this.orders.save(order); }
+  findOrder(storeId: string, externalId: string): Promise<Order | null> { return this.orders.findOneBy({ storeId, shopifyOrderId: externalId }); }
 
   async ensureWebhooks(credentials: WooCredentials, storeId: string): Promise<number> {
     if (!credentials.webhookBaseUrl || !credentials.webhookSecret) return 0;
-    const deliveryUrl = `${credentials.webhookBaseUrl.replace(/\/$/, '')}/api/woocommerce/webhooks/${storeId}/order-created`;
     const existing = await this.all(credentials, 'webhooks');
-    if (existing.some((hook: any) => hook.topic === 'order.created' && hook.delivery_url === deliveryUrl && hook.status === 'active')) return 0;
-    await this.request(credentials, 'webhooks', { method: 'POST', body: JSON.stringify({ name: 'OpenWA order confirmation', topic: 'order.created', delivery_url: deliveryUrl, secret: credentials.webhookSecret, status: 'active' }) });
-    return 1;
+    let created = 0;
+    for (const hook of [{ topic: 'order.created', path: 'order-created', name: 'OpenWA order confirmation' }, { topic: 'order.updated', path: 'order-updated', name: 'OpenWA order lifecycle' }]) {
+      const deliveryUrl = `${credentials.webhookBaseUrl.replace(/\/$/, '')}/api/woocommerce/webhooks/${storeId}/${hook.path}`;
+      if (existing.some((item: any) => item.topic === hook.topic && item.delivery_url === deliveryUrl && item.status === 'active')) continue;
+      await this.request(credentials, 'webhooks', { method: 'POST', body: JSON.stringify({ name: hook.name, topic: hook.topic, delivery_url: deliveryUrl, secret: credentials.webhookSecret, status: 'active' }) });
+      created += 1;
+    }
+    return created;
   }
 
   async confirmOrder(credentials: WooCredentials, externalId: string) { await this.request(credentials, `orders/${externalId}`, { method: 'PUT', body: JSON.stringify({ status: 'processing' }) }); }

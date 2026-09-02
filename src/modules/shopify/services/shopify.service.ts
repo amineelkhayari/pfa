@@ -36,6 +36,7 @@ export interface ShopifyOrderPayload {
   financial_status?: string;
   fulfillment_status?: string;
   line_items?: Array<Record<string, unknown>>;
+  fulfillments?: Array<{ tracking_number?: string; tracking_numbers?: string[]; tracking_url?: string; tracking_urls?: string[] }>;
   shipping_address?: Record<string, unknown> & { phone?: string; name?: string };
   customer?: Record<string, unknown> & { first_name?: string; last_name?: string; phone?: string };
   tags?: string;
@@ -328,6 +329,7 @@ export class ShopifyService {
     const existing = response.webhooks ?? [];
     for (const webhook of [
       { topic: 'orders/create', path: 'orders-create' },
+      { topic: 'orders/updated', path: 'orders-updated' },
       { topic: 'app/uninstalled', path: 'app-uninstalled' },
     ]) {
       const address = `${baseUrl.replace(/\/$/, '')}/api/shopify/webhooks/${webhook.path}`;
@@ -406,7 +408,7 @@ export class ShopifyService {
       financialStatus: order.financial_status ?? null,
       fulfillmentStatus: order.fulfillment_status ?? null,
       lineItems: order.line_items ?? [],
-      shippingAddress: order.shipping_address ?? null,
+      shippingAddress: order.shipping_address ? { ...order.shipping_address, tracking_number: order.fulfillments?.flatMap(item => item.tracking_numbers ?? [item.tracking_number]).find(Boolean) ?? null, tracking_url: order.fulfillments?.flatMap(item => item.tracking_urls ?? [item.tracking_url]).find(Boolean) ?? null } : null,
       customer: order.customer ?? null,
       tags: order.tags
         ? order.tags

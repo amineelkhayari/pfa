@@ -12,6 +12,7 @@ import { Session } from '../session/entities/session.entity';
 import { CredentialEncryptionService } from '../../common/security/credential-encryption.service';
 import { OrderAiConversation } from './entities/order-ai-conversation.entity';
 import { Message } from '../message/entities/message.entity';
+import { CommerceNotificationService } from './commerce-notification.service';
 
 @Module({
   imports: [
@@ -31,7 +32,7 @@ import { Message } from '../message/entities/message.entity';
     ),
   ],
   controllers: [StoreController],
-  providers: [StoreService, CredentialEncryptionService],
-  exports: [StoreService],
+  providers: [StoreService, CredentialEncryptionService, CommerceNotificationService],
+  exports: [StoreService, CommerceNotificationService],
 })
 export class StoreModule {}

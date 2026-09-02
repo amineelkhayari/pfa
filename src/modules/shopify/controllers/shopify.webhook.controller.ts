@@ -11,6 +11,7 @@ import { ShopifyOAuthService } from '../services/shopify-oauth.service';
 import { ShopifyService } from '../services/shopify.service';
 import { hasShopifyWhatsAppConfirmation, type ShopifyOrderPayload } from '../services/shopify.service';
 import { ShopifyWebhookDelivery } from '../entities/shopify-webhook-delivery.entity';
+import { CommerceNotificationService, type CommerceOrderEvent } from '../../stores/commerce-notification.service';
 
 @Controller('shopify/webhooks')
 @Public()
@@ -21,11 +22,43 @@ export class ShopifyWebhookController {
     private readonly oauth: ShopifyOAuthService,
     private readonly messages: MessageService,
     private readonly encryption: CredentialEncryptionService,
+    private readonly notifications: CommerceNotificationService,
     @InjectRepository(ShopifyWebhookDelivery, 'data')
     private readonly deliveries: Repository<ShopifyWebhookDelivery>,
     @InjectRepository(Order, 'data')
     private readonly orders: Repository<Order>,
   ) {}
+
+  @Post('orders-updated')
+  @HttpCode(200)
+  async orderUpdated(
+    @Req() req: Request & { rawBody?: Buffer }, @Body() payload: ShopifyOrderPayload,
+    @Headers('x-shopify-shop-domain') shopDomain?: string, @Headers('x-shopify-hmac-sha256') hmac?: string,
+    @Headers('x-shopify-webhook-id') webhookId?: string,
+  ) {
+    const context = await this.verifiedStore(req.rawBody, shopDomain, hmac);
+    await this.stores.updateIntegrationCredentials(context.store.id, 'shopify', { ...context.settings, lastWebhookAt: new Date().toISOString() });
+    if (!webhookId) throw new UnauthorizedException('Missing Shopify webhook id.');
+    if (await this.deliveries.findOneBy({ webhookId })) return { received: true, duplicate: true };
+    try {
+      await this.deliveries.save({ webhookId, storeId: context.store.id, topic: 'orders/updated', status: 'processing', attempts: 1 });
+    } catch { return { received: true, duplicate: true }; }
+    try {
+      const before = await this.orders.findOneBy({ storeId: context.store.id, shopifyOrderId: String(payload.id) });
+      const order = await this.shopify.importOrderPayload(payload, context.store.id);
+      const events: CommerceOrderEvent[] = [];
+      if (before?.financialStatus !== 'paid' && order.financialStatus === 'paid') events.push('paid');
+      if (before?.fulfillmentStatus !== 'partial' && order.fulfillmentStatus === 'partial') events.push('partiallyFulfilled');
+      if (before?.fulfillmentStatus !== 'fulfilled' && order.fulfillmentStatus === 'fulfilled') events.push('shipped');
+      if (before?.status !== 'cancelled' && order.status === 'cancelled') events.push('cancelled');
+      for (const event of events) await this.notifications.notify(context.store, order, event, context.settings);
+      await this.deliveries.update({ webhookId }, { status: 'completed', error: null });
+      return { received: true, events };
+    } catch (error) {
+      await this.deliveries.update({ webhookId }, { status: 'failed', error: error instanceof Error ? error.message : 'Lifecycle notification failed' });
+      throw error;
+    }
+  }
 
   @Post('orders-create')
   @HttpCode(200)
@@ -37,6 +70,7 @@ export class ShopifyWebhookController {
     @Headers('x-shopify-webhook-id') webhookId?: string,
   ) {
     const context = await this.verifiedStore(req.rawBody, shopDomain, hmac);
+    await this.stores.updateIntegrationCredentials(context.store.id, 'shopify', { ...context.settings, lastWebhookAt: new Date().toISOString() });
     if (!webhookId) throw new UnauthorizedException('Missing Shopify webhook id.');
     const previous = await this.deliveries.findOneBy({ webhookId });
     if (previous?.status !== 'failed' && previous) return { received: true, duplicate: true };
@@ -61,6 +95,10 @@ export class ShopifyWebhookController {
 
     try {
       const order = await this.shopify.importOrderPayload(payload, context.store.id);
+      if (context.settings.automaticMessagesEnabled === false || context.settings.newOrderMessageEnabled === false) {
+        await this.deliveries.update({ webhookId }, { status: 'completed', error: null });
+        return { received: true, confirmation: 'skipped_automation_disabled' };
+      }
       if (!order.phone) throw new Error('Order has no customer phone number.');
       if (hasShopifyWhatsAppConfirmation(order.tags)) {
         order.status = 'confirmed';
@@ -86,7 +124,10 @@ export class ShopifyWebhookController {
         return { received: true, duplicateOrder: true };
       }
 
-      const text = this.confirmationMessage(order);
+      const configuredTemplate = context.settings.newOrderMessageTemplate;
+      const text = typeof configuredTemplate === 'string' && configuredTemplate.trim()
+        ? this.notifications.renderTemplate(configuredTemplate, context.store, order)
+        : this.confirmationMessage(order);
       const result = await this.messages.sendText(context.store.sessionId, {
         chatId: `${order.phone.replace(/\D/g, '')}@c.us`,
         text,
