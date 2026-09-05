@@ -129,9 +129,13 @@ export class YouCanService {
   private async request(c: YouCanCredentials, endpoint: string, init: RequestInit = {}) {
     if (!c.accessToken) throw new BadRequestException('YouCan store is not connected.');
     const url = endpoint.startsWith('http') ? endpoint : `${this.api}${endpoint}`;
-    const response = await fetch(url, { ...init, headers: { Authorization: `Bearer ${c.accessToken}`, Accept: 'application/json', 'Content-Type': 'application/json', ...(init.headers ?? {}) } });
+    const accessToken = c.accessToken.trim().replace(/^Bearer\s+/i, '');
+    const response = await fetch(url, { ...init, headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json', 'Content-Type': 'application/json', ...(init.headers ?? {}) } });
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new BadGatewayException(`YouCan API ${response.status}: ${body?.message ?? response.statusText}`);
+    if (!response.ok) {
+      const detail = body?.detail ?? body?.message ?? body?.error_description ?? body?.error ?? response.statusText;
+      throw new BadGatewayException(`YouCan API ${response.status} on ${new URL(url).pathname}: ${detail}`);
+    }
     return body;
   }
   private mapProduct(p: any, storeId: string) {

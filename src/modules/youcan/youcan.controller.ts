@@ -44,7 +44,13 @@ export class YouCanController {
     const credentials = this.credentials(store);
     const token = await this.youcan.exchangeCode(credentials, code);
     const connected: YouCanCredentials = { ...credentials, accessToken: token.access_token, refreshToken: token.refresh_token };
-    const profile = await this.youcan.getStore(connected);
+    let profile: any;
+    try {
+      profile = await this.youcan.getStore(connected);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Unknown error';
+      throw new BadRequestException(`YouCan issued a token, but Store Admin API authentication failed: ${reason}. Confirm these are YouCan Shop Partner App OAuth credentials, not YouCan Pay credentials.`);
+    }
     const imported = await this.youcan.sync(connected, storeId);
     const webhooks = await this.youcan.ensureWebhooks(connected, storeId);
     await this.stores.updateIntegrationCredentials(storeId, 'youcan', { ...connected, connected: true, storeDomain: profile?.domain ?? profile?.slug ?? null, importedProducts: imported.products, importedOrders: imported.orders, lastSyncAt: new Date().toISOString(), registeredWebhooks: webhooks });
