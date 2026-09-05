@@ -1,4 +1,4 @@
-import { BadGatewayException, BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, ForbiddenException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { Repository } from 'typeorm';
@@ -70,12 +70,31 @@ export class YouCanService {
   async ensureWebhooks(c: YouCanCredentials, storeId: string) {
     if (!c.webhookBaseUrl || !c.accessToken) return 0;
     const target = `${c.webhookBaseUrl.replace(/\/$/, '')}/api/youcan/webhooks/${storeId}`;
+    if (!target.startsWith('https://')) throw new BadRequestException('YouCan webhook URL must use public HTTPS.');
+    const existing = await this.listWebhooks(c);
     let created = 0;
     for (const event of ['order.created', 'order.updated', 'order.paid', 'app.uninstalled']) {
-      try { await this.request(c, '/resthooks/subscribe', { method: 'POST', body: JSON.stringify({ event, target_url: target }) }); created++; }
-      catch (error) { if (!String(error).toLowerCase().includes('already')) throw error; }
+      if (existing.some((hook: any) => hook.event === event && hook.target_url === target)) continue;
+      try {
+        await this.request(c, '/resthooks/subscribe', { method: 'POST', body: JSON.stringify({ event, target_url: target }) });
+        created++;
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        if (reason.toLowerCase().includes('already')) continue;
+        if (reason.includes('401')) {
+          throw new ForbiddenException(
+            'The YouCan token can read REST Hooks but cannot create them. Enable edit-rest-hooks on the YouCan OAuth app, then use Reconnect to obtain a new token.',
+          );
+        }
+        throw error;
+      }
     }
     return created;
+  }
+
+  async listWebhooks(c: YouCanCredentials) {
+    const result = await this.request(c, '/resthooks/list');
+    return Array.isArray(result) ? result : Array.isArray(result?.data) ? result.data : [];
   }
 
   verifyWebhook(raw: Buffer, signature: string | undefined, secret: string) {

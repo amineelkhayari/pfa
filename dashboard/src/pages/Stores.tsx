@@ -89,6 +89,7 @@ export function Stores() {
   const [showForm, setShowForm] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [reconnectingId, setReconnectingId] = useState<string | null>(null);
   const [detailStore, setDetailStore] = useState<Store | null>(null);
   const [detailTab, setDetailTab] = useState<'products' | 'orders'>('products');
   const [products, setProducts] = useState<StoreProduct[]>([]);
@@ -171,7 +172,8 @@ export function Stores() {
       } else {
         const created = await createStore.mutateAsync(payload);
         if (created.provider === 'shopify') {
-          window.location.assign(shopifyApi.installUrl(created.id));
+          const authorization = await shopifyApi.authorizationUrl(created.id);
+          window.location.assign(authorization.url);
           return;
         }
         if (created.provider === 'woocommerce') {
@@ -237,6 +239,40 @@ export function Stores() {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'WooCommerce connection failed.' });
     } finally {
       setSyncingId(null);
+    }
+  };
+
+  const registerYouCanWebhooks = async (store: Store) => {
+    setSyncingId(store.id);
+    try {
+      const result = await youcanApi.registerWebhooks(store.id);
+      await refetchStores();
+      setToast({ type: 'success', message: `YouCan webhooks ready: ${result.subscriptions.length} subscriptions.` });
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'YouCan webhook registration failed.' });
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
+  const reconnectStore = async (store: Store) => {
+    setReconnectingId(store.id);
+    try {
+      if (store.provider === 'woocommerce') {
+        const result = await woocommerceApi.connect(store.id);
+        await refetchStores();
+        setManagedStore(current => current?.id === store.id ? { ...current, settings: { ...current.settings, connected: true, importedProducts: result.products, importedOrders: result.orders } } : current);
+        setToast({ type: 'success', message: `WooCommerce reconnected. Imported ${result.products} products and ${result.orders} orders.` });
+        return;
+      }
+      const authorization = store.provider === 'youcan'
+        ? await youcanApi.authorizationUrl(store.id)
+        : await shopifyApi.authorizationUrl(store.id);
+      window.location.assign(authorization.url);
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : `Unable to reconnect ${store.provider}.` });
+    } finally {
+      setReconnectingId(null);
     }
   };
 
@@ -382,7 +418,7 @@ export function Stores() {
                   {store.provider === 'shopify' && !store.settings?.connected && (
                     <button
                       className="btn-secondary"
-                      onClick={() => window.location.assign(shopifyApi.installUrl(store.id))}
+                      onClick={() => reconnectStore(store)}
                       disabled={trialGate.blocked}
                       title={trialGate.reason ?? undefined}
                     >
@@ -419,6 +455,11 @@ export function Stores() {
                       title={trialGate.reason ?? undefined}
                     >
                       <RefreshCw className={syncingId === store.id ? 'animate-spin' : ''} size={15} /> Sync
+                    </button>
+                  )}
+                  {store.provider === 'youcan' && store.settings?.connected && canWrite && (
+                    <button className="btn-secondary" onClick={() => registerYouCanWebhooks(store)} disabled={syncingId === store.id || trialGate.blocked} title={store.settings.webhookRegistrationError ?? 'Register or verify YouCan webhooks'}>
+                      <Link2 size={15} /> Webhooks
                     </button>
                   )}
                   {['shopify', 'woocommerce', 'youcan'].includes(store.provider) && store.settings?.connected && (
@@ -511,9 +552,11 @@ export function Stores() {
         sessions={sessions}
         saving={updateStore.isPending}
         syncing={managedStore ? syncingId === managedStore.id : false}
+        reconnecting={managedStore ? reconnectingId === managedStore.id : false}
         readOnly={!canWrite || trialGate.blocked}
         onClose={() => setManagedStore(null)}
         onSync={async () => { if (managedStore) await syncStore(managedStore); }}
+        onReconnect={async () => { if (managedStore) await reconnectStore(managedStore); }}
         onSave={async data => {
           if (!managedStore) return;
           try {

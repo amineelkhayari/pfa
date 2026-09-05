@@ -48,8 +48,17 @@ export function resolveNonNegativeIntEnv(raw: string | undefined, fallback: numb
 export default () => ({
   port: parseInt(process.env.PORT || '2785', 10),
 
+  commerce: {
+    // Provider-neutral destination used after Shopify, YouCan, and future commerce OAuth flows.
+    // SHOPIFY_AFTER_AUTH_REDIRECT_URL remains a compatibility fallback for existing deployments.
+    afterAuthRedirectUrl:
+      process.env.COMMERCE_AFTER_AUTH_REDIRECT_URL ||
+      process.env.SHOPIFY_AFTER_AUTH_REDIRECT_URL ||
+      (process.env.DASHBOARD_URL ? `${process.env.DASHBOARD_URL.replace(/\/$/, '')}/stores` : '/stores'),
+  },
+
   shopify: {
-    afterAuthRedirectUrl: process.env.SHOPIFY_AFTER_AUTH_REDIRECT_URL || '/stores?shopify=connected',
+    afterAuthRedirectUrl: process.env.SHOPIFY_AFTER_AUTH_REDIRECT_URL,
   },
 
   // Root of the persistent state tree (see DEFAULT_DATA_DIR). Read by PluginStorageService for the

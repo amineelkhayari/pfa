@@ -102,6 +102,30 @@ export class ShopifyController {
     return res.redirect(authorizationUrl);
   }
 
+  @Post(':storeId/install-url')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  async installUrl(@Param('storeId', ParseUUIDPipe) storeId: string) {
+    await this.planUsage.assertCurrentPlanActive();
+    const connection = await this.storeService.getIntegrationConnection(storeId, 'shopify');
+    const credentials = this.settings(connection);
+    if (!credentials?.clientId || !credentials.shopDomain || !credentials.scopes || !credentials.redirectUri) {
+      throw new BadRequestException('Incomplete Shopify credentials.');
+    }
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/.test(credentials.shopDomain)) {
+      throw new BadRequestException('Invalid Shopify store domain.');
+    }
+    const state = await this.shopifyOAuthService.createState(storeId);
+    return {
+      url: this.shopifyService.getAuthorizationUrl(
+        credentials.shopDomain,
+        credentials.clientId,
+        credentials.scopes,
+        credentials.redirectUri,
+        state,
+      ),
+    };
+  }
+
   @Get('oauth/callback')
   @Public()
   @ApiOperation({
@@ -184,7 +208,7 @@ export class ShopifyController {
       importedOrders: orders,
     });
 
-    const redirect = this.configService.get<string>('shopify.afterAuthRedirectUrl', '/stores');
+    const redirect = this.configService.get<string>('commerce.afterAuthRedirectUrl', '/stores');
     const separator = redirect.includes('?') ? '&' : '?';
     return response.redirect(
       `${redirect}${separator}shopify=connected&storeId=${encodeURIComponent(storeId)}&products=${products}&orders=${orders}`,

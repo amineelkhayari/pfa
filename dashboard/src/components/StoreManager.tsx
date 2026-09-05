@@ -22,13 +22,15 @@ interface Props {
   sessions: Session[];
   saving: boolean;
   syncing: boolean;
+  reconnecting: boolean;
   readOnly?: boolean;
   onClose: () => void;
   onSave: (data: Partial<StorePayload>) => Promise<void>;
   onSync: () => Promise<void>;
+  onReconnect: () => Promise<void>;
 }
 
-export function StoreManager({ open, store, sessions, saving, syncing, readOnly, onClose, onSave, onSync }: Props) {
+export function StoreManager({ open, store, sessions, saving, syncing, reconnecting, readOnly, onClose, onSave, onSync, onReconnect }: Props) {
   const [tab, setTab] = useState<Tab>('overview');
   const [sessionId, setSessionId] = useState('');
   const [currency, setCurrency] = useState('MAD');
@@ -101,7 +103,7 @@ export function StoreManager({ open, store, sessions, saving, syncing, readOnly,
           <div><Database size={19} /><span>Imported orders</span><strong>{settings.importedOrders ?? 0}</strong></div>
           <div><Clock3 size={19} /><span>Last sync</span><strong>{settings.lastSyncAt ? new Date(settings.lastSyncAt).toLocaleString() : 'Never'}</strong></div>
         </div>
-        <section className="manager-panel"><div className="manager-panel-head"><div><h3>Connection health</h3><p>{isShopify ? 'Shopify App events, API credentials, and the assigned WhatsApp device.' : 'WooCommerce webhooks, REST API credentials, and the assigned WhatsApp device.'}</p></div><button className="btn-secondary" disabled={syncing || !settings.connected} onClick={onSync}>{syncing ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />} Sync now</button></div><div className="health-list">{health.map(item => <div key={item.label}><span className={item.ok ? 'health-dot ready' : 'health-dot'}>{item.ok ? <CheckCircle2 size={15} /> : <Clock3 size={15} />}</span><span><strong>{item.label === 'API credentials' && isShopify ? 'Shopify App connection' : item.label}</strong><small>{item.value}</small></span></div>)}</div></section>
+        <section className="manager-panel"><div className="manager-panel-head"><div><h3>Connection health</h3><p>{isShopify ? 'Shopify App events, API credentials, and the assigned WhatsApp device.' : isYouCan ? 'YouCan OAuth, REST Hooks, and the assigned WhatsApp device.' : 'WooCommerce webhooks, REST API credentials, and the assigned WhatsApp device.'}</p></div><div className="manager-actions"><button className="btn-secondary" disabled={reconnecting || readOnly} onClick={onReconnect}>{reconnecting ? <Loader2 className="animate-spin" size={16} /> : <Link2 size={16} />} Reconnect</button><button className="btn-secondary" disabled={syncing || !settings.connected} onClick={onSync}>{syncing ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />} Sync now</button></div></div><div className="health-list">{health.map(item => <div key={item.label}><span className={item.ok ? 'health-dot ready' : 'health-dot'}>{item.ok ? <CheckCircle2 size={15} /> : <Clock3 size={15} />}</span><span><strong>{item.label === 'API credentials' && isShopify ? 'Shopify App connection' : item.label}</strong><small>{item.value}</small></span></div>)}</div></section>
         <section className="manager-panel"><div className="manager-panel-head"><div><h3>Registered webhook events</h3><p className="manager-muted">These subscriptions are created automatically when the store is installed or synchronized.</p></div><span className={`manager-status ${settings.connected ? 'ready' : ''}`}>{settings.connected ? `${webhookEvents.length} configured` : 'Not connected'}</span></div><div className="manager-webhooks">{webhookEvents.map(event => <article key={event.topic}><div><strong>{event.topic}</strong><small>{event.purpose}</small></div><code>{webhookBase}{event.path}</code></article>)}</div>{!webhookBase && <p className="manager-note">Only provider paths are shown because this store has no public webhook base URL saved.</p>}</section>
       </div>}
 

@@ -132,6 +132,9 @@ export interface Store {
     importedOrders?: number;
     lastSyncAt?: string;
     lastWebhookAt?: string;
+    webhookRegistrationError?: string | null;
+    lastWebhookRegistrationAt?: string;
+    registeredWebhooks?: number;
     automaticMessagesEnabled?: boolean;
     newOrderMessageEnabled?: boolean;
     newOrderMessageTemplate?: string;
@@ -1094,6 +1097,7 @@ export const campaignApi = {
 
 export const shopifyApi = {
   installUrl: (storeId: string) => `${API_BASE_URL}/shopify/oauth/install?storeId=${encodeURIComponent(storeId)}`,
+  authorizationUrl: (storeId: string) => request<{ url: string }>(`/shopify/${storeId}/install-url`, { method: 'POST' }),
   sync: (storeId: string) =>
     request<{ storeId: string; products: number; orders: number; lastSyncAt: string }>(`/shopify/${storeId}/sync`, {
       method: 'POST',
@@ -1786,6 +1790,10 @@ export const youcanApi = {
   sync: (storeId: string) => request<{ storeId: string; products: number; orders: number; lastSyncAt: string }>(
     `/youcan/${storeId}/sync`, { method: 'POST' },
   ),
+  registerWebhooks: (storeId: string) => request<{ registered: number; subscriptions: Array<{ id: string; event: string; target_url: string }> }>(
+    `/youcan/${storeId}/webhooks/register`, { method: 'POST' },
+  ),
+  webhooks: (storeId: string) => request<Array<{ id: string; event: string; target_url: string }>>(`/youcan/${storeId}/webhooks`),
 };
 
 export interface AdminAiSettings {

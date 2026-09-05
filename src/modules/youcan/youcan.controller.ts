@@ -57,7 +57,7 @@ export class YouCanController {
     try { webhooks = await this.youcan.ensureWebhooks(connected, storeId); }
     catch (error) { webhookError = error instanceof Error ? error.message : 'YouCan webhook registration failed.'; }
     await this.stores.updateIntegrationCredentials(storeId, 'youcan', { ...connected, connected: true, storeDomain: profile?.domain ?? profile?.slug ?? null, importedProducts: imported.products, importedOrders: imported.orders, lastSyncAt: new Date().toISOString(), registeredWebhooks: webhooks, webhookRegistrationError: webhookError });
-    const redirect = this.config.get<string>('shopify.afterAuthRedirectUrl', '/stores');
+    const redirect = this.config.get<string>('commerce.afterAuthRedirectUrl', '/stores');
     return response.redirect(`${redirect}${redirect.includes('?') ? '&' : '?'}youcan=connected&storeId=${encodeURIComponent(storeId)}&products=${imported.products}&orders=${imported.orders}&webhooks=${webhookError ? 'warning' : 'connected'}`);
   }
 
@@ -74,6 +74,31 @@ export class YouCanController {
     const lastSyncAt = new Date().toISOString();
     await this.stores.updateIntegrationCredentials(storeId, 'youcan', { ...credentials, connected: true, importedProducts: imported.products, importedOrders: imported.orders, lastSyncAt, registeredWebhooks: webhooks, webhookRegistrationError: webhookError });
     return { storeId, ...imported, lastSyncAt, webhooks, webhookError };
+  }
+
+  @Post(':storeId/webhooks/register')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  async registerWebhooks(@Param('storeId', ParseUUIDPipe) storeId: string) {
+    await this.plans.assertCurrentPlanActive();
+    const store = await this.stores.getIntegrationConnection(storeId, 'youcan');
+    const credentials = this.credentials(store);
+    try {
+      const registered = await this.youcan.ensureWebhooks(credentials, storeId);
+      const subscriptions = await this.youcan.listWebhooks(credentials);
+      await this.stores.updateIntegrationCredentials(storeId, 'youcan', { ...credentials, registeredWebhooks: subscriptions.length, webhookRegistrationError: null, lastWebhookRegistrationAt: new Date().toISOString() });
+      return { registered, subscriptions };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'YouCan webhook registration failed.';
+      await this.stores.updateIntegrationCredentials(storeId, 'youcan', { ...credentials, webhookRegistrationError: reason, lastWebhookRegistrationAt: new Date().toISOString() });
+      throw error;
+    }
+  }
+
+  @Get(':storeId/webhooks')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  async listWebhooks(@Param('storeId', ParseUUIDPipe) storeId: string) {
+    const store = await this.stores.getIntegrationConnection(storeId, 'youcan');
+    return this.youcan.listWebhooks(this.credentials(store));
   }
 
   @Post('webhooks/:storeId')
