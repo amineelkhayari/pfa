@@ -45,6 +45,7 @@ import { CommerceCoreModule } from './commerce/commerce-core.module';
 import { ShopifyModule } from './modules/shopify/shopify.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { WooCommerceModule } from './modules/woocommerce/woocommerce.module';
+import { YouCanModule } from './modules/youcan/youcan.module';
 import { CampaignModule } from './modules/campaign/campaign.module';
 import { CommerceAutomationModule } from './modules/commerce-automation/commerce-automation.module';
 
@@ -148,6 +149,7 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
             __dirname + '/modules/stores/**/*.entity{.ts,.js}',
             __dirname + '/modules/shopify/**/*.entity{.ts,.js}',
             __dirname + '/modules/woocommerce/**/*.entity{.ts,.js}',
+            __dirname + '/modules/youcan/**/*.entity{.ts,.js}',
             __dirname + '/modules/campaign/**/*.entity{.ts,.js}',
 
             // __dirname + '/modules/stores/**/*.entity{.ts,.js}',
@@ -289,6 +291,7 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
     StoreModule,
     ShopifyModule,
     WooCommerceModule,
+    YouCanModule,
     BillingModule,
     CampaignModule,
     CommerceAutomationModule,

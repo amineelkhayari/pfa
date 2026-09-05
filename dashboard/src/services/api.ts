@@ -114,6 +114,8 @@ export interface Store {
     scopes?: string;
     redirectUri?: string;
     webhookBaseUrl?: string;
+    storeDomain?: string;
+    youcanShippingEstimationId?: string;
     siteUrl?: string;
     consumerKey?: string;
     consumerSecret?: string;
@@ -1775,6 +1777,15 @@ export const adminBillingApi = {
   cancelSubscription: (id: string, immediate: boolean, reason?: string) => request<BillingSubscription>(`/admin/billing-settings/subscriptions/${id}/cancel`, { method: 'POST', body: JSON.stringify({ immediate, reason }) }),
   reactivateSubscription: (id: string) => request<BillingSubscription>(`/admin/billing-settings/subscriptions/${id}/reactivate`, { method: 'POST' }),
   refund: (id: string, amount?: number, reason?: string) => request<PaymentTransaction>(`/admin/billing-settings/payments/${id}/refund`, { method: 'POST', body: JSON.stringify({ amount, reason }) }),
+};
+
+export const youcanApi = {
+  installUrl: (storeId: string) => `${API_BASE_URL}/youcan/oauth/install?storeId=${encodeURIComponent(storeId)}`,
+  authorizationUrl: (storeId: string) =>
+    request<{ url: string }>(`/youcan/${storeId}/install-url`, { method: 'POST' }),
+  sync: (storeId: string) => request<{ storeId: string; products: number; orders: number; lastSyncAt: string }>(
+    `/youcan/${storeId}/sync`, { method: 'POST' },
+  ),
 };
 
 export interface AdminAiSettings {

@@ -17,6 +17,7 @@ import { WooCommerceService, WooCredentials } from '../../woocommerce/services/w
 import { CommerceToolService } from './commerce-tool.service';
 import { AudioTranscriptionService } from './audio-transcription.service';
 import { PlanUsageService } from '../../auth/plan-usage.service';
+import { YouCanCredentials, YouCanService } from '../../youcan/services/youcan.service';
 
 interface IncomingReply {
   body?: string;
@@ -38,6 +39,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
     private readonly hooks: HookManager,
     private readonly shopify: ShopifyService,
     private readonly woocommerce: WooCommerceService,
+    private readonly youcan: YouCanService,
     private readonly messages: MessageService,
     private readonly encryption: CredentialEncryptionService,
     private readonly ai: CommerceAiAgentService,
@@ -74,7 +76,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
     let reply = message.body?.trim();
     if (isAudio) {
       const audioStore = await this.stores.findOneBy({ sessionId });
-      if (!audioStore?.settings || ![Platform.SHOPIFY, Platform.WOOCOMMERCE].includes(audioStore.provider)) return;
+      if (!audioStore?.settings || ![Platform.SHOPIFY, Platform.WOOCOMMERCE, Platform.YOUCAN].includes(audioStore.provider)) return;
       if (!chatId || !message.media?.data || message.media.omitted) {
         this.logger.warn(`Incoming voice note has no downloadable media sessionId=${sessionId}`);
         return;
@@ -114,7 +116,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
   private async handleTranscribedReply(sessionId: string, message: IncomingReply, reply: string): Promise<void> {
 
     const store = await this.stores.findOneBy({ sessionId });
-    if (!store?.settings || ![Platform.SHOPIFY, Platform.WOOCOMMERCE].includes(store.provider)) return;
+    if (!store?.settings || ![Platform.SHOPIFY, Platform.WOOCOMMERCE, Platform.YOUCAN].includes(store.provider)) return;
 
     const sender = this.normalizePhone(message.senderPhone ?? message.from ?? message.chatId);
     if (!sender) return;
@@ -334,6 +336,13 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
   }
 
   private async updateProviderOrder(store: Store, settings: Record<string, any>, order: Order, action: 'confirm' | 'cancel'): Promise<void> {
+    if (store.provider === Platform.YOUCAN) {
+      const credentials = settings as YouCanCredentials;
+      if (!credentials.accessToken) throw new Error('YouCan connection is not configured.');
+      if (action === 'confirm') await this.youcan.confirmOrder(credentials, order.shopifyOrderId);
+      else await this.youcan.cancelOrder(credentials, order.shopifyOrderId);
+      return;
+    }
     if (store.provider === Platform.WOOCOMMERCE) {
       const credentials = settings as WooCredentials;
       if (!credentials.siteUrl || !credentials.consumerKey || !credentials.consumerSecret) throw new Error('WooCommerce connection is not configured.');
@@ -569,7 +578,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       cart ??= this.carts.create({ storeId: store.id, phone, step: 'product', quantity: 1, country: 'Morocco' });
       cart.productId = product.id;
       cart.variantId = variant
-        ? store.provider === Platform.WOOCOMMERCE
+        ? [Platform.WOOCOMMERCE, Platform.YOUCAN].includes(store.provider)
           ? String(variant.id ?? '')
           : String(variant.admin_graphql_api_id ?? (variant.id ? `gid://shopify/ProductVariant/${variant.id}` : ''))
         : null;
@@ -616,7 +625,11 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
     data: { customerName: string; address1: string; city: string; postalCode?: string; country: string; phone?: string },
   ): Promise<void> {
     const settings = this.encryption.revealSettings(store.settings ?? {});
-    if (store.provider === Platform.WOOCOMMERCE) {
+    if (store.provider === Platform.YOUCAN) {
+      await this.youcan.updateOrderShippingAddress(settings as unknown as YouCanCredentials, order.shopifyOrderId, {
+        name: data.customerName, address: data.address1, city: data.city, zip_code: data.postalCode ?? '', country: data.country, phone: data.phone,
+      });
+    } else if (store.provider === Platform.WOOCOMMERCE) {
       await this.woocommerce.updateOrderShippingAddress({
         siteUrl: String(settings.siteUrl ?? ''),
         consumerKey: String(settings.consumerKey ?? ''),
@@ -773,7 +786,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
         await this.sendReply(sessionId, { chatId, text: `Choisissez une option pour ${product.title}. Répondez avec le numéro :\n${variants.slice(0, 10).map((item, index) => `${index + 1}. ${item.title} — ${item.price ?? product.price} ${store.currency}`).join('\n')}` });
       } else {
         const variant = variants[0];
-        cart.variantId = store.provider === Platform.WOOCOMMERCE
+        cart.variantId = [Platform.WOOCOMMERCE, Platform.YOUCAN].includes(store.provider)
           ? String(variant?.id ?? '')
           : String(variant?.admin_graphql_api_id ?? (variant?.id ? `gid://shopify/ProductVariant/${variant.id}` : ''));
         cart.variantTitle = String(variant?.title ?? 'Default Title'); cart.step = 'quantity'; await this.carts.save(cart);
@@ -788,7 +801,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       const selectedNumber = this.choiceNumber(text, variants.length);
       const variant = selectedNumber ? variants[selectedNumber - 1] : variants.find(item => text.toLowerCase().includes(String(item.title ?? '').toLowerCase()));
       if (!variant) { await this.sendReply(sessionId, { chatId, text: `Je n’ai pas reconnu l’option. Répondez avec un numéro :\n${variants.slice(0, 10).map((item, index) => `${index + 1}. ${item.title}`).join('\n')}` }); return true; }
-      cart.variantId = store.provider === Platform.WOOCOMMERCE
+      cart.variantId = [Platform.WOOCOMMERCE, Platform.YOUCAN].includes(store.provider)
         ? String(variant.id ?? '')
         : String(variant.admin_graphql_api_id ?? `gid://shopify/ProductVariant/${variant.id}`); cart.variantTitle = String(variant.title); cart.step = 'quantity'; await this.carts.save(cart);
       await this.sendReply(sessionId, { chatId, text: 'Quelle quantité souhaitez-vous ?' }); return true;
@@ -827,7 +840,14 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
               phone: `+${phone}`, customerName: String(cart.customerName), address1: String(cart.address1),
               city: String(cart.city), postalCode: cart.postalCode, country: cart.country,
             })
-          : await this.shopify.createConfirmedChatOrder(String(settings.shopDomain ?? ''), String(settings.accessToken ?? ''), {
+          : store.provider === Platform.YOUCAN
+            ? await this.youcan.createConfirmedChatOrder(settings as unknown as YouCanCredentials, {
+                variantId: String(cart.variantId), price: Number(product.price), quantity: cart.quantity,
+                phone: `+${phone}`, customerName: String(cart.customerName), address1: String(cart.address1),
+                city: String(cart.city), postalCode: cart.postalCode, country: cart.country,
+                shippingEstimationId: String(settings.youcanShippingEstimationId ?? ''),
+              })
+            : await this.shopify.createConfirmedChatOrder(String(settings.shopDomain ?? ''), String(settings.accessToken ?? ''), {
               variantId: String(cart.variantId), quantity: cart.quantity, phone: `+${phone}`,
               customerName: String(cart.customerName), address1: String(cart.address1), city: String(cart.city),
               postalCode: cart.postalCode, country: cart.country,

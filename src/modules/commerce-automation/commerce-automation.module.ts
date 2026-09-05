@@ -5,6 +5,7 @@ import { BillingModule } from '../billing/billing.module';
 import { MessageModule } from '../message/message.module';
 import { ShopifyModule } from '../shopify/shopify.module';
 import { WooCommerceModule } from '../woocommerce/woocommerce.module';
+import { YouCanModule } from '../youcan/youcan.module';
 import { Order } from '../stores/entities/order.entity';
 import { Product } from '../stores/entities/product.entity';
 import { Store } from '../stores/entities/store.entity';
@@ -22,6 +23,7 @@ import { AudioTranscriptionService } from './services/audio-transcription.servic
   imports: [
     ShopifyModule,
     WooCommerceModule,
+    YouCanModule,
     MessageModule,
     BillingModule,
     StoreModule,

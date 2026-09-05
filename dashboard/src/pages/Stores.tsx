@@ -37,6 +37,7 @@ import {
 import {
   shopifyApi,
   woocommerceApi,
+  youcanApi,
   storesApi,
   type Store,
   type StoreOrder,
@@ -106,10 +107,11 @@ export function Stores() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('shopify') !== 'connected') return;
+    const connectedProvider = params.get('shopify') === 'connected' ? 'Shopify' : params.get('youcan') === 'connected' ? 'YouCan' : null;
+    if (!connectedProvider) return;
     const products = params.get('products') ?? '0';
     const orders = params.get('orders') ?? '0';
-    setToast({ type: 'success', message: `Shopify connected. Imported ${products} products and ${orders} orders.` });
+    setToast({ type: 'success', message: `${connectedProvider} connected. Imported ${products} products and ${orders} orders.` });
     window.history.replaceState({}, document.title, window.location.pathname);
   }, []);
 
@@ -174,6 +176,11 @@ export function Stores() {
             message: `WooCommerce connected. Imported ${result.products} products and ${result.orders} orders.`,
           });
         }
+        if (created.provider === 'youcan') {
+          const authorization = await youcanApi.authorizationUrl(created.id);
+          window.location.assign(authorization.url);
+          return;
+        }
       }
       setShowForm(false);
       setToast({ type: 'success', message: editing ? 'Store updated successfully.' : 'Store created successfully.' });
@@ -196,8 +203,9 @@ export function Stores() {
   const syncStore = async (store: Store) => {
     setSyncingId(store.id);
     try {
-      const result =
-        store.provider === 'woocommerce' ? await woocommerceApi.sync(store.id) : await shopifyApi.sync(store.id);
+      const result = store.provider === 'woocommerce'
+        ? await woocommerceApi.sync(store.id)
+        : store.provider === 'youcan' ? await youcanApi.sync(store.id) : await shopifyApi.sync(store.id);
       await refetchStores();
       setToast({ type: 'success', message: `Sync complete: ${result.products} products and ${result.orders} orders.` });
     } catch (error) {
@@ -299,8 +307,11 @@ export function Stores() {
       form.settings?.consumerKey &&
       (form.settings.consumerSecret || form.settings.consumerSecretConfigured),
     );
+  const youcanConfigValid = form.provider !== 'youcan' || Boolean(
+    form.settings?.clientId && (form.settings.clientSecret || form.settings.clientSecretConfigured) && form.settings.redirectUri,
+  );
   const valid = Boolean(
-    form.sessionId && form.name.trim() && form.email.trim() && shopDomainValid && shopifyConfigValid && wooConfigValid,
+    form.sessionId && form.name.trim() && form.email.trim() && shopDomainValid && shopifyConfigValid && wooConfigValid && youcanConfigValid,
   );
 
   return (
@@ -382,7 +393,19 @@ export function Stores() {
                       <ExternalLink size={15} /> Connect
                     </button>
                   )}
-                  {['shopify', 'woocommerce'].includes(store.provider) && store.settings?.connected && canWrite && (
+                  {store.provider === 'youcan' && !store.settings?.connected && (
+                    <button className="btn-secondary" onClick={async () => {
+                      try {
+                        const authorization = await youcanApi.authorizationUrl(store.id);
+                        window.location.assign(authorization.url);
+                      } catch (error) {
+                        setToast({ type: 'error', message: error instanceof Error ? error.message : 'Unable to start YouCan installation.' });
+                      }
+                    }} disabled={trialGate.blocked}>
+                      <ExternalLink size={15} /> Install
+                    </button>
+                  )}
+                  {['shopify', 'woocommerce', 'youcan'].includes(store.provider) && store.settings?.connected && canWrite && (
                     <button
                       className="btn-secondary"
                       onClick={() => syncStore(store)}
@@ -392,12 +415,12 @@ export function Stores() {
                       <RefreshCw className={syncingId === store.id ? 'animate-spin' : ''} size={15} /> Sync
                     </button>
                   )}
-                  {['shopify', 'woocommerce'].includes(store.provider) && store.settings?.connected && (
+                  {['shopify', 'woocommerce', 'youcan'].includes(store.provider) && store.settings?.connected && (
                     <button className="btn-secondary" onClick={() => openDetails(store, 'products')}>
                       <Package size={15} /> Products
                     </button>
                   )}
-                  {['shopify', 'woocommerce'].includes(store.provider) && store.settings?.connected && (
+                  {['shopify', 'woocommerce', 'youcan'].includes(store.provider) && store.settings?.connected && (
                     <button className="btn-secondary" onClick={() => openDetails(store, 'orders')}>
                       <ShoppingBag size={15} /> Orders
                     </button>
@@ -468,6 +491,8 @@ export function Stores() {
                     </strong>
                   </div>
                 )}
+                {store.provider === 'youcan' && <div><span>YouCan</span><strong>{store.settings?.connected ? 'Connected' : 'Not installed'}</strong></div>}
+                {store.provider === 'youcan' && store.settings?.connected && <div><span>Imported</span><strong>{store.settings.importedProducts ?? 0} products · {store.settings.importedOrders ?? 0} orders</strong></div>}
               </div>
             </article>
           ))}
@@ -531,17 +556,28 @@ export function Stores() {
               <small>Only active integrations are selectable</small>
             </div>
             <div className="provider-options">
-              {(['shopify', 'woocommerce'] as const).map(provider => (
+              {(['shopify', 'woocommerce', 'youcan'] as const).map(provider => (
                 <button
                   type="button"
                   key={provider}
                   className={`provider-option ${form.provider === provider ? 'selected' : ''}`}
-                  onClick={() => setField('provider', provider)}
+                  onClick={() => setForm(current => ({
+                    ...current,
+                    provider,
+                    settings: {
+                      ...current.settings,
+                      ...(provider === 'youcan' ? {
+                        scopes: 'read-orders edit-orders delete-orders read-products read-products-review read-categories read-coupons read-customers edit-customers read-pages read-menus read-rest-hooks edit-rest-hooks read-payments read-shipping-zones view-store-info view-store-profits read-upsells',
+                      } : provider === 'shopify' ? {
+                        scopes: 'read_orders,write_orders,read_products',
+                      } : {}),
+                    },
+                  }))}
                 >
-                  <span className="provider-mark">{provider === 'shopify' ? 'S' : 'Woo'}</span>
+                  <span className="provider-mark">{provider === 'shopify' ? 'S' : provider === 'woocommerce' ? 'Woo' : 'Y'}</span>
                   <span>
-                    <strong>{provider === 'shopify' ? 'Shopify' : 'WooCommerce'}</strong>
-                    <small>{provider === 'shopify' ? 'OAuth app installation' : 'REST API keys'}</small>
+                    <strong>{provider === 'shopify' ? 'Shopify' : provider === 'woocommerce' ? 'WooCommerce' : 'YouCan'}</strong>
+                    <small>{provider === 'woocommerce' ? 'REST API keys' : 'OAuth app installation'}</small>
                   </span>
                   {form.provider === provider && <CheckCircle2 size={18} />}
                 </button>
@@ -553,7 +589,7 @@ export function Stores() {
               <BookOpen size={19} />
               <div>
                 <strong>
-                  {form.provider === 'shopify' ? 'Shopify connection guide' : 'WooCommerce connection guide'}
+                  {form.provider === 'shopify' ? 'Shopify connection guide' : form.provider === 'woocommerce' ? 'WooCommerce connection guide' : 'YouCan connection guide'}
                 </strong>
                 <span>Follow these steps—OpenWA completes the import and webhook setup.</span>
               </div>
@@ -625,7 +661,7 @@ export function Stores() {
               </span>
               <span
                 className={
-                  (form.provider === 'shopify' ? shopifyConfigValid && shopDomainValid : wooConfigValid) ? 'ready' : ''
+                  (form.provider === 'shopify' ? shopifyConfigValid && shopDomainValid : form.provider === 'woocommerce' ? wooConfigValid : youcanConfigValid) ? 'ready' : ''
                 }
               >
                 <CheckCircle2 size={14} /> API credentials
@@ -751,6 +787,16 @@ export function Stores() {
                 placeholder="https://your-public-domain.com"
               />
             </label>
+          )}
+          {form.provider === 'youcan' && (
+            <>
+              <label>Client ID<input value={form.settings?.clientId ?? ''} onChange={e => setField('settings', { ...form.settings, clientId: e.target.value.trim() })} required /></label>
+              <label>Client secret<input type="password" value={form.settings?.clientSecret ?? ''} onChange={e => setField('settings', { ...form.settings, clientSecret: e.target.value })} placeholder={form.settings?.clientSecretConfigured ? 'Leave blank to keep existing secret' : ''} required={!form.settings?.clientSecretConfigured} /></label>
+              <label>Scopes<input value={form.settings?.scopes ?? 'read-orders edit-orders delete-orders read-products read-products-review read-categories read-coupons read-customers edit-customers read-pages read-menus read-rest-hooks edit-rest-hooks read-payments read-shipping-zones view-store-info view-store-profits read-upsells'} onChange={e => setField('settings', { ...form.settings, scopes: e.target.value })} /></label>
+              <label>Redirect URI<input type="url" value={form.settings?.redirectUri ?? ''} onChange={e => setField('settings', { ...form.settings, redirectUri: e.target.value.trim() })} placeholder="https://your-domain.com/api/youcan/oauth/callback" required /></label>
+              <label>Public webhook base URL<input type="url" value={form.settings?.webhookBaseUrl ?? ''} onChange={e => setField('settings', { ...form.settings, webhookBaseUrl: e.target.value.trim() })} placeholder="https://your-public-domain.com" /><small><Link2 size={13} /> Enter only the base URL—do not add /api.</small></label>
+              <label>Default shipping estimation ID<input value={form.settings?.youcanShippingEstimationId ?? ''} onChange={e => setField('settings', { ...form.settings, youcanShippingEstimationId: e.target.value.trim() })} placeholder="sz_... or sr_..." /><small>Required only when the WhatsApp AI creates new YouCan orders.</small></label>
+            </>
           )}
           <label>
             Owner name

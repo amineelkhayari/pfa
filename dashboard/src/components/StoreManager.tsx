@@ -49,7 +49,7 @@ export function StoreManager({ open, store, sessions, saving, syncing, readOnly,
     const session = sessions.find(item => item.id === sessionId);
     return [
       { label: 'Store connection', ok: Boolean(settings.connected), value: settings.connected ? 'Connected' : 'Action required' },
-      { label: 'API credentials', ok: store.provider === 'shopify' ? Boolean(settings.clientSecretConfigured) : Boolean(settings.consumerSecretConfigured), value: 'Protected' },
+      { label: 'API credentials', ok: store.provider === 'woocommerce' ? Boolean(settings.consumerSecretConfigured) : Boolean(settings.clientSecretConfigured), value: 'Protected' },
       { label: 'WhatsApp device', ok: session?.status === 'ready', value: session ? `${session.name} · ${session.status}` : 'Not assigned' },
       { label: 'Webhook activity', ok: Boolean(settings.lastWebhookAt), value: settings.lastWebhookAt ? new Date(settings.lastWebhookAt).toLocaleString() : 'Waiting for first event' },
     ];
@@ -65,9 +65,10 @@ export function StoreManager({ open, store, sessions, saving, syncing, readOnly,
     setSettings(value => ({ ...value, orderNotifications: { ...(value.orderNotifications ?? {}), [event]: { enabled: current.enabled, template: current.template, ...patch } } as any }));
   };
 
-  const domain = store.provider === 'shopify' ? settings.shopDomain : settings.siteUrl;
+  const domain = store.provider === 'shopify' ? settings.shopDomain : store.provider === 'youcan' ? settings.storeDomain : settings.siteUrl;
   const isShopify = store.provider === 'shopify';
-  const connectionMethod = isShopify ? 'Shopify App' : 'WooCommerce Webhook / REST API';
+  const isYouCan = store.provider === 'youcan';
+  const connectionMethod = isShopify ? 'Shopify App' : isYouCan ? 'YouCan External App' : 'WooCommerce Webhook / REST API';
   const webhookBase = settings.webhookBaseUrl?.replace(/\/$/, '') ?? '';
   const webhookEvents = isShopify
     ? [
@@ -75,7 +76,11 @@ export function StoreManager({ open, store, sessions, saving, syncing, readOnly,
         { topic: 'orders/updated', path: '/api/shopify/webhooks/orders-updated', purpose: 'Detect payment, fulfillment, shipment, and cancellation changes.' },
         { topic: 'app/uninstalled', path: '/api/shopify/webhooks/app-uninstalled', purpose: 'Disconnect the store safely when the Shopify App is removed.' },
       ]
-    : [
+    : isYouCan ? [
+        { topic: 'order.created', path: `/api/youcan/webhooks/${store.id}`, purpose: 'Import the order and send the confirmation message.' },
+        { topic: 'order.updated / order.paid', path: `/api/youcan/webhooks/${store.id}`, purpose: 'Detect lifecycle and payment changes.' },
+        { topic: 'app.uninstalled', path: `/api/youcan/webhooks/${store.id}`, purpose: 'Disconnect the store safely.' },
+      ] : [
         { topic: 'order.created', path: `/api/woocommerce/webhooks/${store.id}/order-created`, purpose: 'Import the order and send the new-order confirmation template.' },
         { topic: 'order.updated', path: `/api/woocommerce/webhooks/${store.id}/order-updated`, purpose: 'Detect payment, fulfillment, shipment, and cancellation changes.' },
       ];
@@ -90,7 +95,7 @@ export function StoreManager({ open, store, sessions, saving, syncing, readOnly,
       footer={<><button className="btn-secondary" onClick={onClose}>Close</button>{!readOnly && <button className="btn-primary" disabled={saving} onClick={() => onSave({ sessionId, currency, timezone, settings })}>{saving ? <Loader2 className="animate-spin" size={16} /> : <ShieldCheck size={16} />} Save configuration</button>}</>}
     >
       {tab === 'overview' && <div className="manager-stack">
-        <section className="manager-hero"><div className={`provider-mark ${store.provider}`}>{isShopify ? 'S' : 'W'}</div><div><span>Connected through {connectionMethod}</span><h3>{store.name}</h3><p>{domain || 'Store domain not configured'}</p></div><span className={`manager-status ${settings.connected ? 'ready' : ''}`}>{settings.connected ? (isShopify ? 'Shopify App connected' : 'Store connected') : 'Setup required'}</span></section>
+        <section className="manager-hero"><div className={`provider-mark ${store.provider}`}>{isShopify ? 'S' : isYouCan ? 'Y' : 'W'}</div><div><span>Connected through {connectionMethod}</span><h3>{store.name}</h3><p>{domain || 'Store domain not configured'}</p></div><span className={`manager-status ${settings.connected ? 'ready' : ''}`}>{settings.connected ? (isShopify ? 'Shopify App connected' : 'Store connected') : 'Setup required'}</span></section>
         <div className="manager-metrics">
           <div><PackageCheck size={19} /><span>Imported products</span><strong>{settings.importedProducts ?? 0}</strong></div>
           <div><Database size={19} /><span>Imported orders</span><strong>{settings.importedOrders ?? 0}</strong></div>
