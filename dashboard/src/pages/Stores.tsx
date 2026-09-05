@@ -111,7 +111,13 @@ export function Stores() {
     if (!connectedProvider) return;
     const products = params.get('products') ?? '0';
     const orders = params.get('orders') ?? '0';
-    setToast({ type: 'success', message: `${connectedProvider} connected. Imported ${products} products and ${orders} orders.` });
+    const webhookWarning = params.get('webhooks') === 'warning';
+    setToast({
+      type: webhookWarning ? 'error' : 'success',
+      message: webhookWarning
+        ? `${connectedProvider} connected and data imported, but webhook registration requires edit-rest-hooks.`
+        : `${connectedProvider} connected. Imported ${products} products and ${orders} orders.`,
+    });
     window.history.replaceState({}, document.title, window.location.pathname);
   }, []);
 

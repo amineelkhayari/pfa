@@ -52,10 +52,13 @@ export class YouCanController {
       throw new BadRequestException(`YouCan issued a token, but Store Admin API authentication failed: ${reason}. Confirm these are YouCan Shop Partner App OAuth credentials, not YouCan Pay credentials.`);
     }
     const imported = await this.youcan.sync(connected, storeId);
-    const webhooks = await this.youcan.ensureWebhooks(connected, storeId);
-    await this.stores.updateIntegrationCredentials(storeId, 'youcan', { ...connected, connected: true, storeDomain: profile?.domain ?? profile?.slug ?? null, importedProducts: imported.products, importedOrders: imported.orders, lastSyncAt: new Date().toISOString(), registeredWebhooks: webhooks });
+    let webhooks = 0;
+    let webhookError: string | null = null;
+    try { webhooks = await this.youcan.ensureWebhooks(connected, storeId); }
+    catch (error) { webhookError = error instanceof Error ? error.message : 'YouCan webhook registration failed.'; }
+    await this.stores.updateIntegrationCredentials(storeId, 'youcan', { ...connected, connected: true, storeDomain: profile?.domain ?? profile?.slug ?? null, importedProducts: imported.products, importedOrders: imported.orders, lastSyncAt: new Date().toISOString(), registeredWebhooks: webhooks, webhookRegistrationError: webhookError });
     const redirect = this.config.get<string>('shopify.afterAuthRedirectUrl', '/stores');
-    return response.redirect(`${redirect}${redirect.includes('?') ? '&' : '?'}youcan=connected&storeId=${encodeURIComponent(storeId)}&products=${imported.products}&orders=${imported.orders}`);
+    return response.redirect(`${redirect}${redirect.includes('?') ? '&' : '?'}youcan=connected&storeId=${encodeURIComponent(storeId)}&products=${imported.products}&orders=${imported.orders}&webhooks=${webhookError ? 'warning' : 'connected'}`);
   }
 
   @Post(':storeId/sync')
@@ -63,10 +66,14 @@ export class YouCanController {
   async sync(@Param('storeId', ParseUUIDPipe) storeId: string) {
     await this.plans.assertCurrentPlanActive();
     const store = await this.stores.getIntegrationConnection(storeId, 'youcan'); const credentials = this.credentials(store);
-    const imported = await this.youcan.sync(credentials, storeId); await this.youcan.ensureWebhooks(credentials, storeId);
+    const imported = await this.youcan.sync(credentials, storeId);
+    let webhooks = 0;
+    let webhookError: string | null = null;
+    try { webhooks = await this.youcan.ensureWebhooks(credentials, storeId); }
+    catch (error) { webhookError = error instanceof Error ? error.message : 'YouCan webhook registration failed.'; }
     const lastSyncAt = new Date().toISOString();
-    await this.stores.updateIntegrationCredentials(storeId, 'youcan', { ...credentials, connected: true, importedProducts: imported.products, importedOrders: imported.orders, lastSyncAt });
-    return { storeId, ...imported, lastSyncAt };
+    await this.stores.updateIntegrationCredentials(storeId, 'youcan', { ...credentials, connected: true, importedProducts: imported.products, importedOrders: imported.orders, lastSyncAt, registeredWebhooks: webhooks, webhookRegistrationError: webhookError });
+    return { storeId, ...imported, lastSyncAt, webhooks, webhookError };
   }
 
   @Post('webhooks/:storeId')
