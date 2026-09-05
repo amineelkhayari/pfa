@@ -17,10 +17,12 @@ import { CommerceAiAgentService } from './services/commerce-ai-agent.service';
 import { CommerceConversationService } from './services/commerce-conversation.service';
 import { CommerceToolService } from './services/commerce-tool.service';
 import { AudioTranscriptionService } from './services/audio-transcription.service';
+import { CommerceCoreModule } from '../../commerce/commerce-core.module';
 
 /** Provider-neutral customer conversation and order automation. */
 @Module({
   imports: [
+    CommerceCoreModule,
     ShopifyModule,
     WooCommerceModule,
     YouCanModule,

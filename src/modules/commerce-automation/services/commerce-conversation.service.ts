@@ -9,15 +9,13 @@ import { Order } from '../../stores/entities/order.entity';
 import { Store } from '../../stores/entities/store.entity';
 import { Product } from '../../stores/entities/product.entity';
 import { Platform } from '../../stores/enum/platform.enum';
-import { ShopifyService } from '../../shopify/services/shopify.service';
 import { OrderAiConversation } from '../../stores/entities/order-ai-conversation.entity';
 import { CommerceAiAgentService } from './commerce-ai-agent.service';
 import { StoreOrderCart } from '../../stores/entities/store-order-cart.entity';
-import { WooCommerceService, WooCredentials } from '../../woocommerce/services/woocommerce.service';
 import { CommerceToolService } from './commerce-tool.service';
 import { AudioTranscriptionService } from './audio-transcription.service';
 import { PlanUsageService } from '../../auth/plan-usage.service';
-import { YouCanCredentials, YouCanService } from '../../youcan/services/youcan.service';
+import { IntegrationProviderRegistry } from '../../../commerce/integration-provider.registry';
 
 interface IncomingReply {
   body?: string;
@@ -37,9 +35,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
 
   constructor(
     private readonly hooks: HookManager,
-    private readonly shopify: ShopifyService,
-    private readonly woocommerce: WooCommerceService,
-    private readonly youcan: YouCanService,
+    private readonly providers: IntegrationProviderRegistry,
     private readonly messages: MessageService,
     private readonly encryption: CredentialEncryptionService,
     private readonly ai: CommerceAiAgentService,
@@ -336,25 +332,10 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
   }
 
   private async updateProviderOrder(store: Store, settings: Record<string, any>, order: Order, action: 'confirm' | 'cancel'): Promise<void> {
-    if (store.provider === Platform.YOUCAN) {
-      const credentials = settings as YouCanCredentials;
-      if (!credentials.accessToken) throw new Error('YouCan connection is not configured.');
-      if (action === 'confirm') await this.youcan.confirmOrder(credentials, order.shopifyOrderId);
-      else await this.youcan.cancelOrder(credentials, order.shopifyOrderId);
-      return;
-    }
-    if (store.provider === Platform.WOOCOMMERCE) {
-      const credentials = settings as WooCredentials;
-      if (!credentials.siteUrl || !credentials.consumerKey || !credentials.consumerSecret) throw new Error('WooCommerce connection is not configured.');
-      if (action === 'confirm') await this.woocommerce.confirmOrder(credentials, order.shopifyOrderId);
-      else await this.woocommerce.cancelOrder(credentials, order.shopifyOrderId);
-      return;
-    }
-    const shopDomain = typeof settings.shopDomain === 'string' ? settings.shopDomain : '';
-    const accessToken = typeof settings.accessToken === 'string' ? settings.accessToken : '';
-    if (!shopDomain || !accessToken) throw new Error('Shopify connection is not configured.');
-    if (action === 'confirm') await this.shopify.markOrderConfirmed(shopDomain, accessToken, order);
-    else await this.shopify.cancelOrder(shopDomain, accessToken, order.shopifyOrderId);
+    const provider = this.providers.get(store.provider);
+    const connection = { storeId: store.id, credentials: settings };
+    if (action === 'confirm') await provider.confirmOrder(connection, order);
+    else await provider.cancelOrder(connection, order);
   }
 
   private async handleCatalogQuestion(sessionId: string, store: Store, message: IncomingReply, text: string, customerOrders: Order[] = []): Promise<void> {
@@ -499,18 +480,10 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       };
     }
     if (name === 'get_store_information') {
-      return {
-        id: store.id,
-        name: store.name,
-        provider: store.provider,
-        owner_name: store.ownerName ?? null,
-        email: store.email,
-        phone: store.phone ?? null,
-        language: store.language,
-        timezone: store.timezone,
-        currency: store.currency,
-        status: store.status,
-      };
+      const settings = this.encryption.revealSettings(store.settings ?? {});
+      const live = await this.providers.get(store.provider).getStoreKnowledge({ storeId: store.id, credentials: settings });
+      this.logToolCall('get_store_information', store.id, phone, {});
+      return { provider: store.provider, ...live };
     }
     if (name === 'prepare_shipping_address_update') {
       const order = this.findCustomerOrder(customerOrders, input.order_number);
@@ -625,31 +598,11 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
     data: { customerName: string; address1: string; city: string; postalCode?: string; country: string; phone?: string },
   ): Promise<void> {
     const settings = this.encryption.revealSettings(store.settings ?? {});
-    if (store.provider === Platform.YOUCAN) {
-      await this.youcan.updateOrderShippingAddress(settings as unknown as YouCanCredentials, order.shopifyOrderId, {
-        name: data.customerName, address: data.address1, city: data.city, zip_code: data.postalCode ?? '', country: data.country, phone: data.phone,
-      });
-    } else if (store.provider === Platform.WOOCOMMERCE) {
-      await this.woocommerce.updateOrderShippingAddress({
-        siteUrl: String(settings.siteUrl ?? ''),
-        consumerKey: String(settings.consumerKey ?? ''),
-        consumerSecret: String(settings.consumerSecret ?? ''),
-      }, order.shopifyOrderId, {
-        first_name: data.customerName.split(/\s+/)[0],
-        last_name: data.customerName.split(/\s+/).slice(1).join(' '),
-        address_1: data.address1,
-        city: data.city,
-        postcode: data.postalCode ?? '',
-        country: data.country,
-      });
-    } else {
-      await this.shopify.updateOrderShippingAddress(
-        String(settings.shopDomain ?? ''),
-        String(settings.accessToken ?? ''),
-        order.shopifyOrderId,
-        { name: data.customerName, address1: data.address1, city: data.city, zip: data.postalCode, country: data.country, phone: data.phone },
-      );
-    }
+    await this.providers.get(store.provider).updateShippingAddress(
+      { storeId: store.id, credentials: settings },
+      order,
+      data,
+    );
     order.customerName = data.customerName;
     order.shippingAddress = {
       ...(order.shippingAddress ?? {}),
@@ -830,28 +783,21 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
       if (!/\b(confirm|confirmer|confirme|nconfirm|yes|oui|wakha)\w*\b|تأكيد|أؤكد|اؤكد|نعم/i.test(text)) { await this.sendReply(sessionId, { chatId, text: 'Répondez CONFIRMER pour créer la commande, ou ANNULER pour arrêter.' }); return true; }
       const settings = this.encryption.revealSettings(store.settings ?? {});
       try {
-        const result = store.provider === Platform.WOOCOMMERCE
-          ? await this.woocommerce.createConfirmedChatOrder({
-              siteUrl: String(settings.siteUrl ?? ''), consumerKey: String(settings.consumerKey ?? ''),
-              consumerSecret: String(settings.consumerSecret ?? ''), webhookSecret: String(settings.webhookSecret ?? ''),
-              webhookBaseUrl: String(settings.webhookBaseUrl ?? ''),
-            }, {
-              productId: product.shopifyProductId, variationId: cart.variantId, quantity: cart.quantity,
-              phone: `+${phone}`, customerName: String(cart.customerName), address1: String(cart.address1),
-              city: String(cart.city), postalCode: cart.postalCode, country: cart.country,
-            })
-          : store.provider === Platform.YOUCAN
-            ? await this.youcan.createConfirmedChatOrder(settings as unknown as YouCanCredentials, {
-                variantId: String(cart.variantId), price: Number(product.price), quantity: cart.quantity,
-                phone: `+${phone}`, customerName: String(cart.customerName), address1: String(cart.address1),
-                city: String(cart.city), postalCode: cart.postalCode, country: cart.country,
-                shippingEstimationId: String(settings.youcanShippingEstimationId ?? ''),
-              })
-            : await this.shopify.createConfirmedChatOrder(String(settings.shopDomain ?? ''), String(settings.accessToken ?? ''), {
-              variantId: String(cart.variantId), quantity: cart.quantity, phone: `+${phone}`,
-              customerName: String(cart.customerName), address1: String(cart.address1), city: String(cart.city),
-              postalCode: cart.postalCode, country: cart.country,
-            });
+        const result = await this.providers.get(store.provider).createOrder(
+          { storeId: store.id, credentials: settings },
+          {
+            productId: product.shopifyProductId,
+            variantId: cart.variantId,
+            price: Number(product.price),
+            quantity: cart.quantity,
+            phone: `+${phone}`,
+            customerName: String(cart.customerName),
+            address1: String(cart.address1),
+            city: String(cart.city),
+            postalCode: cart.postalCode,
+            country: cart.country,
+          },
+        );
         await this.carts.delete(cart.id);
         this.logToolCall('create_order', store.id, phone, {
           productId: product.id,

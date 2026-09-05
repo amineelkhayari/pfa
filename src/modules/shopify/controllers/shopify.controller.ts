@@ -23,6 +23,7 @@ import { Public, RequireRole } from '../../auth/decorators/auth.decorators';
 import { ApiKeyRole } from '../../auth/entities/api-key.entity';
 import { CredentialEncryptionService } from '../../../common/security/credential-encryption.service';
 import { PlanUsageService } from '../../auth/plan-usage.service';
+import { IntegrationProviderRegistry } from '../../../commerce/integration-provider.registry';
 
 interface ShopifyStoreSettings {
   shopDomain?: string;
@@ -46,6 +47,7 @@ export class ShopifyController {
     private readonly configService: ConfigService,
     private readonly credentialEncryption: CredentialEncryptionService,
     private readonly planUsage: PlanUsageService,
+    private readonly providers: IntegrationProviderRegistry,
   ) {}
 
   private settings(store: Store): ShopifyStoreSettings | undefined {
@@ -189,24 +191,31 @@ export class ShopifyController {
       scope: token.scope,
     });
 
-    const [products, orders] = await Promise.all([
-      this.shopifyService.importProducts(shop, token.access_token, storeId),
-      this.shopifyService.importOrders(shop, token.access_token, storeId),
-    ]);
     const webhookBaseUrl =
       typeof credentials.webhookBaseUrl === 'string' && credentials.webhookBaseUrl
         ? credentials.webhookBaseUrl
         : new URL(credentials.redirectUri ?? '').origin;
-    await this.shopifyService.ensureWebhooks(shop, token.access_token, webhookBaseUrl);
+    const provider = this.providers.get('shopify');
+    const providerConnection = {
+      storeId,
+      credentials: { ...credentials, shopDomain: shop, accessToken: token.access_token, webhookBaseUrl },
+    };
+    await provider.validate(providerConnection.credentials);
+    const profile = await provider.getStoreProfile(providerConnection);
+    const { products, orders } = await provider.sync(providerConnection);
+    await provider.registerWebhooks(providerConnection);
     await this.storeService.updateIntegrationCredentials(storeId, 'shopify', {
       ...credentials,
       shopDomain: shop,
       accessToken: token.access_token,
       scope: token.scope,
+      webhookBaseUrl,
       lastSyncAt: new Date().toISOString(),
       importedProducts: products,
       importedOrders: orders,
+      storeDomain: profile.domain,
     });
+    await this.storeService.updateImportedProfile(storeId, profile);
 
     const redirect = this.configService.get<string>('commerce.afterAuthRedirectUrl', '/stores');
     const separator = redirect.includes('?') ? '&' : '?';
@@ -263,18 +272,17 @@ export class ShopifyController {
     if (!credentials?.shopDomain || !credentials.accessToken) {
       throw new BadRequestException('Shopify is not connected.');
     }
-    const [products, orders] = await Promise.all([
-      this.shopifyService.importProducts(credentials.shopDomain, credentials.accessToken, storeId),
-      this.shopifyService.importOrders(credentials.shopDomain, credentials.accessToken, storeId),
-    ]);
+    const imported = await this.providers.get('shopify').sync({ storeId, credentials });
+    const profile = await this.providers.get('shopify').getStoreProfile({ storeId, credentials });
     const lastSyncAt = new Date().toISOString();
     await this.storeService.updateIntegrationCredentials(storeId, 'shopify', {
       ...credentials,
-      importedProducts: products,
-      importedOrders: orders,
+      importedProducts: imported.products,
+      importedOrders: imported.orders,
       lastSyncAt,
     });
-    return { storeId, products, orders, lastSyncAt };
+    await this.storeService.updateImportedProfile(storeId, profile);
+    return { storeId, ...imported, lastSyncAt };
   }
 
   // private async ImportsProducts(shopDomain: string, accessToken: string) {

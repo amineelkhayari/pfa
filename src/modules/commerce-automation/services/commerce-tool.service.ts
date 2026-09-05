@@ -43,7 +43,7 @@ export class CommerceToolService {
       this.tool('get_active_cart', 'Read the persisted checkout state and identify the next required customer detail.', {
         type: 'object', additionalProperties: false, properties: {},
       }),
-      this.tool('get_store_information', 'Get verified public information about the connected store. Never request or expose credentials or secret settings.', {
+      this.tool('get_store_information', 'Get verified live store profile, policies/terms, shipping zones/rates, and enabled payment information. Always use this for questions about the store, delivery, shipping, payment, refund, privacy, or terms. Never expose credentials.', {
         type: 'object', additionalProperties: false, properties: {},
       }),
       this.tool('prepare_shipping_address_update', 'Validate and prepare a shipping-address change for one real customer order. This does not mutate Shopify/WooCommerce. Show the returned preview and ask the customer to reply CONFIRMER.', {

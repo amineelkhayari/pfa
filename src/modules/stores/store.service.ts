@@ -51,11 +51,12 @@ export class StoreService {
     // );
     await this.assertSessionAvailable(dto.sessionId);
 
-    const exists = await this.storeRepository
+    const requestedName = dto.name?.trim();
+    const exists = requestedName ? await this.storeRepository
       .createQueryBuilder('store')
-      .where('store.name = :name', { name: dto.name })
+      .where('store.name = :name', { name: requestedName })
       .andWhere(scope.userId ? 'store.userId = :userId' : 'store.userId IS NULL', { userId: scope.userId })
-      .getOne();
+      .getOne() : null;
 
     if (exists) {
       throw new ConflictException('A store with this name already exists.');
@@ -63,6 +64,8 @@ export class StoreService {
 
     const store = this.storeRepository.create({
       ...dto,
+      name: requestedName || `${dto.provider} store ${dto.sessionId.slice(0, 8)}`,
+      email: dto.email?.trim() || `pending-${dto.sessionId}@store.local`,
       settings: dto.settings ? this.credentialEncryption.protectSettings(dto.settings) : undefined,
       userId: scope.userId ?? null,
     });
@@ -444,6 +447,22 @@ export class StoreService {
     connection.settings = this.credentialEncryption.protectSettings(credentials);
 
     return this.storeRepository.save(connection);
+  }
+
+  async updateImportedProfile(storeId: string, profile: {
+    name?: string | null; ownerName?: string | null; email?: string | null; phone?: string | null;
+    currency?: string | null; timezone?: string | null; language?: string | null;
+  }): Promise<Store> {
+    const store = await this.storeRepository.findOneBy({ id: storeId });
+    if (!store) throw new NotFoundException('Store not found.');
+    if (profile.name?.trim()) store.name = profile.name.trim();
+    if (profile.ownerName?.trim()) store.ownerName = profile.ownerName.trim();
+    if (profile.email?.trim()) store.email = profile.email.trim();
+    if (profile.phone?.trim()) store.phone = profile.phone.trim();
+    if (profile.currency?.trim()) store.currency = profile.currency.trim().toUpperCase();
+    if (profile.timezone?.trim()) store.timezone = profile.timezone.trim();
+    if (profile.language?.trim()) store.language = profile.language.trim();
+    return this.storeRepository.save(store);
   }
   // async connectIntegration(
   //   storeId: string,

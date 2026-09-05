@@ -49,22 +49,15 @@ import './Stores.css';
 
 const emptyForm: StorePayload = {
   sessionId: '',
-  name: '',
   provider: 'shopify',
-  ownerName: '',
-  email: '',
-  phone: '',
-  language: 'fr',
-  timezone: 'Africa/Casablanca',
-  currency: 'MAD',
   status: 'active',
   settings: {
     shopDomain: '',
     clientId: '',
     clientSecret: '',
-    scopes: 'read_orders,write_orders,read_products',
-    redirectUri: 'http://localhost:2785/api/shopify/oauth/callback',
-    webhookBaseUrl: '',
+    scopes: 'read_orders,write_orders,read_products,read_customers,read_fulfillments,write_fulfillments,read_legal_policies',
+    redirectUri: `${window.location.origin}/api/shopify/oauth/callback`,
+    webhookBaseUrl: window.location.origin,
     catalogAssistantEnabled: true,
     confirmationSuccessTemplate: 'Merci {{customerName}}, votre commande {{orderNumber}} est confirmée ✅',
     relatedProductsTemplate:
@@ -353,7 +346,7 @@ export function Stores() {
     form.settings?.clientId && (form.settings.clientSecret || form.settings.clientSecretConfigured) && form.settings.redirectUri,
   );
   const valid = Boolean(
-    form.sessionId && form.name.trim() && form.email.trim() && shopDomainValid && shopifyConfigValid && wooConfigValid && youcanConfigValid,
+    form.sessionId && shopDomainValid && shopifyConfigValid && wooConfigValid && youcanConfigValid,
   );
 
   return (
@@ -595,10 +588,6 @@ export function Stores() {
               ))}
             </select>
           </label>
-          <label>
-            Store name
-            <input value={form.name} onChange={e => setField('name', e.target.value)} maxLength={150} required />
-          </label>
           <div className="store-form-full provider-picker">
             <div className="field-heading">
               <span>Choose your commerce platform</span>
@@ -617,8 +606,12 @@ export function Stores() {
                       ...current.settings,
                       ...(provider === 'youcan' ? {
                         scopes: 'read-orders edit-orders delete-orders read-products read-products-review read-categories read-coupons read-customers edit-customers read-pages read-menus read-rest-hooks edit-rest-hooks read-payments read-shipping-zones view-store-info view-store-profits read-upsells',
+                        redirectUri: `${window.location.origin}/api/youcan/oauth/callback`,
+                        webhookBaseUrl: window.location.origin,
                       } : provider === 'shopify' ? {
-                        scopes: 'read_orders,write_orders,read_products',
+                        scopes: 'read_orders,write_orders,read_products,read_customers,read_fulfillments,write_fulfillments,read_legal_policies',
+                        redirectUri: `${window.location.origin}/api/shopify/oauth/callback`,
+                        webhookBaseUrl: window.location.origin,
                       } : {}),
                     },
                   }))}
@@ -807,16 +800,6 @@ export function Stores() {
           )}
           {form.provider === 'shopify' && (
             <label>
-              Scopes
-              <input
-                value={form.settings?.scopes ?? ''}
-                onChange={e => setField('settings', { ...form.settings, scopes: e.target.value })}
-                required
-              />
-            </label>
-          )}
-          {form.provider === 'shopify' && (
-            <label>
               Redirect URI
               <input
                 type="url"
@@ -841,48 +824,11 @@ export function Stores() {
             <>
               <label>Client ID<input value={form.settings?.clientId ?? ''} onChange={e => setField('settings', { ...form.settings, clientId: e.target.value.trim() })} required /></label>
               <label>Client secret<input type="password" value={form.settings?.clientSecret ?? ''} onChange={e => setField('settings', { ...form.settings, clientSecret: e.target.value })} placeholder={form.settings?.clientSecretConfigured ? 'Leave blank to keep existing secret' : ''} required={!form.settings?.clientSecretConfigured} /></label>
-              <label>Scopes<input value={form.settings?.scopes ?? 'read-orders edit-orders delete-orders read-products read-products-review read-categories read-coupons read-customers edit-customers read-pages read-menus read-rest-hooks edit-rest-hooks read-payments read-shipping-zones view-store-info view-store-profits read-upsells'} onChange={e => setField('settings', { ...form.settings, scopes: e.target.value })} /></label>
               <label>Redirect URI<input type="url" value={form.settings?.redirectUri ?? ''} onChange={e => setField('settings', { ...form.settings, redirectUri: e.target.value.trim() })} placeholder="https://your-domain.com/api/youcan/oauth/callback" required /></label>
               <label>Public webhook base URL<input type="url" value={form.settings?.webhookBaseUrl ?? ''} onChange={e => setField('settings', { ...form.settings, webhookBaseUrl: e.target.value.trim() })} placeholder="https://your-public-domain.com" /><small><Link2 size={13} /> Enter only the base URL—do not add /api.</small></label>
               <label>Default shipping estimation ID<input value={form.settings?.youcanShippingEstimationId ?? ''} onChange={e => setField('settings', { ...form.settings, youcanShippingEstimationId: e.target.value.trim() })} placeholder="sz_... or sr_..." /><small>Required only when the WhatsApp AI creates new YouCan orders.</small></label>
             </>
           )}
-          <label>
-            Owner name
-            <input value={form.ownerName} onChange={e => setField('ownerName', e.target.value)} />
-          </label>
-          <label>
-            Email
-            <input type="email" value={form.email} onChange={e => setField('email', e.target.value)} required />
-          </label>
-          <label>
-            Phone
-            <input value={form.phone} onChange={e => setField('phone', e.target.value)} placeholder="+212612345678" />
-          </label>
-          <label>
-            Currency
-            <input
-              value={form.currency}
-              onChange={e => setField('currency', e.target.value.toUpperCase())}
-              maxLength={10}
-            />
-          </label>
-          <label>
-            Language
-            <input value={form.language} onChange={e => setField('language', e.target.value)} maxLength={10} />
-          </label>
-          <label>
-            Timezone
-            <input value={form.timezone} onChange={e => setField('timezone', e.target.value)} />
-          </label>
-          <label>
-            Status
-            <select value={form.status} onChange={e => setField('status', e.target.value as StorePayload['status'])}>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="suspended">Suspended</option>
-            </select>
-          </label>
         </div>
       </Modal>
 

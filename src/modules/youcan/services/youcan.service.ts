@@ -44,6 +44,18 @@ export class YouCanService {
   }
 
   async getStore(c: YouCanCredentials) { return this.request(c, '/me'); }
+  async getStoreKnowledge(c: YouCanCredentials) {
+    const [pages, shipping, payments] = await Promise.all([
+      this.all(c, '/pages').catch(() => []),
+      this.all(c, '/shipping-zones?include=rates').catch(() => []),
+      this.all(c, '/payments').catch(() => []),
+    ]);
+    return {
+      policies: pages.slice(0, 10).map((page: any) => ({ type: page.slug, title: page.name, content: String(page.content ?? '').slice(0, 4000), url: page.public_url })),
+      shipping: shipping.slice(0, 20).map((zone: any) => ({ id: zone.id, name: zone.display_name ?? zone.name, countries: zone.countries, free: zone.is_free, active: zone.is_active, rate_type: zone.rate_type, rates: (zone.rates?.data ?? zone.rates ?? []).slice(0, 20) })),
+      payments: payments.slice(0, 20).map((payment: any) => ({ id: payment.id, name: payment.name ?? payment.title, active: payment.active ?? payment.enabled ?? payment.is_active, description: String(payment.description ?? '').slice(0, 1000) })),
+    };
+  }
   async validate(c: YouCanCredentials) { this.validateConfig(c); if (c.accessToken) await this.getStore(c); }
 
   async sync(c: YouCanCredentials, storeId: string) {

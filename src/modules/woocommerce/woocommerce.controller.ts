@@ -19,6 +19,7 @@ import { CredentialEncryptionService } from '../../common/security/credential-en
 import { WooCommerceService, WooCredentials } from './services/woocommerce.service';
 import { PlanUsageService } from '../auth/plan-usage.service';
 import { CommerceNotificationService, type CommerceOrderEvent } from '../stores/commerce-notification.service';
+import { IntegrationProviderRegistry } from '../../commerce/integration-provider.registry';
 
 @Controller('woocommerce')
 export class WooCommerceController {
@@ -29,6 +30,7 @@ export class WooCommerceController {
     private readonly encryption: CredentialEncryptionService,
     private readonly planUsage: PlanUsageService,
     private readonly notifications: CommerceNotificationService,
+    private readonly providers: IntegrationProviderRegistry,
   ) {}
 
   @Post(':storeId/connect')
@@ -38,16 +40,21 @@ export class WooCommerceController {
     const store = await this.stores.getIntegrationConnection(storeId, 'woocommerce');
     const settings = this.credentials(store);
     settings.webhookSecret ||= randomBytes(32).toString('hex');
-    await this.woo.validate(settings);
-    const imported = await this.woo.sync(settings, storeId);
-    const webhooks = await this.woo.ensureWebhooks(settings, storeId);
+    const provider = this.providers.get('woocommerce');
+    const connection = { storeId, credentials: settings };
+    await provider.validate(settings);
+    const profile = await provider.getStoreProfile(connection);
+    const imported = await provider.sync(connection);
+    const webhooks = await provider.registerWebhooks(connection);
     await this.stores.updateIntegrationCredentials(storeId, 'woocommerce', {
       ...settings,
       connected: true,
       importedProducts: imported.products,
       importedOrders: imported.orders,
       lastSyncAt: new Date().toISOString(),
+      storeDomain: profile.domain,
     });
+    await this.stores.updateImportedProfile(storeId, profile);
     return { ...imported, webhooks, connected: true };
   }
 
@@ -57,8 +64,11 @@ export class WooCommerceController {
     await this.planUsage.assertCurrentPlanActive();
     const store = await this.stores.getIntegrationConnection(storeId, 'woocommerce');
     const settings = this.credentials(store);
-    const imported = await this.woo.sync(settings, storeId);
-    await this.woo.ensureWebhooks(settings, storeId);
+    const provider = this.providers.get('woocommerce');
+    const connection = { storeId, credentials: settings };
+    const imported = await provider.sync(connection);
+    const profile = await provider.getStoreProfile(connection);
+    await provider.registerWebhooks(connection);
     await this.stores.updateIntegrationCredentials(storeId, 'woocommerce', {
       ...settings,
       connected: true,
@@ -66,6 +76,7 @@ export class WooCommerceController {
       importedOrders: imported.orders,
       lastSyncAt: new Date().toISOString(),
     });
+    await this.stores.updateImportedProfile(storeId, profile);
     return imported;
   }
 

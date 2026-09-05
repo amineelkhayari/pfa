@@ -23,6 +23,46 @@ export class WooCommerceService {
 
   async validate(credentials: WooCredentials) { return this.request(credentials, 'system_status'); }
 
+  async getStoreProfile(credentials: WooCredentials) {
+    const siteUrl = this.normalizeSiteUrl(credentials.siteUrl);
+    let publicInfo: any = {};
+    try {
+      const response = await fetch(`${siteUrl}/wp-json`);
+      if (response.ok) publicInfo = await response.json();
+    } catch { /* The authenticated WooCommerce response below remains authoritative. */ }
+    const status: any = await this.validate(credentials);
+    const environment = status?.environment ?? {};
+    const settings = status?.settings ?? {};
+    return {
+      name: String(publicInfo?.name ?? new URL(siteUrl).hostname),
+      url: String(publicInfo?.url ?? environment?.site_url ?? siteUrl),
+      email: settings?.admin_email ?? environment?.admin_email ?? null,
+      phone: settings?.store_phone ?? null,
+      currency: settings?.currency ?? null,
+      timezone: settings?.timezone ?? null,
+      language: environment?.language ?? null,
+    };
+  }
+
+  async getStoreKnowledge(credentials: WooCredentials) {
+    const siteUrl = this.normalizeSiteUrl(credentials.siteUrl);
+    const [shipping, payments] = await Promise.all([
+      this.request(credentials, 'shipping/zones').catch(() => []),
+      this.request(credentials, 'payment_gateways').catch(() => []),
+    ]);
+    let pages: any[] = [];
+    try {
+      const response = await fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=100&_fields=id,slug,link,title,content`);
+      if (response.ok) pages = await response.json();
+    } catch { /* Policies can be configured manually when WordPress pages are private. */ }
+    const policyPattern = /privacy|terms|refund|return|shipping|delivery|confidentialit|condition|remboursement|livraison/i;
+    return {
+      policies: pages.filter(page => policyPattern.test(`${page.slug} ${page.title?.rendered ?? ''}`)).slice(0, 10).map(page => ({ type: page.slug, title: page.title?.rendered, content: String(page.content?.rendered ?? '').slice(0, 4000), url: page.link })),
+      shipping: Array.isArray(shipping) ? shipping.slice(0, 20).map(zone => ({ id: zone.id, name: zone.name, order: zone.order })) : [],
+      payments: Array.isArray(payments) ? payments.filter(item => item.enabled).slice(0, 20).map(item => ({ id: item.id, title: item.title, description: String(item.description ?? '').slice(0, 1000) })) : [],
+    };
+  }
+
   async sync(credentials: WooCredentials, storeId: string) {
     const [products, orders] = await Promise.all([this.all(credentials, 'products'), this.all(credentials, 'orders')]);
     const productEntities = products.map((product: any) => ({

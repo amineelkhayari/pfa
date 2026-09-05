@@ -5,17 +5,17 @@ import { StoreStatus } from '../enum/store-status.enum';
 import { Platform } from '../enum/platform.enum';
 
 export class CreateStoreDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'Store display name',
     example: 'My Shopify Store',
     maxLength: 150,
   })
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @MaxLength(150)
-  name: string;
+  name?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'E-commerce platform/provider',
     enum: Platform,
     example: Platform.SHOPIFY,
@@ -37,9 +37,9 @@ export class CreateStoreDto {
     description: 'Store email',
     example: 'store@example.com',
   })
+  @IsOptional()
   @IsEmail()
-  @IsNotEmpty()
-  email: string;
+  email?: string;
 
   @ApiPropertyOptional({
     description: 'Store phone number',

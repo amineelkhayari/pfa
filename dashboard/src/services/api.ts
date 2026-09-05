@@ -197,10 +197,10 @@ export interface Store {
 
 export interface StorePayload {
   sessionId: string;
-  name: string;
+  name?: string;
   provider: Store['provider'];
   ownerName?: string;
-  email: string;
+  email?: string;
   phone?: string;
   language?: string;
   timezone?: string;
