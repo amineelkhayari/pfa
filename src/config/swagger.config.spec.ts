@@ -10,13 +10,10 @@ import {
 import type { OpenAPIObject } from '@nestjs/swagger';
 
 describe('createSwaggerConfig', () => {
-  // Regression test for issue #104: Swagger UI returned "Unauthorized" because the
-  // X-API-Key scheme was defined but never applied — no operation declared a security
-  // requirement, so Swagger UI never sent the key. The fix applies it globally.
-  it('applies the X-API-Key security scheme as a global requirement', () => {
+  it('does not advertise the removed X-API-Key authentication scheme', () => {
     const config = createSwaggerConfig();
-
-    expect(config.security).toContainEqual({ 'X-API-Key': [] });
+    expect(config.components?.securitySchemes?.['X-API-Key']).toBeUndefined();
+    expect(config.security).not.toContainEqual({ 'X-API-Key': [] });
   });
 
   it('defines account JWT authentication as an alternative global requirement', () => {
@@ -28,7 +25,6 @@ describe('createSwaggerConfig', () => {
       bearerFormat: 'JWT',
     });
     expect(config.security).toContainEqual({ [ACCOUNT_JWT_SECURITY_SCHEME]: [] });
-    expect(config.security).toContainEqual({ 'X-API-Key': [] });
   });
 
   it('defines the METRICS_TOKEN bearer scheme without applying it globally', () => {
@@ -108,6 +104,7 @@ describe('PUBLIC_PATHS drift guard', () => {
     'src/modules/shopify/controllers/shopify.controller.ts',
     'src/modules/shopify/controllers/shopify.webhook.controller.ts',
     'src/modules/woocommerce/woocommerce.controller.ts',
+    'src/modules/youcan/youcan.controller.ts',
   ];
 
   function listTsFiles(dir: string, out: string[] = []): string[] {

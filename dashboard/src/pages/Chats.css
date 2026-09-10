@@ -834,6 +834,36 @@
   color: var(--primary);
 }
 
+.chats-page .button-message-preview {
+  grid-column: 1 / -1;
+  padding: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-light);
+}
+
+.chats-page .button-message-preview p {
+  margin: 0 0 0.55rem;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
+
+.chats-page .button-message-preview > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chats-page .button-message-preview span {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 .chats-page .order-button-preview {
   display: flex;
   align-items: center;

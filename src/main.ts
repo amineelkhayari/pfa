@@ -28,7 +28,7 @@ import {
   isApiKeyPepperMissingInProduction,
 } from './config/bootstrap-security';
 import { BullBoardAuthMiddleware } from './common/security/bull-board-auth.middleware';
-import { AuthService } from './modules/auth/auth.service';
+import { UserAuthService } from './modules/auth/user-auth.service';
 import { AuditService } from './modules/audit/audit.service';
 import { Request, Response, NextFunction, json, urlencoded } from 'express';
 import { randomBytes } from 'crypto';
@@ -316,10 +316,10 @@ async function bootstrap() {
   // Protect the Bull Board queue UI (/api/admin/queues). It is mounted by
   // @bull-board/nestjs as raw Express middleware that the global ApiKeyGuard
   // does not cover; registering this before app.listen() ensures it runs ahead
-  // of the Bull Board router. Requires a valid ADMIN API key. The middleware also
+  // of the Bull Board router. Requires a valid administrator account JWT. The middleware also
   // writes the audit trail for this mount (auth failures + queue mutations).
   const bullBoardAuth = new BullBoardAuthMiddleware(
-    app.get(AuthService),
+    app.get(UserAuthService),
     app.get(ConfigService),
     app.get(AuditService),
   );

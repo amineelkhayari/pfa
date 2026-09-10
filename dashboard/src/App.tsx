@@ -20,7 +20,6 @@ const Chats = lazy(() => import('./pages/Chats').then(m => ({ default: m.Chats }
 const Webhooks = lazy(() => import('./pages/Webhooks').then(m => ({ default: m.Webhooks })));
 const Templates = lazy(() => import('./pages/Templates').then(m => ({ default: m.Templates })));
 const Logs = lazy(() => import('./pages/Logs').then(m => ({ default: m.Logs })));
-const ApiKeys = lazy(() => import('./pages/ApiKeys').then(m => ({ default: m.ApiKeys })));
 const MessageTester = lazy(() => import('./pages/MessageTester').then(m => ({ default: m.MessageTester })));
 const Infrastructure = lazy(() => import('./pages/Infrastructure').then(m => ({ default: m.Infrastructure })));
 const Stores = lazy(() => import('./pages/Stores').then(m => ({ default: m.Stores })));
@@ -33,6 +32,7 @@ const AiSettings = lazy(() => import('./pages/AiSettings').then(m => ({ default:
 const AiTestChat = lazy(() => import('./pages/AiTestChat').then(m => ({ default: m.AiTestChat })));
 const Campaigns = lazy(() => import('./pages/Campaigns').then(m => ({ default: m.Campaigns })));
 const Contacts = lazy(() => import('./pages/Contacts').then(m => ({ default: m.Contacts })));
+const AutomationLogs = lazy(() => import('./pages/AutomationLogs').then(m => ({ default: m.AutomationLogs })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -139,7 +139,6 @@ function AppContent() {
               {role !== 'admin' && <Route path="webhooks" element={<Webhooks />} />}
               {role !== 'admin' && <Route path="templates" element={<Templates />} />}
               {role !== 'admin' && <Route path="campaigns" element={<Campaigns />} />}
-              {role === 'admin' && <Route path="api-keys" element={<ApiKeys />} />}
               <Route path="logs" element={<Logs />} />
               {role !== 'admin' && <Route path="message-tester" element={<MessageTester />} />}
               <Route path="account" element={<Account />} />
@@ -147,6 +146,7 @@ function AppContent() {
               {role === 'admin' && <Route path="admin/users" element={<AdminUsers />} />}
               {role === 'admin' && <Route path="admin/payments" element={<PaymentSettings />} />}
               {role === 'admin' && <Route path="admin/ai" element={<AiSettings />} />}
+              {role === 'admin' && <Route path="admin/automation-logs" element={<AutomationLogs />} />}
               {role === 'admin' && <Route path="infrastructure" element={<Infrastructure />} />}
               {role === 'admin' && <Route path="plugins" element={<Plugins />} />}
               <Route path="*" element={<Navigate to="/" replace />} />

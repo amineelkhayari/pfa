@@ -18,6 +18,18 @@ import { CommerceConversationService } from './services/commerce-conversation.se
 import { CommerceToolService } from './services/commerce-tool.service';
 import { AudioTranscriptionService } from './services/audio-transcription.service';
 import { CommerceCoreModule } from '../../commerce/commerce-core.module';
+import { CommerceVoiceService } from './services/commerce-voice.service';
+import { CommerceCartConversationService } from './services/commerce-cart-conversation.service';
+import { CommerceOrderActionService } from './services/commerce-order-action.service';
+import { CommerceAiToolExecutorService } from './services/commerce-ai-tool-executor.service';
+import { CommerceCatalogConversationService } from './services/commerce-catalog-conversation.service';
+import { CommerceAiOrderConversationService } from './services/commerce-ai-order-conversation.service';
+import { CommerceOrderRoutingService } from './services/commerce-order-routing.service';
+import { CommerceMessageIdempotencyService } from './services/commerce-message-idempotency.service';
+import { CommerceMessageReceipt } from '../stores/entities/commerce-message-receipt.entity';
+import { CommerceToolExecution } from '../stores/entities/commerce-tool-execution.entity';
+import { CommerceExecutionLogService } from './services/commerce-execution-log.service';
+import { AdminCommerceExecutionsController } from './controllers/admin-commerce-executions.controller';
 
 /** Provider-neutral customer conversation and order automation. */
 @Module({
@@ -29,10 +41,28 @@ import { CommerceCoreModule } from '../../commerce/commerce-core.module';
     MessageModule,
     BillingModule,
     StoreModule,
-    TypeOrmModule.forFeature([Store, Product, Order, OrderAiConversation, StoreOrderCart], 'data'),
+    TypeOrmModule.forFeature(
+      [Store, Product, Order, OrderAiConversation, StoreOrderCart, CommerceMessageReceipt, CommerceToolExecution],
+      'data',
+    ),
   ],
-  controllers: [AdminAiTestController, UserAiTestController],
-  providers: [CommerceConversationService, CommerceAiAgentService, CommerceToolService, AudioTranscriptionService, CredentialEncryptionService],
+  controllers: [AdminAiTestController, UserAiTestController, AdminCommerceExecutionsController],
+  providers: [
+    CommerceConversationService,
+    CommerceAiAgentService,
+    CommerceToolService,
+    CommerceCartConversationService,
+    CommerceOrderActionService,
+    CommerceAiToolExecutorService,
+    CommerceCatalogConversationService,
+    CommerceAiOrderConversationService,
+    CommerceOrderRoutingService,
+    CommerceMessageIdempotencyService,
+    CommerceExecutionLogService,
+    CommerceVoiceService,
+    AudioTranscriptionService,
+    CredentialEncryptionService,
+  ],
   exports: [CommerceConversationService, CommerceAiAgentService, CommerceToolService],
 })
 export class CommerceAutomationModule {}

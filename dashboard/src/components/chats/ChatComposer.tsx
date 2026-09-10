@@ -576,6 +576,17 @@ function ChatComposer({
                     + {t('common.add')}
                   </button>
                 )}
+                <div className="button-message-preview">
+                  <p>{messageInput.trim() || t('chats.buttonPreviewEmpty')}</p>
+                  <div>
+                    {pollOptions
+                      .map(option => option.trim())
+                      .filter(Boolean)
+                      .map((label, index) => (
+                        <span key={`${label}-${index}`}>{label}</span>
+                      ))}
+                  </div>
+                </div>
               </>
             ) : (
               <div className="order-button-preview">

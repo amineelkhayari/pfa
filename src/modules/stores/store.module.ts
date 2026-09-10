@@ -13,10 +13,14 @@ import { CredentialEncryptionService } from '../../common/security/credential-en
 import { OrderAiConversation } from './entities/order-ai-conversation.entity';
 import { Message } from '../message/entities/message.entity';
 import { CommerceNotificationService } from './commerce-notification.service';
+import { CommerceCoreModule } from '../../commerce/commerce-core.module';
+import { StoreIntegrationService } from './store-integration.service';
+import { CommerceWebhookService } from './commerce-webhook.service';
 
 @Module({
   imports: [
     //ShopifyModule,
+    CommerceCoreModule,
     MessageModule,
     TypeOrmModule.forFeature(
       [
@@ -32,7 +36,7 @@ import { CommerceNotificationService } from './commerce-notification.service';
     ),
   ],
   controllers: [StoreController],
-  providers: [StoreService, CredentialEncryptionService, CommerceNotificationService],
-  exports: [StoreService, CommerceNotificationService],
+  providers: [StoreService, StoreIntegrationService, CommerceWebhookService, CredentialEncryptionService, CommerceNotificationService],
+  exports: [StoreService, StoreIntegrationService, CommerceWebhookService, CommerceNotificationService],
 })
 export class StoreModule {}

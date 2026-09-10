@@ -4,17 +4,18 @@ import type { Request, Response } from 'express';
 import { Public, RequireRole } from '../auth/decorators/auth.decorators';
 import { ApiKeyRole } from '../auth/entities/api-key.entity';
 import { PlanUsageService } from '../auth/plan-usage.service';
-import { MessageService } from '../message/message.service';
-import { CommerceNotificationService, CommerceOrderEvent } from '../stores/commerce-notification.service';
+import { CommerceNotificationService } from '../stores/commerce-notification.service';
+import { CommerceWebhookService } from '../stores/commerce-webhook.service';
 import { StoreService } from '../stores/store.service';
 import { CredentialEncryptionService } from '../../common/security/credential-encryption.service';
 import { YouCanOAuthService } from './services/youcan-oauth.service';
 import { YouCanCredentials, YouCanService } from './services/youcan.service';
 import { IntegrationProviderRegistry } from '../../commerce/integration-provider.registry';
+import { StoreIntegrationService } from '../stores/store-integration.service';
 
 @Controller('youcan')
 export class YouCanController {
-  constructor(private readonly stores: StoreService, private readonly youcan: YouCanService, private readonly oauth: YouCanOAuthService, private readonly encryption: CredentialEncryptionService, private readonly plans: PlanUsageService, private readonly config: ConfigService, private readonly messages: MessageService, private readonly notifications: CommerceNotificationService, private readonly providers: IntegrationProviderRegistry) {}
+  constructor(private readonly stores: StoreService, private readonly youcan: YouCanService, private readonly oauth: YouCanOAuthService, private readonly encryption: CredentialEncryptionService, private readonly plans: PlanUsageService, private readonly config: ConfigService, private readonly notifications: CommerceNotificationService, private readonly providers: IntegrationProviderRegistry, private readonly integrations: StoreIntegrationService, private readonly commerceWebhooks: CommerceWebhookService) {}
 
   @Get('oauth/install')
   async install(@Query('storeId') storeId: string, @Res() response: Response) {
@@ -52,38 +53,19 @@ export class YouCanController {
       const reason = error instanceof Error ? error.message : 'Unknown error';
       throw new BadRequestException(`YouCan issued a token, but Store Admin API authentication failed: ${reason}. Confirm these are YouCan Shop Partner App OAuth credentials, not YouCan Pay credentials.`);
     }
-    const provider = this.providers.get('youcan');
-    const connection = { storeId, credentials: connected };
-    await provider.validate(connected);
-    const importedProfile = await provider.getStoreProfile(connection);
-    const imported = await provider.sync(connection);
-    let webhooks = 0;
-    let webhookError: string | null = null;
-    try { webhooks = await provider.registerWebhooks(connection); }
-    catch (error) { webhookError = error instanceof Error ? error.message : 'YouCan webhook registration failed.'; }
-    await this.stores.updateIntegrationCredentials(storeId, 'youcan', { ...connected, connected: true, storeDomain: profile?.domain ?? profile?.slug ?? null, importedProducts: imported.products, importedOrders: imported.orders, lastSyncAt: new Date().toISOString(), registeredWebhooks: webhooks, webhookRegistrationError: webhookError });
-    await this.stores.updateImportedProfile(storeId, importedProfile);
+    const synchronized = await this.integrations.synchronize(storeId, 'youcan', {
+      credentials: connected,
+      tolerateWebhookFailure: true,
+    });
     const redirect = this.config.get<string>('commerce.afterAuthRedirectUrl', '/stores');
-    return response.redirect(`${redirect}${redirect.includes('?') ? '&' : '?'}youcan=connected&storeId=${encodeURIComponent(storeId)}&products=${imported.products}&orders=${imported.orders}&webhooks=${webhookError ? 'warning' : 'connected'}`);
+    return response.redirect(`${redirect}${redirect.includes('?') ? '&' : '?'}youcan=connected&storeId=${encodeURIComponent(storeId)}&products=${synchronized.products}&orders=${synchronized.orders}&webhooks=${synchronized.webhookError ? 'warning' : 'connected'}`);
   }
 
   @Post(':storeId/sync')
   @RequireRole(ApiKeyRole.OPERATOR)
   async sync(@Param('storeId', ParseUUIDPipe) storeId: string) {
     await this.plans.assertCurrentPlanActive();
-    const store = await this.stores.getIntegrationConnection(storeId, 'youcan'); const credentials = this.credentials(store);
-    const provider = this.providers.get('youcan');
-    const connection = { storeId, credentials };
-    const imported = await provider.sync(connection);
-    const profile = await provider.getStoreProfile(connection);
-    let webhooks = 0;
-    let webhookError: string | null = null;
-    try { webhooks = await provider.registerWebhooks(connection); }
-    catch (error) { webhookError = error instanceof Error ? error.message : 'YouCan webhook registration failed.'; }
-    const lastSyncAt = new Date().toISOString();
-    await this.stores.updateIntegrationCredentials(storeId, 'youcan', { ...credentials, connected: true, importedProducts: imported.products, importedOrders: imported.orders, lastSyncAt, registeredWebhooks: webhooks, webhookRegistrationError: webhookError });
-    await this.stores.updateImportedProfile(storeId, profile);
-    return { storeId, ...imported, lastSyncAt, webhooks, webhookError };
+    return this.integrations.synchronize(storeId, 'youcan', { tolerateWebhookFailure: true });
   }
 
   @Post(':storeId/webhooks/register')
@@ -118,21 +100,15 @@ export class YouCanController {
     const store = await this.stores.findOneById(storeId); const credentials = this.credentials(store);
     if (!req.rawBody || !this.youcan.verifyWebhook(req.rawBody, signature, credentials.clientSecret)) throw new UnauthorizedException('Invalid YouCan webhook signature.');
     const event = String(headerEvent ?? payload?.event_name ?? payload?.event ?? payload?.type ?? '');
-    await this.stores.updateIntegrationCredentials(storeId, 'youcan', { ...credentials, lastWebhookAt: new Date().toISOString(), lastWebhookEvent: event });
+    await this.commerceWebhooks.recordActivity(storeId, 'youcan', credentials, event);
     if (event === 'app.uninstalled') { await this.stores.updateIntegrationCredentials(storeId, 'youcan', { ...credentials, accessToken: undefined, refreshToken: undefined, connected: false, lastWebhookAt: new Date().toISOString() }); return { received: true }; }
     if (!event.startsWith('order.')) return { received: true, ignored: true };
     const source = payload?.data ?? payload; const before = source?.id ? await this.youcan.findOrder(storeId, String(source.id)) : null; const order = await this.youcan.importOrder(payload, storeId);
     if (event === 'order.created') {
-      if ((credentials as any).automaticMessagesEnabled === false || (credentials as any).newOrderMessageEnabled === false || !order.phone) return { received: true, confirmation: 'skipped' };
-      if (!['not_sent', 'failed'].includes(order.confirmationStatus)) return { received: true, duplicate: true };
-      try { const defaultText = `Bonjour ${order.customerName ?? ''} 👋\n\nNous avons reçu votre commande ${order.orderNumber ?? ''}.\n\n${(order.lineItems ?? []).map(i => `• ${String(i.name ?? i.title ?? 'Produit')} × ${String(i.quantity ?? 1)}`).join('\n')}\n\nTotal: ${order.totalPrice} ${order.currency}\n\nRépondez 1 pour confirmer ou 2 pour annuler.`; const text = (credentials as any).newOrderMessageTemplate?.trim() ? this.notifications.renderTemplate((credentials as any).newOrderMessageTemplate, store, order) : defaultText; const sent = await this.messages.sendText(store.sessionId, { chatId: `${order.phone.replace(/\D/g, '')}@c.us`, text }); order.confirmationStatus = 'pending'; order.confirmationSentAt = new Date(); order.whatsappMessageId = sent.messageId; order.confirmationError = null; await this.youcan.saveOrder(order); }
-      catch (error) { order.confirmationStatus = 'failed'; order.confirmationError = error instanceof Error ? error.message : 'Message failed'; await this.youcan.saveOrder(order); throw error; }
-      return { received: true };
+      const confirmation = await this.notifications.sendNewOrderConfirmation(store, order, credentials as unknown as Record<string, any>);
+      return { received: true, confirmation };
     }
-    const events: CommerceOrderEvent[] = [];
-    if (event === 'order.paid' || (before?.financialStatus !== 'paid' && order.financialStatus === 'paid')) events.push('paid');
-    if (before?.status !== 'cancelled' && order.status === 'cancelled') events.push('cancelled');
-    if (before?.fulfillmentStatus !== order.fulfillmentStatus && ['shipped', 'fulfilled', 'delivered'].includes(String(order.fulfillmentStatus))) events.push('shipped');
+    const events = this.commerceWebhooks.detectOrderEvents(before, order, event);
     for (const item of events) await this.notifications.notify(store, order, item, credentials as any);
     return { received: true, events };
   }

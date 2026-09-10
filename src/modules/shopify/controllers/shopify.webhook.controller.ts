@@ -3,7 +3,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import type { Request } from 'express';
 import { Repository } from 'typeorm';
 import { Public } from '../../auth/decorators/auth.decorators';
-import { MessageService } from '../../message/message.service';
 import { StoreService } from '../../stores/store.service';
 import { Order } from '../../stores/entities/order.entity';
 import { CredentialEncryptionService } from '../../../common/security/credential-encryption.service';
@@ -11,7 +10,8 @@ import { ShopifyOAuthService } from '../services/shopify-oauth.service';
 import { ShopifyService } from '../services/shopify.service';
 import { hasShopifyWhatsAppConfirmation, type ShopifyOrderPayload } from '../services/shopify.service';
 import { ShopifyWebhookDelivery } from '../entities/shopify-webhook-delivery.entity';
-import { CommerceNotificationService, type CommerceOrderEvent } from '../../stores/commerce-notification.service';
+import { CommerceNotificationService } from '../../stores/commerce-notification.service';
+import { CommerceWebhookService } from '../../stores/commerce-webhook.service';
 
 @Controller('shopify/webhooks')
 @Public()
@@ -20,9 +20,9 @@ export class ShopifyWebhookController {
     private readonly stores: StoreService,
     private readonly shopify: ShopifyService,
     private readonly oauth: ShopifyOAuthService,
-    private readonly messages: MessageService,
     private readonly encryption: CredentialEncryptionService,
     private readonly notifications: CommerceNotificationService,
+    private readonly commerceWebhooks: CommerceWebhookService,
     @InjectRepository(ShopifyWebhookDelivery, 'data')
     private readonly deliveries: Repository<ShopifyWebhookDelivery>,
     @InjectRepository(Order, 'data')
@@ -37,20 +37,16 @@ export class ShopifyWebhookController {
     @Headers('x-shopify-webhook-id') webhookId?: string,
   ) {
     const context = await this.verifiedStore(req.rawBody, shopDomain, hmac);
-    await this.stores.updateIntegrationCredentials(context.store.id, 'shopify', { ...context.settings, lastWebhookAt: new Date().toISOString() });
+    await this.commerceWebhooks.recordActivity(context.store.id, 'shopify', context.settings, 'orders/updated');
     if (!webhookId) throw new UnauthorizedException('Missing Shopify webhook id.');
     if (await this.deliveries.findOneBy({ webhookId })) return { received: true, duplicate: true };
     try {
       await this.deliveries.save({ webhookId, storeId: context.store.id, topic: 'orders/updated', status: 'processing', attempts: 1 });
     } catch { return { received: true, duplicate: true }; }
     try {
-      const before = await this.orders.findOneBy({ storeId: context.store.id, shopifyOrderId: String(payload.id) });
+      const before = await this.orders.findOneBy({ storeId: context.store.id, externalOrderId: String(payload.id) });
       const order = await this.shopify.importOrderPayload(payload, context.store.id);
-      const events: CommerceOrderEvent[] = [];
-      if (before?.financialStatus !== 'paid' && order.financialStatus === 'paid') events.push('paid');
-      if (before?.fulfillmentStatus !== 'partial' && order.fulfillmentStatus === 'partial') events.push('partiallyFulfilled');
-      if (before?.fulfillmentStatus !== 'fulfilled' && order.fulfillmentStatus === 'fulfilled') events.push('shipped');
-      if (before?.status !== 'cancelled' && order.status === 'cancelled') events.push('cancelled');
+      const events = this.commerceWebhooks.detectOrderEvents(before, order);
       for (const event of events) await this.notifications.notify(context.store, order, event, context.settings);
       await this.deliveries.update({ webhookId }, { status: 'completed', error: null });
       return { received: true, events };
@@ -70,7 +66,7 @@ export class ShopifyWebhookController {
     @Headers('x-shopify-webhook-id') webhookId?: string,
   ) {
     const context = await this.verifiedStore(req.rawBody, shopDomain, hmac);
-    await this.stores.updateIntegrationCredentials(context.store.id, 'shopify', { ...context.settings, lastWebhookAt: new Date().toISOString() });
+    await this.commerceWebhooks.recordActivity(context.store.id, 'shopify', context.settings, 'orders/create');
     if (!webhookId) throw new UnauthorizedException('Missing Shopify webhook id.');
     const previous = await this.deliveries.findOneBy({ webhookId });
     if (previous?.status !== 'failed' && previous) return { received: true, duplicate: true };
@@ -95,11 +91,6 @@ export class ShopifyWebhookController {
 
     try {
       const order = await this.shopify.importOrderPayload(payload, context.store.id);
-      if (context.settings.automaticMessagesEnabled === false || context.settings.newOrderMessageEnabled === false) {
-        await this.deliveries.update({ webhookId }, { status: 'completed', error: null });
-        return { received: true, confirmation: 'skipped_automation_disabled' };
-      }
-      if (!order.phone) throw new Error('Order has no customer phone number.');
       if (hasShopifyWhatsAppConfirmation(order.tags)) {
         order.status = 'confirmed';
         order.confirmationStatus = 'confirmed';
@@ -109,40 +100,13 @@ export class ShopifyWebhookController {
         return { received: true, alreadyConfirmedByCustomer: true };
       }
 
-      // One Shopify order can contain many line items and can also arrive through simultaneous
-      // webhook deliveries. Atomically claim the ORDER before sending so neither case can produce
-      // more than one initial confirmation message.
-      const claim = await this.orders
-        .createQueryBuilder()
-        .update(Order)
-        .set({ confirmationStatus: 'sending', confirmationError: null })
-        .where('id = :id', { id: order.id })
-        .andWhere('confirmationStatus IN (:...claimable)', { claimable: ['not_sent', 'failed'] })
-        .execute();
-      if (!claim.affected) {
-        await this.deliveries.update({ webhookId }, { status: 'completed', error: null });
-        return { received: true, duplicateOrder: true };
-      }
-
-      const configuredTemplate = context.settings.newOrderMessageTemplate;
-      const text = typeof configuredTemplate === 'string' && configuredTemplate.trim()
-        ? this.notifications.renderTemplate(configuredTemplate, context.store, order)
-        : this.confirmationMessage(order);
-      const result = await this.messages.sendText(context.store.sessionId, {
-        chatId: `${order.phone.replace(/\D/g, '')}@c.us`,
-        text,
-      });
-      order.confirmationStatus = 'pending';
-      order.confirmationSentAt = new Date();
-      order.whatsappMessageId = result.messageId;
-      order.confirmationError = null;
-      await this.orders.save(order);
+      const confirmation = await this.notifications.sendNewOrderConfirmation(context.store, order, context.settings);
       await this.deliveries.update({ webhookId }, { status: 'completed', error: null });
-      return { received: true };
+      return { received: true, confirmation };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Order confirmation failed.';
       await this.deliveries.update({ webhookId }, { status: 'failed', error: message });
-      const order = await this.orders.findOneBy({ storeId: context.store.id, shopifyOrderId: String(payload.id) });
+      const order = await this.orders.findOneBy({ storeId: context.store.id, externalOrderId: String(payload.id) });
       if (order) {
         order.confirmationStatus = 'failed';
         order.confirmationError = message;
@@ -182,10 +146,4 @@ export class ShopifyWebhookController {
     throw new UnauthorizedException('Invalid Shopify webhook signature.');
   }
 
-  private confirmationMessage(order: Order): string {
-    const items = (order.lineItems ?? [])
-      .map(item => `• ${String(item.name ?? item.title ?? 'Product')} × ${String(item.quantity ?? 1)}`)
-      .join('\n');
-    return `Bonjour ${order.customerName ?? ''} 👋\n\nNous avons reçu votre commande ${order.orderNumber ?? ''}.\n\n${items}\n\nTotal: ${order.totalPrice} ${order.currency}\n\nRépondez 1 pour confirmer ou 2 pour annuler.`;
-  }
 }

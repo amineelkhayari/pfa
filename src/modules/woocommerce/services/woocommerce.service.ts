@@ -5,7 +5,13 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { Product } from '../../stores/entities/product.entity';
 import { Order } from '../../stores/entities/order.entity';
 
-export interface WooCredentials { siteUrl: string; consumerKey: string; consumerSecret: string; webhookSecret?: string; webhookBaseUrl?: string }
+export interface WooCredentials {
+  siteUrl: string;
+  consumerKey: string;
+  consumerSecret: string;
+  webhookSecret?: string;
+  webhookBaseUrl?: string;
+}
 
 @Injectable()
 export class WooCommerceService {
@@ -16,12 +22,18 @@ export class WooCommerceService {
 
   normalizeSiteUrl(value: string): string {
     let url: URL;
-    try { url = new URL(value); } catch { throw new BadRequestException('WooCommerce site URL is invalid.'); }
+    try {
+      url = new URL(value);
+    } catch {
+      throw new BadRequestException('WooCommerce site URL is invalid.');
+    }
     if (url.protocol !== 'https:') throw new BadRequestException('WooCommerce site URL must use HTTPS.');
     return url.origin + url.pathname.replace(/\/$/, '');
   }
 
-  async validate(credentials: WooCredentials) { return this.request(credentials, 'system_status'); }
+  async validate(credentials: WooCredentials) {
+    return this.request(credentials, 'system_status');
+  }
 
   async getStoreProfile(credentials: WooCredentials) {
     const siteUrl = this.normalizeSiteUrl(credentials.siteUrl);
@@ -29,7 +41,9 @@ export class WooCommerceService {
     try {
       const response = await fetch(`${siteUrl}/wp-json`);
       if (response.ok) publicInfo = await response.json();
-    } catch { /* The authenticated WooCommerce response below remains authoritative. */ }
+    } catch {
+      /* The authenticated WooCommerce response below remains authoritative. */
+    }
     const status: any = await this.validate(credentials);
     const environment = status?.environment ?? {};
     const settings = status?.settings ?? {};
@@ -54,68 +68,139 @@ export class WooCommerceService {
     try {
       const response = await fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=100&_fields=id,slug,link,title,content`);
       if (response.ok) pages = await response.json();
-    } catch { /* Policies can be configured manually when WordPress pages are private. */ }
-    const policyPattern = /privacy|terms|refund|return|shipping|delivery|confidentialit|condition|remboursement|livraison/i;
+    } catch {
+      /* Policies can be configured manually when WordPress pages are private. */
+    }
+    const policyPattern =
+      /privacy|terms|refund|return|shipping|delivery|confidentialit|condition|remboursement|livraison/i;
     return {
-      policies: pages.filter(page => policyPattern.test(`${page.slug} ${page.title?.rendered ?? ''}`)).slice(0, 10).map(page => ({ type: page.slug, title: page.title?.rendered, content: String(page.content?.rendered ?? '').slice(0, 4000), url: page.link })),
-      shipping: Array.isArray(shipping) ? shipping.slice(0, 20).map(zone => ({ id: zone.id, name: zone.name, order: zone.order })) : [],
-      payments: Array.isArray(payments) ? payments.filter(item => item.enabled).slice(0, 20).map(item => ({ id: item.id, title: item.title, description: String(item.description ?? '').slice(0, 1000) })) : [],
+      policies: pages
+        .filter(page => policyPattern.test(`${page.slug} ${page.title?.rendered ?? ''}`))
+        .slice(0, 10)
+        .map(page => ({
+          type: page.slug,
+          title: page.title?.rendered,
+          content: String(page.content?.rendered ?? '').slice(0, 4000),
+          url: page.link,
+        })),
+      shipping: Array.isArray(shipping)
+        ? shipping.slice(0, 20).map(zone => ({ id: zone.id, name: zone.name, order: zone.order }))
+        : [],
+      payments: Array.isArray(payments)
+        ? payments
+            .filter(item => item.enabled)
+            .slice(0, 20)
+            .map(item => ({
+              id: item.id,
+              title: item.title,
+              description: String(item.description ?? '').slice(0, 1000),
+            }))
+        : [],
     };
   }
 
   async sync(credentials: WooCredentials, storeId: string) {
     const [products, orders] = await Promise.all([this.all(credentials, 'products'), this.all(credentials, 'orders')]);
     const productEntities = products.map((product: any) => ({
-      storeId, shopifyProductId: String(product.id), title: product.name ?? 'Untitled',
-      description: product.description || product.short_description || null, handle: product.slug ?? null,
-      productType: product.type ?? null, vendor: null, status: product.status === 'publish' ? 'active' : product.status,
+      storeId,
+      externalProductId: String(product.id),
+      title: product.name ?? 'Untitled',
+      description: product.description || product.short_description || null,
+      handle: product.slug ?? null,
+      productType: product.type ?? null,
+      vendor: null,
+      status: product.status === 'publish' ? 'active' : product.status,
       tags: Array.isArray(product.tags) ? product.tags.map((tag: any) => String(tag.name)).filter(Boolean) : null,
       imageUrl: product.images?.[0]?.src ?? null,
       variants: product.variations?.map((id: unknown) => ({ id, title: `Variation ${id}` })) ?? [],
       price: Number.parseFloat(product.price ?? product.regular_price ?? '0') || 0,
-      shopifyCreatedAt: product.date_created_gmt ? new Date(`${product.date_created_gmt}Z`) : new Date(),
-      shopifyUpdatedAt: product.date_modified_gmt ? new Date(`${product.date_modified_gmt}Z`) : new Date(),
+      externalCreatedAt: product.date_created_gmt ? new Date(`${product.date_created_gmt}Z`) : new Date(),
+      externalUpdatedAt: product.date_modified_gmt ? new Date(`${product.date_modified_gmt}Z`) : new Date(),
     }));
-    if (productEntities.length) await this.products.upsert(productEntities as any, ['storeId', 'shopifyProductId']);
+    if (productEntities.length) await this.products.upsert(productEntities as any, ['storeId', 'externalProductId']);
     const orderEntities = orders.map((order: any) => this.mapOrder(order, storeId));
-    if (orderEntities.length) await this.orders.upsert(orderEntities as any, ['storeId', 'shopifyOrderId']);
+    if (orderEntities.length) await this.orders.upsert(orderEntities as any, ['storeId', 'externalOrderId']);
     return { products: productEntities.length, orders: orderEntities.length };
   }
 
   async importOrder(payload: any, storeId: string): Promise<Order> {
     const value = this.mapOrder(payload, storeId);
-    await this.orders.upsert(value as any, ['storeId', 'shopifyOrderId']);
-    const saved = await this.orders.findOneBy({ storeId, shopifyOrderId: String(payload.id) });
+    await this.orders.upsert(value as any, ['storeId', 'externalOrderId']);
+    const saved = await this.orders.findOneBy({ storeId, externalOrderId: String(payload.id) });
     if (!saved) throw new InternalServerErrorException('Imported WooCommerce order could not be loaded.');
     return saved;
   }
 
-  saveOrder(order: Order): Promise<Order> { return this.orders.save(order); }
-  findOrder(storeId: string, externalId: string): Promise<Order | null> { return this.orders.findOneBy({ storeId, shopifyOrderId: externalId }); }
+  saveOrder(order: Order): Promise<Order> {
+    return this.orders.save(order);
+  }
+  findOrder(storeId: string, externalId: string): Promise<Order | null> {
+    return this.orders.findOneBy({ storeId, externalOrderId: externalId });
+  }
 
   async ensureWebhooks(credentials: WooCredentials, storeId: string): Promise<number> {
     if (!credentials.webhookBaseUrl || !credentials.webhookSecret) return 0;
     const existing = await this.all(credentials, 'webhooks');
     let created = 0;
-    for (const hook of [{ topic: 'order.created', path: 'order-created', name: 'OpenWA order confirmation' }, { topic: 'order.updated', path: 'order-updated', name: 'OpenWA order lifecycle' }]) {
+    for (const hook of [
+      { topic: 'order.created', path: 'order-created', name: 'OpenWA order confirmation' },
+      { topic: 'order.updated', path: 'order-updated', name: 'OpenWA order lifecycle' },
+    ]) {
       const deliveryUrl = `${credentials.webhookBaseUrl.replace(/\/$/, '')}/api/woocommerce/webhooks/${storeId}/${hook.path}`;
-      if (existing.some((item: any) => item.topic === hook.topic && item.delivery_url === deliveryUrl && item.status === 'active')) continue;
-      await this.request(credentials, 'webhooks', { method: 'POST', body: JSON.stringify({ name: hook.name, topic: hook.topic, delivery_url: deliveryUrl, secret: credentials.webhookSecret, status: 'active' }) });
+      if (
+        existing.some(
+          (item: any) => item.topic === hook.topic && item.delivery_url === deliveryUrl && item.status === 'active',
+        )
+      )
+        continue;
+      await this.request(credentials, 'webhooks', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: hook.name,
+          topic: hook.topic,
+          delivery_url: deliveryUrl,
+          secret: credentials.webhookSecret,
+          status: 'active',
+        }),
+      });
       created += 1;
     }
     return created;
   }
 
-  async confirmOrder(credentials: WooCredentials, externalId: string) { await this.request(credentials, `orders/${externalId}`, { method: 'PUT', body: JSON.stringify({ status: 'processing' }) }); }
-  async cancelOrder(credentials: WooCredentials, externalId: string) { await this.request(credentials, `orders/${externalId}`, { method: 'PUT', body: JSON.stringify({ status: 'cancelled' }) }); }
+  async confirmOrder(credentials: WooCredentials, externalId: string) {
+    await this.request(credentials, `orders/${externalId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: 'processing' }),
+    });
+  }
+  async cancelOrder(credentials: WooCredentials, externalId: string) {
+    await this.request(credentials, `orders/${externalId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: 'cancelled' }),
+    });
+  }
   async updateOrderShippingAddress(credentials: WooCredentials, externalId: string, address: Record<string, unknown>) {
-    await this.request(credentials, `orders/${externalId}`, { method: 'PUT', body: JSON.stringify({ shipping: address }) });
+    await this.request(credentials, `orders/${externalId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ shipping: address }),
+    });
   }
 
-  async createConfirmedChatOrder(credentials: WooCredentials, input: {
-    productId: string; variationId?: string | null; quantity: number; phone: string;
-    customerName: string; address1: string; city: string; postalCode?: string | null; country: string;
-  }): Promise<{ orderId: string; orderName: string | null }> {
+  async createConfirmedChatOrder(
+    credentials: WooCredentials,
+    input: {
+      productId: string;
+      variationId?: string | null;
+      quantity: number;
+      phone: string;
+      customerName: string;
+      address1: string;
+      city: string;
+      postalCode?: string | null;
+      country: string;
+    },
+  ): Promise<{ orderId: string; orderName: string | null }> {
     const [firstName, ...lastParts] = input.customerName.trim().split(/\s+/);
     const address = {
       first_name: firstName || input.customerName,
@@ -129,14 +214,19 @@ export class WooCommerceService {
     const payload = await this.request(credentials, 'orders', {
       method: 'POST',
       body: JSON.stringify({
-        status: 'processing',
+        // The customer confirmed the order in WhatsApp, but no payment was
+        // collected there. Keep it on hold until the merchant records payment.
+        status: 'on-hold',
+        set_paid: false,
         billing: address,
         shipping: address,
-        line_items: [{
-          product_id: Number(input.productId),
-          quantity: input.quantity,
-          ...(input.variationId ? { variation_id: Number(input.variationId) } : {}),
-        }],
+        line_items: [
+          {
+            product_id: Number(input.productId),
+            quantity: input.quantity,
+            ...(input.variationId ? { variation_id: Number(input.variationId) } : {}),
+          },
+        ],
         meta_data: [{ key: '_openwa_source', value: 'whatsapp-confirmed' }],
       }),
     });
@@ -147,7 +237,8 @@ export class WooCommerceService {
   verifyWebhook(rawBody: Buffer, signature: string | undefined, secret: string): boolean {
     if (!signature) return false;
     const expected = createHmac('sha256', secret).update(rawBody).digest('base64');
-    const a = Buffer.from(expected); const b = Buffer.from(signature);
+    const a = Buffer.from(expected);
+    const b = Buffer.from(signature);
     return a.length === b.length && timingSafeEqual(a, b);
   }
 
@@ -156,29 +247,60 @@ export class WooCommerceService {
     for (let page = 1; page <= 20; page++) {
       const batch = await this.request(credentials, `${endpoint}?per_page=100&page=${page}`);
       if (!Array.isArray(batch)) throw new BadGatewayException(`WooCommerce ${endpoint} response is invalid.`);
-      result.push(...batch); if (batch.length < 100) break;
+      result.push(...batch);
+      if (batch.length < 100) break;
     }
     return result;
   }
 
   private async request(credentials: WooCredentials, endpoint: string, init: RequestInit = {}): Promise<any> {
     const siteUrl = this.normalizeSiteUrl(credentials.siteUrl);
-    if (!credentials.consumerKey || !credentials.consumerSecret) throw new BadRequestException('WooCommerce consumer key and secret are required.');
-    const response = await fetch(`${siteUrl}/wp-json/wc/v3/${endpoint}`, { ...init, headers: { Authorization: `Basic ${Buffer.from(`${credentials.consumerKey}:${credentials.consumerSecret}`).toString('base64')}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) } });
+    if (!credentials.consumerKey || !credentials.consumerSecret)
+      throw new BadRequestException('WooCommerce consumer key and secret are required.');
+    const response = await fetch(`${siteUrl}/wp-json/wc/v3/${endpoint}`, {
+      ...init,
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${credentials.consumerKey}:${credentials.consumerSecret}`).toString('base64')}`,
+        'Content-Type': 'application/json',
+        ...(init.headers ?? {}),
+      },
+    });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new BadGatewayException(`WooCommerce API ${response.status}: ${payload?.message ?? response.statusText}`);
+    if (!response.ok)
+      throw new BadGatewayException(`WooCommerce API ${response.status}: ${payload?.message ?? response.statusText}`);
     return payload;
   }
 
   private mapOrder(order: any, storeId: string) {
-    const shipping = order.shipping ?? {}; const billing = order.billing ?? {};
-    const customerName = [shipping.first_name || billing.first_name, shipping.last_name || billing.last_name].filter(Boolean).join(' ');
-    return { storeId, shopifyOrderId: String(order.id), orderNumber: order.number ? `#${order.number}` : String(order.id),
-      email: billing.email ?? null, phone: billing.phone ?? null, customerName: customerName || null,
-      totalPrice: Number.parseFloat(order.total ?? '0') || 0, currency: order.currency ?? 'USD',
-      financialStatus: order.date_paid ? 'paid' : 'pending', fulfillmentStatus: order.status ?? null,
-      lineItems: order.line_items ?? [], shippingAddress: shipping, customer: { id: order.customer_id, ...billing },
-      tags: ['woocommerce'], status: order.status === 'cancelled' ? 'cancelled' : 'open',
-      shopifyCreatedAt: order.date_created_gmt ? new Date(`${order.date_created_gmt}Z`) : new Date() };
+    const shipping = order.shipping ?? {};
+    const billing = order.billing ?? {};
+    const customerName = [shipping.first_name || billing.first_name, shipping.last_name || billing.last_name]
+      .filter(Boolean)
+      .join(' ');
+    const metadata = Array.isArray(order.meta_data) ? order.meta_data : [];
+    const createdByWhatsApp = metadata.some(
+      (entry: any) =>
+        String(entry?.key ?? '').toLowerCase() === '_openwa_source' &&
+        String(entry?.value ?? '').toLowerCase() === 'whatsapp-confirmed',
+    );
+    return {
+      storeId,
+      externalOrderId: String(order.id),
+      orderNumber: order.number ? `#${order.number}` : String(order.id),
+      email: billing.email ?? null,
+      phone: billing.phone ?? null,
+      customerName: customerName || null,
+      totalPrice: Number.parseFloat(order.total ?? '0') || 0,
+      currency: order.currency ?? 'USD',
+      financialStatus: order.date_paid ? 'paid' : 'pending',
+      fulfillmentStatus: order.status ?? null,
+      lineItems: order.line_items ?? [],
+      shippingAddress: shipping,
+      customer: { id: order.customer_id, ...billing },
+      tags: ['woocommerce', ...(createdByWhatsApp ? ['openwa:whatsapp-confirmed'] : [])],
+      status: createdByWhatsApp ? 'confirmed' : order.status === 'cancelled' ? 'cancelled' : 'open',
+      ...(createdByWhatsApp ? { confirmationStatus: 'confirmed' } : {}),
+      externalCreatedAt: order.date_created_gmt ? new Date(`${order.date_created_gmt}Z`) : new Date(),
+    };
   }
 }

@@ -15,6 +15,7 @@ import { getRequestUserScope } from '../../common/services/request-context';
 import { PlanUsageService } from '../auth/plan-usage.service';
 import { OrderAiConversation } from './entities/order-ai-conversation.entity';
 import { Message } from '../message/entities/message.entity';
+import { isSamePhone, normalizePhone, phoneToChatId } from '../../common/utils/phone.util';
 
 @Injectable()
 export class StoreService {
@@ -102,7 +103,7 @@ export class StoreService {
     if (scope.userId && !scope.isAdmin) query.andWhere('store.userId = :userId', { userId: scope.userId });
 
     if (since) {
-      query.andWhere('order.shopifyCreatedAt >= :since', { since });
+      query.andWhere('order.externalCreatedAt >= :since', { since });
     }
     if (filters?.type && filters.type !== 'all') {
       const statuses = filters.type === 'pending' ? ['pending', 'processing_reply'] : [filters.type];
@@ -135,12 +136,12 @@ export class StoreService {
       .select('order.storeId', 'storeId')
       .addSelect('order.confirmationStatus', 'status')
       .addSelect('COUNT(*)', 'count')
-      .addSelect('MAX(order.shopifyCreatedAt)', 'lastOrderAt')
+      .addSelect('MAX(order.externalCreatedAt)', 'lastOrderAt')
       .groupBy('order.storeId')
       .addGroupBy('order.confirmationStatus');
     if (storeIds.length) orderByStoreQuery.where('order.storeId IN (:...storeIds)', { storeIds });
     else orderByStoreQuery.where('1 = 0');
-    if (since) orderByStoreQuery.andWhere('order.shopifyCreatedAt >= :orderSince', { orderSince: since });
+    if (since) orderByStoreQuery.andWhere('order.externalCreatedAt >= :orderSince', { orderSince: since });
     if (filters?.type && filters.type !== 'all') {
       const statuses = filters.type === 'pending' ? ['pending', 'sending', 'processing_reply'] : [filters.type];
       orderByStoreQuery.andWhere('order.confirmationStatus IN (:...storeStatuses)', { storeStatuses: statuses });
@@ -318,7 +319,7 @@ export class StoreService {
 
   async findOrders(storeId: string): Promise<Order[]> {
     await this.findOneById(storeId);
-    return this.orderRepository.find({ where: { storeId }, order: { shopifyCreatedAt: 'DESC' } });
+    return this.orderRepository.find({ where: { storeId }, order: { externalCreatedAt: 'DESC' } });
   }
 
   async getOrderConversation(storeId: string, orderId: string) {
@@ -335,7 +336,7 @@ export class StoreService {
   }
 
   async getConversationOwnership(sessionId: string, chatId: string) {
-    const phone = chatId.split('@')[0].replace(/\D/g, '');
+    const phone = normalizePhone(chatId);
     if (!phone) return { locked: false };
     const stores = await this.findAll();
     const storeIds = stores.filter(store => store.sessionId === sessionId).map(store => store.id);
@@ -344,9 +345,9 @@ export class StoreService {
       .createQueryBuilder('order')
       .where('order.storeId IN (:...storeIds)', { storeIds })
       .andWhere('order.confirmationStatus IN (:...statuses)', { statuses: ['pending', 'processing_reply'] })
-      .orderBy('order.shopifyCreatedAt', 'DESC')
+      .orderBy('order.externalCreatedAt', 'DESC')
       .getMany();
-    const order = candidates.find(candidate => candidate.phone?.replace(/\D/g, '') === phone);
+    const order = candidates.find(candidate => isSamePhone(candidate.phone, phone));
     if (!order) return { locked: false };
     const conversation = await this.conversationRepository.findOneBy({ orderId: order.id });
     const locked = conversation?.status !== 'escalated';
@@ -395,7 +396,7 @@ export class StoreService {
       .map(item => `• ${String(item.name ?? item.title ?? 'Product')} × ${String(item.quantity ?? 1)}`)
       .join('\n');
     const result = await this.messageService.sendText(store.sessionId, {
-      chatId: `${order.phone.replace(/\D/g, '')}@c.us`,
+      chatId: phoneToChatId(order.phone),
       text: `Bonjour ${order.customerName ?? ''} 👋\n\nÊtes-vous toujours intéressé(e) par votre commande ${order.orderNumber ?? ''} ?\n\n${items}\n\nTotal: ${order.totalPrice} ${order.currency}\n\nRépondez 1 pour confirmer ou 2 pour annuler.`,
     });
 

@@ -23,7 +23,7 @@ import { Public, RequireRole } from '../../auth/decorators/auth.decorators';
 import { ApiKeyRole } from '../../auth/entities/api-key.entity';
 import { CredentialEncryptionService } from '../../../common/security/credential-encryption.service';
 import { PlanUsageService } from '../../auth/plan-usage.service';
-import { IntegrationProviderRegistry } from '../../../commerce/integration-provider.registry';
+import { StoreIntegrationService } from '../../stores/store-integration.service';
 
 interface ShopifyStoreSettings {
   shopDomain?: string;
@@ -47,7 +47,7 @@ export class ShopifyController {
     private readonly configService: ConfigService,
     private readonly credentialEncryption: CredentialEncryptionService,
     private readonly planUsage: PlanUsageService,
-    private readonly providers: IntegrationProviderRegistry,
+    private readonly integrations: StoreIntegrationService,
   ) {}
 
   private settings(store: Store): ShopifyStoreSettings | undefined {
@@ -195,32 +195,18 @@ export class ShopifyController {
       typeof credentials.webhookBaseUrl === 'string' && credentials.webhookBaseUrl
         ? credentials.webhookBaseUrl
         : new URL(credentials.redirectUri ?? '').origin;
-    const provider = this.providers.get('shopify');
-    const providerConnection = {
-      storeId,
-      credentials: { ...credentials, shopDomain: shop, accessToken: token.access_token, webhookBaseUrl },
-    };
-    await provider.validate(providerConnection.credentials);
-    const profile = await provider.getStoreProfile(providerConnection);
-    const { products, orders } = await provider.sync(providerConnection);
-    await provider.registerWebhooks(providerConnection);
-    await this.storeService.updateIntegrationCredentials(storeId, 'shopify', {
+    const synchronized = await this.integrations.synchronize(storeId, 'shopify', { credentials: {
       ...credentials,
       shopDomain: shop,
       accessToken: token.access_token,
       scope: token.scope,
       webhookBaseUrl,
-      lastSyncAt: new Date().toISOString(),
-      importedProducts: products,
-      importedOrders: orders,
-      storeDomain: profile.domain,
-    });
-    await this.storeService.updateImportedProfile(storeId, profile);
+    } });
 
     const redirect = this.configService.get<string>('commerce.afterAuthRedirectUrl', '/stores');
     const separator = redirect.includes('?') ? '&' : '?';
     return response.redirect(
-      `${redirect}${separator}shopify=connected&storeId=${encodeURIComponent(storeId)}&products=${products}&orders=${orders}`,
+      `${redirect}${separator}shopify=connected&storeId=${encodeURIComponent(storeId)}&products=${synchronized.products}&orders=${synchronized.orders}`,
     );
   }
 
@@ -272,17 +258,7 @@ export class ShopifyController {
     if (!credentials?.shopDomain || !credentials.accessToken) {
       throw new BadRequestException('Shopify is not connected.');
     }
-    const imported = await this.providers.get('shopify').sync({ storeId, credentials });
-    const profile = await this.providers.get('shopify').getStoreProfile({ storeId, credentials });
-    const lastSyncAt = new Date().toISOString();
-    await this.storeService.updateIntegrationCredentials(storeId, 'shopify', {
-      ...credentials,
-      importedProducts: imported.products,
-      importedOrders: imported.orders,
-      lastSyncAt,
-    });
-    await this.storeService.updateImportedProfile(storeId, profile);
-    return { storeId, ...imported, lastSyncAt };
+    return this.integrations.synchronize(storeId, 'shopify');
   }
 
   // private async ImportsProducts(shopDomain: string, accessToken: string) {
@@ -295,7 +271,7 @@ export class ShopifyController {
   //    for (const product of products) {
   //     const productData: Product = {
 
-  //       shopifyProductId: product.id,
+  //       externalProductId: product.id,
   //       title: product.title ?? "Untitled",
   //       description: product.body_html ?? "",
   //       handle: product.handle ?? "",
@@ -306,8 +282,8 @@ export class ShopifyController {
   //       imageUrl: product.image?.src ?? product.images?.[0]?.src ?? null,
   //       variants: product.variants ?? [],
   //       price: parseFloat(product.variants?.[0]?.price ?? "0"),
-  //       shopifyCreatedAt: new Date(product.created_at) ? new Date(product.created_at) : null,
-  //       shopifyUpdatedAt: product.updated_at ? new Date(product.updated_at) : null,
+  //       externalCreatedAt: new Date(product.created_at) ? new Date(product.created_at) : null,
+  //       externalUpdatedAt: product.updated_at ? new Date(product.updated_at) : null,
   //       createdAt: new Date(),
   //       storeId: "",
 

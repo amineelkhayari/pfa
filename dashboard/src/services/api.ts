@@ -125,7 +125,10 @@ export interface Store {
     catalogAssistantEnabled?: boolean;
     confirmationSuccessTemplate?: string;
     relatedProductsTemplate?: string;
-    orderNotifications?: Record<'paid' | 'partiallyFulfilled' | 'shipped' | 'cancelled', { enabled: boolean; template: string }>;
+    orderNotifications?: Record<
+      'paid' | 'partiallyFulfilled' | 'shipped' | 'cancelled',
+      { enabled: boolean; template: string }
+    >;
     connected?: boolean;
     clientSecretConfigured?: boolean;
     importedProducts?: number;
@@ -211,7 +214,7 @@ export interface StorePayload {
 
 export interface StoreProduct {
   id: string;
-  shopifyProductId: string;
+  externalProductId: string;
   title: string;
   description?: string | null;
   vendor?: string | null;
@@ -221,12 +224,12 @@ export interface StoreProduct {
   imageUrl?: string | null;
   variants?: Array<Record<string, unknown>> | null;
   price: number;
-  shopifyUpdatedAt: string;
+  externalUpdatedAt: string;
 }
 
 export interface StoreOrder {
   id: string;
-  shopifyOrderId: string;
+  externalOrderId: string;
   orderNumber?: string | null;
   customerName?: string | null;
   email?: string | null;
@@ -239,7 +242,7 @@ export interface StoreOrder {
   tags?: string[] | null;
   lineItems?: Array<Record<string, unknown>> | null;
   shippingAddress?: Record<string, unknown> | null;
-  shopifyCreatedAt: string;
+  externalCreatedAt: string;
   confirmationStatus: string;
   whatsappMessageId?: string | null;
   confirmationSentAt?: string | null;
@@ -332,7 +335,15 @@ export interface OrderConfirmationSummary {
   totalProducts: number;
   periodDays: number | null;
   messageTotals: { sent: number; received: number; failed: number };
-  aiPerformance: { conversations: number; confirmed: number; cancelled: number; active: number; escalated: number; expired: number; confirmationRate: number };
+  aiPerformance: {
+    conversations: number;
+    confirmed: number;
+    cancelled: number;
+    active: number;
+    escalated: number;
+    expired: number;
+    confirmationRate: number;
+  };
   sessions: Array<{
     id: string;
     name: string;
@@ -1097,7 +1108,8 @@ export const campaignApi = {
 
 export const shopifyApi = {
   installUrl: (storeId: string) => `${API_BASE_URL}/shopify/oauth/install?storeId=${encodeURIComponent(storeId)}`,
-  authorizationUrl: (storeId: string) => request<{ url: string }>(`/shopify/${storeId}/install-url`, { method: 'POST' }),
+  authorizationUrl: (storeId: string) =>
+    request<{ url: string }>(`/shopify/${storeId}/install-url`, { method: 'POST' }),
   sync: (storeId: string) =>
     request<{ storeId: string; products: number; orders: number; lastSyncAt: string }>(`/shopify/${storeId}/sync`, {
       method: 'POST',
@@ -1649,8 +1661,24 @@ export const woocommerceApi = {
 
 export interface AccountUsage {
   plan: string;
-  limits: { sessions: number; stores: number; sentMessages: number; receivedMessages: number; aiTokens: number; audioTranscriptions: number; audioReplies: number };
-  usage: { sessions: number; stores: number; sentMessages: number; receivedMessages: number; aiTokens: number; audioTranscriptions: number; audioReplies: number };
+  limits: {
+    sessions: number;
+    stores: number;
+    sentMessages: number;
+    receivedMessages: number;
+    aiTokens: number;
+    audioTranscriptions: number;
+    audioReplies: number;
+  };
+  usage: {
+    sessions: number;
+    stores: number;
+    sentMessages: number;
+    receivedMessages: number;
+    aiTokens: number;
+    audioTranscriptions: number;
+    audioReplies: number;
+  };
   periodStart: string;
   trialEndsAt: string | null;
   trialExpired: boolean;
@@ -1685,7 +1713,14 @@ export const accountApi = {
 export const adminUsersApi = {
   list: () => request<AccountUser[]>('/admin/users'),
   summary: () =>
-    request<{ total: number; active: number; suspended: number; free: number; pro: number; byPlan: Record<string, number> }>('/admin/users/summary'),
+    request<{
+      total: number;
+      active: number;
+      suspended: number;
+      free: number;
+      pro: number;
+      byPlan: Record<string, number>;
+    }>('/admin/users/summary'),
   resources: () =>
     request<{ sessions: number; stores: number; products: number; orders: number }>('/admin/users/resources'),
   details: (id: string) => request<AdminUserDetails>(`/admin/users/${id}/details`),
@@ -1710,11 +1745,30 @@ export interface BillingSubscription {
   planSlug: string;
 }
 export interface BillingPlan {
-  id: string; slug: string; name: string; description: string; priceMonthly: number; currency: string;
-  limits: { sessions: number; stores: number; sentMessages: number; receivedMessages: number; aiTokens: number; audioTranscriptions: number; audioReplies: number };
-  features: string[]; trialDays: number; active: boolean; highlighted: boolean; sortOrder: number;
-  stripePriceId: string | null; paypalPlanId: string | null;
-  createdAt?: string; updatedAt?: string;
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  priceMonthly: number;
+  currency: string;
+  limits: {
+    sessions: number;
+    stores: number;
+    sentMessages: number;
+    receivedMessages: number;
+    aiTokens: number;
+    audioTranscriptions: number;
+    audioReplies: number;
+  };
+  features: string[];
+  trialDays: number;
+  active: boolean;
+  highlighted: boolean;
+  sortOrder: number;
+  stripePriceId: string | null;
+  paypalPlanId: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 export interface PaymentTransaction {
   id: string;
@@ -1741,11 +1795,21 @@ export const billingApi = {
   plans: () => request<BillingPlan[]>('/billing/plans'),
   status: () => request<BillingSubscription[]>('/billing/status'),
   history: () => request<PaymentHistory>('/billing/history'),
-  stripeCheckout: (plan = 'pro') => request<{ url: string }>('/billing/stripe/checkout', { method: 'POST', body: JSON.stringify({ plan }) }),
+  stripeCheckout: (plan = 'pro') =>
+    request<{ url: string }>('/billing/stripe/checkout', { method: 'POST', body: JSON.stringify({ plan }) }),
   stripePortal: () => request<{ url: string }>('/billing/stripe/portal', { method: 'POST' }),
-  paypalSubscription: (plan = 'pro') => request<{ id: string; url: string }>('/billing/paypal/subscription', { method: 'POST', body: JSON.stringify({ plan }) }),
-  cancelSubscription: (id: string, reason?: string) => request<BillingSubscription>(`/billing/subscriptions/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
-  reactivateSubscription: (id: string) => request<BillingSubscription>(`/billing/subscriptions/${id}/reactivate`, { method: 'POST' }),
+  paypalSubscription: (plan = 'pro') =>
+    request<{ id: string; url: string }>('/billing/paypal/subscription', {
+      method: 'POST',
+      body: JSON.stringify({ plan }),
+    }),
+  cancelSubscription: (id: string, reason?: string) =>
+    request<BillingSubscription>(`/billing/subscriptions/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+  reactivateSubscription: (id: string) =>
+    request<BillingSubscription>(`/billing/subscriptions/${id}/reactivate`, { method: 'POST' }),
 };
 
 export interface AdminPaymentSettings {
@@ -1764,36 +1828,100 @@ export interface AdminPaymentSettings {
 }
 export const adminBillingApi = {
   plans: () => request<BillingPlan[]>('/admin/billing-settings/plans'),
-  createPlan: (body: Omit<BillingPlan, 'id' | 'createdAt' | 'updatedAt'>) => request<BillingPlan>('/admin/billing-settings/plans', { method: 'POST', body: JSON.stringify(body) }),
-  updatePlan: (id: string, body: Omit<BillingPlan, 'id' | 'createdAt' | 'updatedAt'>) => request<BillingPlan>(`/admin/billing-settings/plans/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  deletePlan: (id: string) => request<{ deleted: boolean }>(`/admin/billing-settings/plans/${id}`, { method: 'DELETE' }),
+  createPlan: (body: Omit<BillingPlan, 'id' | 'createdAt' | 'updatedAt'>) =>
+    request<BillingPlan>('/admin/billing-settings/plans', { method: 'POST', body: JSON.stringify(body) }),
+  updatePlan: (id: string, body: Omit<BillingPlan, 'id' | 'createdAt' | 'updatedAt'>) =>
+    request<BillingPlan>(`/admin/billing-settings/plans/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deletePlan: (id: string) =>
+    request<{ deleted: boolean }>(`/admin/billing-settings/plans/${id}`, { method: 'DELETE' }),
   get: () => request<AdminPaymentSettings>('/admin/billing-settings'),
   update: (body: Record<string, unknown>) =>
     request<AdminPaymentSettings>('/admin/billing-settings', { method: 'PUT', body: JSON.stringify(body) }),
   history: (filters: Record<string, string | number | undefined>) => {
-    const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)]));
-    return request<PaymentHistory & { summary: { payments: number; successful: number; failed: number; activeSubscribers: number; earnings: Array<{ currency: string; amount: number }> } }>(`/admin/billing-settings/history?${query}`);
+    const query = new URLSearchParams(
+      Object.entries(filters)
+        .filter(([, value]) => value !== undefined && value !== '')
+        .map(([key, value]) => [key, String(value)]),
+    );
+    return request<
+      PaymentHistory & {
+        summary: {
+          payments: number;
+          successful: number;
+          failed: number;
+          activeSubscribers: number;
+          earnings: Array<{ currency: string; amount: number }>;
+        };
+      }
+    >(`/admin/billing-settings/history?${query}`);
   },
   subscriptions: (filters: Record<string, string | undefined> = {}) => {
-    const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value).map(([key, value]) => [key, String(value)]));
-    return request<Array<BillingSubscription & { user: { id: string; name: string; email: string; username: string; plan: string } | null }>>(`/admin/billing-settings/subscriptions?${query}`);
+    const query = new URLSearchParams(
+      Object.entries(filters)
+        .filter(([, value]) => value)
+        .map(([key, value]) => [key, String(value)]),
+    );
+    return request<
+      Array<
+        BillingSubscription & {
+          user: { id: string; name: string; email: string; username: string; plan: string } | null;
+        }
+      >
+    >(`/admin/billing-settings/subscriptions?${query}`);
   },
-  cancelSubscription: (id: string, immediate: boolean, reason?: string) => request<BillingSubscription>(`/admin/billing-settings/subscriptions/${id}/cancel`, { method: 'POST', body: JSON.stringify({ immediate, reason }) }),
-  reactivateSubscription: (id: string) => request<BillingSubscription>(`/admin/billing-settings/subscriptions/${id}/reactivate`, { method: 'POST' }),
-  refund: (id: string, amount?: number, reason?: string) => request<PaymentTransaction>(`/admin/billing-settings/payments/${id}/refund`, { method: 'POST', body: JSON.stringify({ amount, reason }) }),
+  cancelSubscription: (id: string, immediate: boolean, reason?: string) =>
+    request<BillingSubscription>(`/admin/billing-settings/subscriptions/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ immediate, reason }),
+    }),
+  reactivateSubscription: (id: string) =>
+    request<BillingSubscription>(`/admin/billing-settings/subscriptions/${id}/reactivate`, { method: 'POST' }),
+  refund: (id: string, amount?: number, reason?: string) =>
+    request<PaymentTransaction>(`/admin/billing-settings/payments/${id}/refund`, {
+      method: 'POST',
+      body: JSON.stringify({ amount, reason }),
+    }),
+};
+
+export interface CommerceExecution {
+  id: string;
+  storeId: string;
+  sessionId: string | null;
+  messageId: string | null;
+  customerPhone: string | null;
+  provider: string;
+  tool: string;
+  status: 'started' | 'succeeded' | 'failed' | 'uncertain';
+  input: Record<string, unknown> | null;
+  result: Record<string, unknown> | null;
+  errorMessage: string | null;
+  durationMs: number | null;
+  createdAt: string;
+}
+
+export const commerceExecutionsApi = {
+  list: (params: Record<string, string>) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value));
+    return request<{ data: CommerceExecution[]; total: number; summary: Record<string, number> }>(
+      `/admin/commerce-executions?${query.toString()}`,
+    );
+  },
 };
 
 export const youcanApi = {
   installUrl: (storeId: string) => `${API_BASE_URL}/youcan/oauth/install?storeId=${encodeURIComponent(storeId)}`,
-  authorizationUrl: (storeId: string) =>
-    request<{ url: string }>(`/youcan/${storeId}/install-url`, { method: 'POST' }),
-  sync: (storeId: string) => request<{ storeId: string; products: number; orders: number; lastSyncAt: string }>(
-    `/youcan/${storeId}/sync`, { method: 'POST' },
-  ),
-  registerWebhooks: (storeId: string) => request<{ registered: number; subscriptions: Array<{ id: string; event: string; target_url: string }> }>(
-    `/youcan/${storeId}/webhooks/register`, { method: 'POST' },
-  ),
-  webhooks: (storeId: string) => request<Array<{ id: string; event: string; target_url: string }>>(`/youcan/${storeId}/webhooks`),
+  authorizationUrl: (storeId: string) => request<{ url: string }>(`/youcan/${storeId}/install-url`, { method: 'POST' }),
+  sync: (storeId: string) =>
+    request<{ storeId: string; products: number; orders: number; lastSyncAt: string }>(`/youcan/${storeId}/sync`, {
+      method: 'POST',
+    }),
+  registerWebhooks: (storeId: string) =>
+    request<{ registered: number; subscriptions: Array<{ id: string; event: string; target_url: string }> }>(
+      `/youcan/${storeId}/webhooks/register`,
+      { method: 'POST' },
+    ),
+  webhooks: (storeId: string) =>
+    request<Array<{ id: string; event: string; target_url: string }>>(`/youcan/${storeId}/webhooks`),
 };
 
 export interface AdminAiSettings {

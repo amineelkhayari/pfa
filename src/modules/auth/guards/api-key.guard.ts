@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import { AuthService } from '../auth.service';
 import { ApiKeyRole } from '../entities/api-key.entity';
-import { REQUIRED_ROLE_KEY, PUBLIC_KEY, SESSION_SCOPED_KEY, UNSCOPED_KEY } from '../decorators/auth.decorators';
+import { REQUIRED_ROLE_KEY, PUBLIC_KEY, SESSION_SCOPED_KEY } from '../decorators/auth.decorators';
 import { resolveClientIp } from '../../../common/utils/ip';
 import { setRequestActor } from '../../../common/services/request-context';
 import { AuditService } from '../../audit/audit.service';
@@ -18,7 +18,7 @@ import { Session } from '../../session/entities/session.entity';
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
   constructor(
-    private readonly authService: AuthService,
+    _authService: AuthService,
     private readonly reflector: Reflector,
     private readonly configService: ConfigService,
     private readonly auditService: AuditService,
@@ -57,10 +57,10 @@ export class ApiKeyGuard implements CanActivate {
   }
 
   private async authorize(request: Request, context: ExecutionContext): Promise<boolean> {
-    const credential = this.extractCredential(request);
+    const token = this.extractBearerToken(request);
 
-    if (!credential) {
-      throw new UnauthorizedException('Bearer access token or API key is required');
+    if (!token) {
+      throw new UnauthorizedException('Bearer JWT access token is required');
     }
 
     const requiredRole = this.reflector.getAllAndOverride<ApiKeyRole>(REQUIRED_ROLE_KEY, [
@@ -68,8 +68,8 @@ export class ApiKeyGuard implements CanActivate {
       context.getClass(),
     ]);
 
-    if (credential.kind === 'jwt') {
-      const user = await this.userAuthService.validateToken(credential.value);
+    {
+      const user = await this.userAuthService.validateToken(token);
       if (user.role === ApiKeyRole.ADMIN && !this.isAdminManagementPath(request.path)) {
         throw new ForbiddenException('Administrator accounts can only access administration resources');
       }
@@ -93,51 +93,6 @@ export class ApiKeyGuard implements CanActivate {
       setRequestActor({ userId: user.id, userRole: user.role, ipAddress: this.getClientIp(request) });
       return true;
     }
-
-    // Resolve the session id used for the key's allowedSessions scope. `:sessionId` is always a
-    // session; the bare `:id` param is only a session on controllers marked @SessionScoped (i.e.
-    // SessionController) — on other routes `:id` is an unrelated resource id (API key, plugin, …)
-    // and must NOT be fed to the allowedSessions check, which would spuriously deny a scoped key.
-    const sessionScoped = this.reflector.getAllAndOverride<boolean>(SESSION_SCOPED_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    const sessionId = (request.params['sessionId'] || (sessionScoped ? request.params['id'] : undefined)) as
-      string | undefined;
-    const clientIp = this.getClientIp(request);
-
-    // Validate API key
-    const apiKey = await this.authService.validateApiKey(credential.value, clientIp, sessionId);
-
-    if (requiredRole && !this.authService.hasPermission(apiKey, requiredRole)) {
-      throw new ForbiddenException(`Insufficient permissions. Required: ${requiredRole}`);
-    }
-
-    // Routes marked @RequireUnscopedKey carry no session dimension, so the allowedSessions check
-    // above can never bite on them. A session-scoped key reaching such a surface (e.g. API-key
-    // lifecycle management) could mint or widen credentials beyond its own confinement — reject it
-    // outright, whatever its role. The denial is audited by the caller's catch block.
-    const requireUnscoped = this.reflector.getAllAndOverride<boolean>(UNSCOPED_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    if (requireUnscoped && (apiKey.allowedSessions?.length ?? 0) > 0) {
-      throw new ForbiddenException('Session-scoped API keys are not permitted on this route');
-    }
-
-    // Attach API key to request for use in controllers
-    (request as Request & { apiKey: typeof apiKey }).apiKey = apiKey;
-    // Expose the trusted-proxy-aware client IP so controllers (e.g. the audit trail on key lifecycle
-    // ops) reuse the already-resolved value instead of re-deriving it.
-    (request as Request & { clientIp?: string }).clientIp = clientIp;
-
-    // Stamp the resolved actor into the per-request async context so downstream audit log writes —
-    // which fire from services deep in the call stack without DI access to the key — can attribute
-    // the action to this key + IP. Without this every audit row's apiKey/ipAddress column is blank
-    // because call sites pass only { sessionId } etc.
-    setRequestActor({ apiKeyId: apiKey.id, apiKeyName: apiKey.name, ipAddress: clientIp });
-
-    return true;
   }
 
   private hasUserPermission(user: UserAccount, required: ApiKeyRole): boolean {
@@ -168,16 +123,12 @@ export class ApiKeyGuard implements CanActivate {
     );
   }
 
-  private extractCredential(request: Request): { kind: 'jwt' | 'apiKey'; value: string } | undefined {
-    // Dashboard/account authentication is always a Bearer JWT. X-API-Key remains available for
-    // integrations and server-to-server clients, but is no longer a dashboard login mechanism.
+  private extractBearerToken(request: Request): string | undefined {
     const authHeader = request.headers['authorization'];
     if (authHeader?.startsWith('Bearer ')) {
       const value = authHeader.substring(7).trim();
-      if (value) return { kind: 'jwt', value };
+      if (value) return value;
     }
-    const xApiKey = request.headers['x-api-key'] as string;
-    if (xApiKey) return { kind: 'apiKey', value: xApiKey };
     return undefined;
   }
 

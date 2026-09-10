@@ -873,7 +873,7 @@ export function Stores() {
                     <p>{product.description?.replace(/<[^>]*>/g, '') || 'No description'}</p>
                     <dl>
                       <dt>Shopify ID</dt>
-                      <dd>{product.shopifyProductId}</dd>
+                      <dd>{product.externalProductId}</dd>
                       <dt>Type</dt>
                       <dd>{product.productType || '—'}</dd>
                       <dt>Variants</dt>
@@ -896,7 +896,7 @@ export function Stores() {
                   <summary>
                     <ShoppingBag size={30} />
                     <span>
-                      <strong>{order.orderNumber ?? order.shopifyOrderId}</strong>
+                      <strong>{order.orderNumber ?? order.externalOrderId}</strong>
                       <small>
                         {order.customerName || order.email || 'Unknown customer'} · {order.totalPrice} {order.currency}
                       </small>

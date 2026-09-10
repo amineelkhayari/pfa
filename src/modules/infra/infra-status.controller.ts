@@ -93,11 +93,11 @@ export class InfraStatusController {
   async getStatus(): Promise<InfraStatus> {
     // Active DB liveness probe (SELECT 1) on both connections in parallel — not just isInitialized,
     // which stays true after a Postgres backend dies until an explicit .destroy() (see probeDbConnected).
-    const [ dataDbConnected] = await Promise.all([
+    const [dataDbConnected] = await Promise.all([
       //this.probeDbConnected(this.mainDataSource),
       this.probeDbConnected(this.dataDataSource),
     ]);
-    const dbConnected =  dataDbConnected;
+    const dbConnected = dataDbConnected;
     const dbType = this.configService.get<string>('dataDatabase.type', 'sqlite');
     const dbHost = this.configService.get<string>('dataDatabase.host', 'localhost');
 
@@ -208,7 +208,7 @@ export class InfraStatusController {
   }
 
   @Get('engines/current')
-  @RequireRole(ApiKeyRole.ADMIN)
+  @RequireRole(ApiKeyRole.VIEWER)
   @ApiOperation({ summary: 'Get current active engine' })
   @ApiResponse({ status: 200, description: 'Current engine info' })
   getCurrentEngine(): { engineType: string } {

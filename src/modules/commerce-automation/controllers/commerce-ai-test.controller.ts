@@ -23,7 +23,7 @@ class TestSpeechDto {
 }
 
 const sampleOrder = {
-  id: 'test-order', shopifyOrderId: '1234', orderNumber: '#1234', customerName: 'Test Customer',
+  id: 'test-order', externalOrderId: '1234', orderNumber: '#1234', customerName: 'Test Customer',
   lineItems: [{ title: 'Test product', quantity: 2 }], totalPrice: 300, currency: 'MAD',
   shippingAddress: { city: 'Casablanca', country: 'Morocco' },
 } as unknown as Order;

@@ -1,358 +1,82 @@
-import { ExecutionContext, UnauthorizedException, ForbiddenException } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { ConfigService } from '@nestjs/config';
+import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { ApiKeyGuard } from './api-key.guard';
-import { AuthService } from '../auth.service';
-import { ApiKey, ApiKeyRole } from '../entities/api-key.entity';
-import { AuditService } from '../../audit/audit.service';
-import { AuditAction } from '../../audit/entities/audit-log.entity';
-import { UserAuthService } from '../user-auth.service';
-import { ApiKeyRole as UserRole } from '../entities/api-key.entity';
+import { ApiKeyRole } from '../entities/api-key.entity';
+import { PUBLIC_KEY, REQUIRED_ROLE_KEY, SESSION_SCOPED_KEY } from '../decorators/auth.decorators';
 
-function createMockApiKey(overrides: Partial<ApiKey> = {}): ApiKey {
-  return {
-    id: 'uuid-1',
-    name: 'Test Key',
-    keyHash: 'hash',
-    keyPrefix: 'owa_k1_xxxx',
-    role: ApiKeyRole.OPERATOR,
-    allowedIps: null,
-    allowedSessions: null,
-    isActive: true,
-    expiresAt: null,
-    lastUsedAt: null,
-    usageCount: 0,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    ...overrides,
-  };
-}
-
-function createMockContext(
-  headers: Record<string, string> = {},
-  params: Record<string, string> = {},
-  socketIp = '127.0.0.1',
-): ExecutionContext {
+function context(headers: Record<string, string> = {}, params: Record<string, string> = {}) {
   const request = {
     headers,
     params,
-    ip: socketIp,
-    socket: { remoteAddress: socketIp },
+    path: '/api/sessions',
+    method: 'GET',
+    ip: '127.0.0.1',
+    socket: { remoteAddress: '127.0.0.1' },
   };
-
   return {
-    switchToHttp: () => ({
-      getRequest: () => request,
-    }),
-    getHandler: () => ({}),
-    getClass: () => ({}),
-  } as unknown as ExecutionContext;
+    request,
+    value: {
+      switchToHttp: () => ({ getRequest: () => request }),
+      getHandler: () => ({}),
+      getClass: () => ({}),
+    } as ExecutionContext,
+  };
 }
 
-describe('ApiKeyGuard', () => {
-  let guard: ApiKeyGuard;
-  let authService: jest.Mocked<Partial<AuthService>>;
-  let reflector: jest.Mocked<Reflector>;
-  let configService: jest.Mocked<Partial<ConfigService>>;
-  let auditService: jest.Mocked<Partial<AuditService>>;
-  let userAuthService: jest.Mocked<Partial<UserAuthService>>;
-  let sessionRepository: { existsBy: jest.Mock };
-
-  function buildGuard(trustedProxies: string[] = []): ApiKeyGuard {
-    configService = {
-      get: jest.fn().mockReturnValue(trustedProxies),
-    };
-    return new ApiKeyGuard(
-      authService as AuthService,
-      reflector,
-      configService as ConfigService,
-      auditService as AuditService,
-      userAuthService as UserAuthService,
-      sessionRepository as never,
+describe('JWT-only global auth guard', () => {
+  const user = { id: 'user-1', role: ApiKeyRole.OPERATOR, status: 'active' } as any;
+  function build(metadata: Record<string, unknown> = {}, ownsSession = true) {
+    const reflector = { getAllAndOverride: jest.fn((key: string) => metadata[key]) };
+    const users = { validateToken: jest.fn().mockResolvedValue(user) };
+    const sessions = { existsBy: jest.fn().mockResolvedValue(ownsSession) };
+    const guard = new ApiKeyGuard(
+      {} as any,
+      reflector as any,
+      { get: jest.fn().mockReturnValue([]) } as any,
+      { logWarn: jest.fn().mockResolvedValue(null) } as any,
+      users as any,
+      sessions as any,
     );
+    return { guard, users, sessions };
   }
 
-  beforeEach(() => {
-    authService = {
-      validateApiKey: jest.fn(),
-      hasPermission: jest.fn(),
-    };
-
-    reflector = {
-      getAllAndOverride: jest.fn(),
-    } as unknown as jest.Mocked<Reflector>;
-
-    auditService = {
-      logWarn: jest.fn().mockResolvedValue(null),
-    };
-    userAuthService = { validateToken: jest.fn() };
-    sessionRepository = { existsBy: jest.fn().mockResolvedValue(true) };
-
-    guard = buildGuard();
+  it('allows public routes without authentication', async () => {
+    const { guard, users } = build({ [PUBLIC_KEY]: true });
+    await expect(guard.canActivate(context().value)).resolves.toBe(true);
+    expect(users.validateToken).not.toHaveBeenCalled();
   });
 
-  it('should allow access to @Public() routes without API key', async () => {
-    reflector.getAllAndOverride.mockReturnValueOnce(true); // isPublic = true
-
-    const context = createMockContext();
-    const result = await guard.canActivate(context);
-
-    expect(result).toBe(true);
-    expect(authService.validateApiKey).not.toHaveBeenCalled();
+  it('requires a Bearer JWT', async () => {
+    const { guard } = build();
+    await expect(guard.canActivate(context().value)).rejects.toThrow(UnauthorizedException);
   });
 
-  it('should reject requests without X-API-Key header', async () => {
-    reflector.getAllAndOverride.mockReturnValueOnce(false); // not public
-
-    const context = createMockContext({});
-
-    await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
-    await expect(guard.canActivate(context)).rejects.toThrow('API key is required');
+  it('rejects legacy X-API-Key credentials', async () => {
+    const { guard, users } = build();
+    await expect(guard.canActivate(context({ 'x-api-key': 'legacy-key' }).value)).rejects.toThrow(
+      'Bearer JWT access token is required',
+    );
+    expect(users.validateToken).not.toHaveBeenCalled();
   });
 
-  it('should accept X-API-Key header', async () => {
-    reflector.getAllAndOverride
-      .mockReturnValueOnce(false) // not public
-      .mockReturnValueOnce(undefined); // no required role
-
-    const apiKey = createMockApiKey();
-    (authService.validateApiKey as jest.Mock).mockResolvedValue(apiKey);
-
-    const context = createMockContext({ 'x-api-key': 'my-key' });
-    const result = await guard.canActivate(context);
-
-    expect(result).toBe(true);
-    expect(authService.validateApiKey).toHaveBeenCalledWith('my-key', '127.0.0.1', undefined);
+  it('accepts a valid account JWT and attaches its user', async () => {
+    const { guard, users } = build({ [REQUIRED_ROLE_KEY]: ApiKeyRole.VIEWER });
+    const request = context({ authorization: 'Bearer jwt-token' });
+    await expect(guard.canActivate(request.value)).resolves.toBe(true);
+    expect(users.validateToken).toHaveBeenCalledWith('jwt-token');
+    expect((request.request as any).user).toBe(user);
   });
 
-  it('should authenticate Authorization Bearer as a user JWT, not as an API key', async () => {
-    reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce(undefined);
-
-    (userAuthService.validateToken as jest.Mock).mockResolvedValue({
-      id: 'user-1', username: 'customer', name: 'Customer', role: UserRole.OPERATOR, status: 'active', plan: null,
-    });
-
-    const context = createMockContext({ authorization: 'Bearer eyJ.jwt.token' });
-    const result = await guard.canActivate(context);
-
-    expect(result).toBe(true);
-    expect(userAuthService.validateToken).toHaveBeenCalledWith('eyJ.jwt.token');
-    expect(authService.validateApiKey).not.toHaveBeenCalled();
-  });
-
-  it('should reject when API key validation fails', async () => {
-    reflector.getAllAndOverride.mockReturnValueOnce(false);
-
-    (authService.validateApiKey as jest.Mock).mockRejectedValue(new UnauthorizedException('Invalid API key'));
-
-    const context = createMockContext({ 'x-api-key': 'bad-key' });
-
-    await expect(guard.canActivate(context)).rejects.toThrow('Invalid API key');
-  });
-
-  it('records an API_KEY_AUTH_FAILED audit event when a key is rejected (with ip + reason)', async () => {
-    reflector.getAllAndOverride.mockReturnValueOnce(false); // not public
-    (authService.validateApiKey as jest.Mock).mockRejectedValue(new UnauthorizedException('Invalid API key'));
-
-    const context = createMockContext({ 'x-api-key': 'bad-key' }, {}, '203.0.113.9');
-    await expect(guard.canActivate(context)).rejects.toThrow('Invalid API key');
-    await new Promise(resolve => setImmediate(resolve)); // let the fire-and-forget audit write settle
-
-    expect(auditService.logWarn).toHaveBeenCalledWith(
-      AuditAction.API_KEY_AUTH_FAILED,
-      expect.objectContaining({ ipAddress: '203.0.113.9', errorMessage: 'Invalid API key' }),
+  it('enforces account roles', async () => {
+    const { guard } = build({ [REQUIRED_ROLE_KEY]: ApiKeyRole.ADMIN });
+    await expect(guard.canActivate(context({ authorization: 'Bearer jwt-token' }).value)).rejects.toThrow(
+      ForbiddenException,
     );
   });
 
-  it('records an audit event when a missing key is rejected', async () => {
-    reflector.getAllAndOverride.mockReturnValueOnce(false);
-
-    const context = createMockContext({}); // no key
-    await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
-    await new Promise(resolve => setImmediate(resolve));
-
-    expect(auditService.logWarn).toHaveBeenCalledWith(AuditAction.API_KEY_AUTH_FAILED, expect.any(Object));
-  });
-
-  it('does not record an audit event on a successful authorization', async () => {
-    reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce(undefined);
-    (authService.validateApiKey as jest.Mock).mockResolvedValue(createMockApiKey());
-
-    const context = createMockContext({ 'x-api-key': 'good-key' });
-    await guard.canActivate(context);
-    await new Promise(resolve => setImmediate(resolve));
-
-    expect(auditService.logWarn).not.toHaveBeenCalled();
-  });
-
-  it('should reject when role permission is insufficient', async () => {
-    reflector.getAllAndOverride
-      .mockReturnValueOnce(false) // not public
-      .mockReturnValueOnce(ApiKeyRole.ADMIN); // required role = ADMIN
-
-    const apiKey = createMockApiKey({ role: ApiKeyRole.VIEWER });
-    (authService.validateApiKey as jest.Mock).mockResolvedValue(apiKey);
-    (authService.hasPermission as jest.Mock).mockReturnValue(false);
-
-    const context = createMockContext({ 'x-api-key': 'viewer-key' });
-
-    await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
-  });
-
-  it('rejects a session-scoped key on a @RequireUnscopedKey route, whatever its role', async () => {
-    reflector.getAllAndOverride
-      .mockReturnValueOnce(false) // not public
-      .mockReturnValueOnce(ApiKeyRole.ADMIN) // required role = ADMIN
-      .mockReturnValueOnce(undefined) // not @SessionScoped
-      .mockReturnValueOnce(true); // @RequireUnscopedKey
-
-    const apiKey = createMockApiKey({ role: ApiKeyRole.ADMIN, allowedSessions: ['sess-A'] });
-    (authService.validateApiKey as jest.Mock).mockResolvedValue(apiKey);
-    (authService.hasPermission as jest.Mock).mockReturnValue(true);
-
-    const context = createMockContext({ 'x-api-key': 'scoped-admin-key' }, {}, '203.0.113.44');
-
-    await expect(guard.canActivate(context)).rejects.toThrow('Session-scoped API keys are not permitted on this route');
-    await new Promise(resolve => setImmediate(resolve)); // let the fire-and-forget audit write settle
-    expect(auditService.logWarn).toHaveBeenCalledWith(
-      AuditAction.API_KEY_AUTH_FAILED,
-      expect.objectContaining({ ipAddress: '203.0.113.44' }),
-    );
-  });
-
-  it('admits an unrestricted key on a @RequireUnscopedKey route', async () => {
-    reflector.getAllAndOverride
-      .mockReturnValueOnce(false) // not public
-      .mockReturnValueOnce(ApiKeyRole.ADMIN) // required role = ADMIN
-      .mockReturnValueOnce(undefined) // not @SessionScoped
-      .mockReturnValueOnce(true); // @RequireUnscopedKey
-
-    const apiKey = createMockApiKey({ role: ApiKeyRole.ADMIN, allowedSessions: null });
-    (authService.validateApiKey as jest.Mock).mockResolvedValue(apiKey);
-    (authService.hasPermission as jest.Mock).mockReturnValue(true);
-
-    const context = createMockContext({ 'x-api-key': 'admin-key' });
-
-    await expect(guard.canActivate(context)).resolves.toBe(true);
-  });
-
-  it('admits a session-scoped key on routes WITHOUT the @RequireUnscopedKey marker', async () => {
-    reflector.getAllAndOverride
-      .mockReturnValueOnce(false) // not public
-      .mockReturnValueOnce(undefined) // no required role
-      .mockReturnValueOnce(undefined) // not @SessionScoped
-      .mockReturnValueOnce(undefined); // not @RequireUnscopedKey
-
-    const apiKey = createMockApiKey({ allowedSessions: ['sess-A'] });
-    (authService.validateApiKey as jest.Mock).mockResolvedValue(apiKey);
-
-    const context = createMockContext({ 'x-api-key': 'scoped-key' });
-
-    await expect(guard.canActivate(context)).resolves.toBe(true);
-  });
-
-  it('should pass session ID from route params to validateApiKey', async () => {
-    reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce(undefined);
-
-    const apiKey = createMockApiKey();
-    (authService.validateApiKey as jest.Mock).mockResolvedValue(apiKey);
-
-    const context = createMockContext({ 'x-api-key': 'key' }, { sessionId: 'sess-123' });
-    await guard.canActivate(context);
-
-    expect(authService.validateApiKey).toHaveBeenCalledWith('key', '127.0.0.1', 'sess-123');
-  });
-
-  it('does not treat a non-session route :id as a session id (no @SessionScoped)', async () => {
-    reflector.getAllAndOverride
-      .mockReturnValueOnce(false) // not public
-      .mockReturnValueOnce(undefined) // no required role
-      .mockReturnValueOnce(undefined); // controller is NOT @SessionScoped
-
-    const apiKey = createMockApiKey();
-    (authService.validateApiKey as jest.Mock).mockResolvedValue(apiKey);
-
-    // e.g. GET /plugins/:id or /auth/api-keys/:id — :id is a plugin/key id, not a session.
-    const context = createMockContext({ 'x-api-key': 'key' }, { id: 'plugin-x' });
-    await guard.canActivate(context);
-
-    expect(authService.validateApiKey).toHaveBeenCalledWith('key', '127.0.0.1', undefined);
-  });
-
-  it('treats :id as the session id on a @SessionScoped controller (session scoping preserved)', async () => {
-    reflector.getAllAndOverride
-      .mockReturnValueOnce(false) // not public
-      .mockReturnValueOnce(undefined) // no required role
-      .mockReturnValueOnce(true); // controller IS @SessionScoped (SessionController)
-
-    const apiKey = createMockApiKey();
-    (authService.validateApiKey as jest.Mock).mockResolvedValue(apiKey);
-
-    // GET /sessions/:id/... — :id IS the session, so allowedSessions must still be enforced.
-    const context = createMockContext({ 'x-api-key': 'key' }, { id: 'sess-B' });
-    await guard.canActivate(context);
-
-    expect(authService.validateApiKey).toHaveBeenCalledWith('key', '127.0.0.1', 'sess-B');
-  });
-
-  it('ignores X-Forwarded-For by default (no trusted proxies) to prevent IP spoofing', async () => {
-    reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce(undefined);
-
-    const apiKey = createMockApiKey();
-    (authService.validateApiKey as jest.Mock).mockResolvedValue(apiKey);
-
-    // Attacker forges X-Forwarded-For; the direct socket IP must win.
-    const context = createMockContext({
-      'x-api-key': 'key',
-      'x-forwarded-for': '203.0.113.50, 70.41.3.18',
-    });
-    await guard.canActivate(context);
-
-    expect(authService.validateApiKey).toHaveBeenCalledWith('key', '127.0.0.1', undefined);
-  });
-
-  it('uses the rightmost untrusted hop when the request comes from a trusted proxy', async () => {
-    guard = buildGuard(['10.0.0.0/8']);
-    reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce(undefined);
-
-    const apiKey = createMockApiKey();
-    (authService.validateApiKey as jest.Mock).mockResolvedValue(apiKey);
-
-    // Direct peer 10.0.0.1 is a trusted proxy; XFF = [real client, inner proxy].
-    const context = createMockContext(
-      { 'x-api-key': 'key', 'x-forwarded-for': '203.0.113.50, 10.0.0.5' },
-      {},
-      '10.0.0.1',
-    );
-    await guard.canActivate(context);
-
-    expect(authService.validateApiKey).toHaveBeenCalledWith('key', '203.0.113.50', undefined);
-  });
-
-  it('ignores X-Forwarded-For when the direct peer is not a trusted proxy', async () => {
-    guard = buildGuard(['10.0.0.0/8']);
-    reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce(undefined);
-
-    const apiKey = createMockApiKey();
-    (authService.validateApiKey as jest.Mock).mockResolvedValue(apiKey);
-
-    // Attacker connects directly (203.0.113.99) and forges a trusted-looking XFF.
-    const context = createMockContext({ 'x-api-key': 'key', 'x-forwarded-for': '10.0.0.5' }, {}, '203.0.113.99');
-    await guard.canActivate(context);
-
-    expect(authService.validateApiKey).toHaveBeenCalledWith('key', '203.0.113.99', undefined);
-  });
-
-  it('normalizes an IPv4-mapped IPv6 proxy address (e.g. ::ffff:10.0.0.1)', async () => {
-    guard = buildGuard(['10.0.0.0/8']);
-    reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce(undefined);
-
-    const apiKey = createMockApiKey();
-    (authService.validateApiKey as jest.Mock).mockResolvedValue(apiKey);
-
-    const context = createMockContext({ 'x-api-key': 'key', 'x-forwarded-for': '203.0.113.50' }, {}, '::ffff:10.0.0.1');
-    await guard.canActivate(context);
-
-    expect(authService.validateApiKey).toHaveBeenCalledWith('key', '203.0.113.50', undefined);
+  it('enforces ownership for session-scoped routes', async () => {
+    const { guard, sessions } = build({ [SESSION_SCOPED_KEY]: true }, false);
+    const request = context({ authorization: 'Bearer jwt-token' }, { id: 'session-2' });
+    await expect(guard.canActivate(request.value)).rejects.toThrow(ForbiddenException);
+    expect(sessions.existsBy).toHaveBeenCalledWith({ id: 'session-2', userId: 'user-1' });
   });
 });

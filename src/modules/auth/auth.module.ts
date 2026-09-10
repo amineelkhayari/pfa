@@ -4,7 +4,6 @@ import { APP_GUARD } from '@nestjs/core';
 import { ApiKey } from './entities/api-key.entity';
 import { AuthService } from './auth.service';
 import { ApiKeyUsageTracker } from './api-key-usage-tracker.service';
-import { AuthController } from './auth.controller';
 import { AuthValidateController } from './auth-validate.controller';
 import { ApiKeyGuard } from './guards/api-key.guard';
 import { ProxyAwareThrottlerGuard } from '../../common/security/proxy-aware-throttler.guard';
@@ -28,7 +27,7 @@ import { BillingModule } from '../billing/billing.module';
     TypeOrmModule.forFeature([ApiKey, UserAccount, UserLoginSession, BillingSubscription], 'data'),
     TypeOrmModule.forFeature([Session, Store, Product, Order], 'data'),
   ],
-  controllers: [AuthController, AuthValidateController, UserAuthController, AdminUsersController],
+  controllers: [AuthValidateController, UserAuthController, AdminUsersController],
   providers: [
     AuthService,
     UserAuthService,

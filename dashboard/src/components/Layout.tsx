@@ -6,7 +6,6 @@ import {
   Smartphone,
   MessageSquare,
   Webhook,
-  Key,
   FileText,
   ClipboardList,
   LogOut,
@@ -27,6 +26,7 @@ import {
   Bot,
   Megaphone,
   ContactRound,
+  Activity,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { type UserRole } from '../hooks/useRole';
@@ -49,7 +49,6 @@ const allNavItems = [
   { to: '/webhooks', icon: Webhook, key: 'webhooks' as const, adminOnly: false },
   { to: '/templates', icon: ClipboardList, key: 'templates' as const, adminOnly: false },
   { to: '/campaigns', icon: Megaphone, key: 'campaigns' as const, adminOnly: false },
-  { to: '/api-keys', icon: Key, key: 'apiKeys' as const, adminOnly: true },
   { to: '/message-tester', icon: Send, key: 'messageTester' as const, adminOnly: false },
   // Backend /infra/* is ADMIN-only; hide the nav item from non-admins (UX + defense-in-depth).
   { to: '/infrastructure', icon: Server, key: 'infrastructure' as const, adminOnly: true },
@@ -60,6 +59,7 @@ const allNavItems = [
   { to: '/admin/users', icon: UsersRound, key: 'users' as const, adminOnly: true },
   { to: '/admin/payments', icon: CreditCard, key: 'payments' as const, adminOnly: true },
   { to: '/admin/ai', icon: Bot, key: 'aiSettings' as const, adminOnly: true },
+  { to: '/admin/automation-logs', icon: Activity, key: 'automationLogs' as const, adminOnly: true },
 ];
 
 const themeIcons = { light: Sun, dark: Moon, system: Monitor };
@@ -72,7 +72,6 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
 
   const adminPaths = new Set([
     '/',
-    '/api-keys',
     '/infrastructure',
     '/plugins',
     '/logs',
@@ -80,6 +79,7 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
     '/admin/users',
     '/admin/payments',
     '/admin/ai',
+    '/admin/automation-logs',
   ]);
   const navItems = allNavItems.filter(item => (userRole === 'admin' ? adminPaths.has(item.to) : !item.adminOnly));
 
@@ -228,7 +228,9 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
                             ? 'AI Settings'
                             : key === 'aiTest'
                               ? 'Test AI Agent'
-                              : key,
+                              : key === 'automationLogs'
+                                ? 'AI & Automation Logs'
+                                : key,
             });
             return (
               <NavLink

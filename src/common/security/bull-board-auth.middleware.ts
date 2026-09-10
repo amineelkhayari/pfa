@@ -1,7 +1,7 @@
 import { Injectable, NestMiddleware, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response, NextFunction } from 'express';
-import { AuthService } from '../../modules/auth/auth.service';
+import { UserAuthService } from '../../modules/auth/user-auth.service';
 import { ApiKeyRole } from '../../modules/auth/entities/api-key.entity';
 import { AuditService } from '../../modules/audit/audit.service';
 import { AuditAction } from '../../modules/audit/entities/audit-log.entity';
@@ -13,8 +13,8 @@ import { resolveClientIp } from '../utils/ip';
  *
  * Bull Board is mounted as raw Express middleware by @bull-board/nestjs, so the
  * global ApiKeyGuard — which only runs on Nest controller handlers — does not
- * cover it. This middleware requires a valid ADMIN-role API key, supplied via
- * the X-API-Key header or an Authorization: Bearer token.
+ * cover it. This middleware requires an ADMIN account JWT supplied through
+ * the Authorization: Bearer header.
  *
  * The ?apiKey query-string fallback was removed: an ADMIN key in the
  * URL leaks into proxy/access logs, browser history, bookmarks, and the Referer header.
@@ -40,7 +40,7 @@ export class BullBoardAuthMiddleware implements NestMiddleware {
   private readonly ipRateLimiter: KeyRateLimiter;
 
   constructor(
-    private readonly authService: AuthService,
+    private readonly userAuthService: UserAuthService,
     private readonly configService: ConfigService,
     private readonly auditService?: AuditService,
     ipRateLimiter?: KeyRateLimiter,
@@ -63,22 +63,14 @@ export class BullBoardAuthMiddleware implements NestMiddleware {
       // forwarded to Nest's exception layer below as a standard 429.
       this.ipRateLimiter.check(clientIp);
 
-      const rawKey = this.extractKey(req);
-      if (!rawKey) {
-        throw new UnauthorizedException('API key is required to access the queue dashboard');
+      const token = this.extractToken(req);
+      if (!token) {
+        throw new UnauthorizedException('Bearer JWT is required to access the queue dashboard');
       }
 
-      const apiKey = await this.authService.validateApiKey(rawKey, clientIp);
-      if (!this.authService.hasPermission(apiKey, ApiKeyRole.ADMIN)) {
+      const user = await this.userAuthService.validateToken(token);
+      if (user.role !== ApiKeyRole.ADMIN) {
         throw new ForbiddenException('Admin role required to access the queue dashboard');
-      }
-
-      // The board shows and mutates every queue in the deployment, and carries no session dimension
-      // to scope against. validateApiKey above is called without a session id, so a key restricted to
-      // specific sessions passes its scope check by default — reject it here instead. This mirrors
-      // @RequireUnscopedKey on the REST surface, which cannot reach this raw-Express mount.
-      if ((apiKey.allowedSessions?.length ?? 0) > 0) {
-        throw new ForbiddenException('API keys restricted to specific sessions cannot access the queue dashboard');
       }
 
       // Boundary trace of queue-mutation attempts. GET/HEAD are the UI's read/poll traffic; every
@@ -86,10 +78,10 @@ export class BullBoardAuthMiddleware implements NestMiddleware {
       // authenticated key, the resolved client IP, and the method + full path (no query string).
       if (req.method !== 'GET' && req.method !== 'HEAD') {
         void this.auditService?.logInfo(AuditAction.QUEUE_BOARD_MUTATED, {
-          apiKey,
           ipAddress: clientIp,
           method: req.method,
           path: this.auditPath(req),
+          metadata: { userId: user.id, userRole: user.role },
         });
       }
 
@@ -118,14 +110,9 @@ export class BullBoardAuthMiddleware implements NestMiddleware {
     return url.split('?')[0];
   }
 
-  private extractKey(req: Request): string | undefined {
-    const header = req.headers['x-api-key'];
-    if (typeof header === 'string' && header) return header;
-
+  private extractToken(req: Request): string | undefined {
     const authHeader = req.headers['authorization'];
-    if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7);
-
-    // No ?apiKey query fallback — an admin key in the URL leaks into logs/history.
+    if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7).trim() || undefined;
     return undefined;
   }
 

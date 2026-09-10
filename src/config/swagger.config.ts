@@ -1,11 +1,5 @@
 import { DocumentBuilder, OpenAPIObject } from '@nestjs/swagger';
 
-/**
- * Security scheme name for the API key, used both when defining the scheme and
- * when applying it as a global requirement so Swagger UI sends the header.
- */
-export const API_KEY_SECURITY_SCHEME = 'X-API-Key';
-
 /** Bearer JWT returned by the account sign-in/sign-up endpoints. */
 export const ACCOUNT_JWT_SECURITY_SCHEME = 'account-jwt';
 
@@ -70,7 +64,6 @@ export function createSwaggerConfig(): Omit<OpenAPIObject, 'paths'> {
       .setTitle('OpenWA API')
       .setDescription('Open Source WhatsApp API Gateway - Free, Self-Hosted HTTP API')
       .setVersion(version)
-      .addApiKey({ type: 'apiKey', name: 'X-API-Key', in: 'header' }, API_KEY_SECURITY_SCHEME)
       .addBearerAuth(
         {
           type: 'http',
@@ -91,11 +84,6 @@ export function createSwaggerConfig(): Omit<OpenAPIObject, 'paths'> {
         },
         METRICS_BEARER_SCHEME,
       )
-      // Apply the scheme globally so Swagger UI sends the key with every request
-      // (mirrors the global ApiKeyGuard). Without this, "Authorize" is cosmetic.
-      .addSecurityRequirements(API_KEY_SECURITY_SCHEME)
-      // A protected operation accepts either an account JWT or an API key. Separate
-      // requirement objects are OR alternatives in OpenAPI (one object would mean AND).
       .addSecurityRequirements(ACCOUNT_JWT_SECURITY_SCHEME)
       .setContact('OpenWA', 'https://github.com/rmyndharis/OpenWA', 'yudhi@rmyndharis.com')
       .addTag('sessions', 'WhatsApp session management')
@@ -116,7 +104,7 @@ export function createSwaggerConfig(): Omit<OpenAPIObject, 'paths'> {
       .addTag('settings', 'Application settings')
       .addTag('infrastructure', 'Infrastructure & datastore management')
       .addTag('integration', 'Integration Fabric (provider webhooks & instances)')
-      .addTag('auth', 'Account authentication and API key management')
+      .addTag('auth', 'Account JWT authentication')
       .addTag('audit', 'Audit log')
       .addTag('metrics', 'Prometheus metrics')
       .addTag('health', 'Health check endpoints')

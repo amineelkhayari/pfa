@@ -36,7 +36,12 @@ export interface ShopifyOrderPayload {
   financial_status?: string;
   fulfillment_status?: string;
   line_items?: Array<Record<string, unknown>>;
-  fulfillments?: Array<{ tracking_number?: string; tracking_numbers?: string[]; tracking_url?: string; tracking_urls?: string[] }>;
+  fulfillments?: Array<{
+    tracking_number?: string;
+    tracking_numbers?: string[];
+    tracking_url?: string;
+    tracking_urls?: string[];
+  }>;
   shipping_address?: Record<string, unknown> & { phone?: string; name?: string };
   customer?: Record<string, unknown> & { first_name?: string; last_name?: string; phone?: string };
   tags?: string;
@@ -84,43 +89,121 @@ export class ShopifyService {
     return error instanceof Error ? error.message : fallback;
   }
 
-  async updateOrderShippingAddress(shopDomain: string, accessToken: string, orderId: string, address: Record<string, unknown>): Promise<void> {
+  async updateOrderShippingAddress(
+    shopDomain: string,
+    accessToken: string,
+    orderId: string,
+    address: Record<string, unknown>,
+  ): Promise<void> {
     try {
-      await firstValueFrom(this.http.put(
-        `${this.getBaseUrl(shopDomain)}/orders/${encodeURIComponent(orderId)}.json`,
-        { order: { id: orderId, shipping_address: address } },
-        { headers: this.getHeaders(accessToken) },
-      ));
+      await firstValueFrom(
+        this.http.put(
+          `${this.getBaseUrl(shopDomain)}/orders/${encodeURIComponent(orderId)}.json`,
+          { order: { id: orderId, shipping_address: address } },
+          { headers: this.getHeaders(accessToken) },
+        ),
+      );
     } catch (error) {
       throw new BadRequestException(this.errorDetails(error, 'Unable to update the Shopify delivery address.'));
     }
   }
 
-  async createConfirmedChatOrder(shopDomain: string, accessToken: string, input: {
-    variantId: string; quantity: number; phone: string; customerName: string;
-    address1: string; city: string; postalCode?: string | null; country: string;
-  }): Promise<{ orderId: string; orderName: string | null }> {
+  async createConfirmedChatOrder(
+    shopDomain: string,
+    accessToken: string,
+    input: {
+      variantId: string;
+      quantity: number;
+      phone: string;
+      customerName: string;
+      address1: string;
+      city: string;
+      postalCode?: string | null;
+      country: string;
+    },
+  ): Promise<{ orderId: string; orderName: string | null }> {
     const graphql = async (query: string, variables: Record<string, unknown>) => {
-      const response = await firstValueFrom(this.http.post<any>(`${this.getBaseUrl(shopDomain)}/graphql.json`, { query, variables }, { headers: this.getHeaders(accessToken) }));
-      if (response.data.errors?.length) throw new BadRequestException(response.data.errors.map((item: any) => item.message).join('; '));
+      const response = await firstValueFrom(
+        this.http.post<any>(
+          `${this.getBaseUrl(shopDomain)}/graphql.json`,
+          { query, variables },
+          { headers: this.getHeaders(accessToken) },
+        ),
+      );
+      if (response.data.errors?.length)
+        throw new BadRequestException(response.data.errors.map((item: any) => item.message).join('; '));
       return response.data.data;
     };
     try {
-      const created = await graphql(`mutation CreateChatDraft($input: DraftOrderInput!) {
-        draftOrderCreate(input: $input) { draftOrder { id } userErrors { field message } }
-      }`, { input: {
-        lineItems: [{ variantId: input.variantId, quantity: input.quantity }], phone: input.phone,
-        shippingAddress: { firstName: input.customerName, address1: input.address1, city: input.city, zip: input.postalCode || undefined, country: input.country },
-        billingAddress: { firstName: input.customerName, address1: input.address1, city: input.city, zip: input.postalCode || undefined, country: input.country },
-        tags: ['whatsapp-bot', 'whatsapp-bot-confirmed'], note: 'Confirmed by customer through WhatsApp', sourceName: 'whatsapp',
-      } });
+      const created = await graphql(
+        `
+          mutation CreateChatDraft($input: DraftOrderInput!) {
+            draftOrderCreate(input: $input) {
+              draftOrder {
+                id
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `,
+        {
+          input: {
+            lineItems: [{ variantId: input.variantId, quantity: input.quantity }],
+            phone: input.phone,
+            shippingAddress: {
+              firstName: input.customerName,
+              address1: input.address1,
+              city: input.city,
+              zip: input.postalCode || undefined,
+              country: input.country,
+            },
+            billingAddress: {
+              firstName: input.customerName,
+              address1: input.address1,
+              city: input.city,
+              zip: input.postalCode || undefined,
+              country: input.country,
+            },
+            tags: ['whatsapp-bot', 'whatsapp-bot-confirmed'],
+            note: 'Confirmed by customer through WhatsApp',
+            sourceName: 'whatsapp',
+          },
+        },
+      );
       const createResult = created.draftOrderCreate;
-      if (createResult.userErrors?.length || !createResult.draftOrder?.id) throw new BadRequestException(createResult.userErrors?.map((item: any) => item.message).join('; ') || 'Shopify did not create the draft order');
-      const completed = await graphql(`mutation CompleteChatDraft($id: ID!) {
-        draftOrderComplete(id: $id) { draftOrder { order { id name } } userErrors { field message } }
-      }`, { id: createResult.draftOrder.id });
+      if (createResult.userErrors?.length || !createResult.draftOrder?.id)
+        throw new BadRequestException(
+          createResult.userErrors?.map((item: any) => item.message).join('; ') ||
+            'Shopify did not create the draft order',
+        );
+      const completed = await graphql(
+        `
+          mutation CompleteChatDraft($id: ID!, $paymentPending: Boolean) {
+            draftOrderComplete(id: $id, paymentPending: $paymentPending) {
+              draftOrder {
+                order {
+                  id
+                  name
+                }
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `,
+        { id: createResult.draftOrder.id, paymentPending: true },
+      );
       const completeResult = completed.draftOrderComplete;
-      if (completeResult.userErrors?.length || !completeResult.draftOrder?.order?.id) throw new BadRequestException(completeResult.userErrors?.map((item: any) => item.message).join('; ') || 'Shopify did not complete the draft order');
+      if (completeResult.userErrors?.length || !completeResult.draftOrder?.order?.id)
+        throw new BadRequestException(
+          completeResult.userErrors?.map((item: any) => item.message).join('; ') ||
+            'Shopify did not complete the draft order',
+        );
       return { orderId: completeResult.draftOrder.order.id, orderName: completeResult.draftOrder.order.name ?? null };
     } catch (error) {
       throw new BadRequestException(this.errorDetails(error, 'Unable to create the Shopify order.'));
@@ -287,15 +370,15 @@ export class ShopifyService {
     const tags = Array.from(new Set([...(order.tags ?? []), SHOPIFY_WHATSAPP_CONFIRMED_TAG]));
     const remote = await this.get<{
       order?: { note_attributes?: Array<{ name: string; value: string }> };
-    }>(shopDomain, accessToken, `orders/${order.shopifyOrderId}.json?fields=id,note_attributes`);
+    }>(shopDomain, accessToken, `orders/${order.externalOrderId}.json?fields=id,note_attributes`);
     const existingAttributes = remote.order?.note_attributes ?? [];
     const noteAttributes = [
       ...existingAttributes.filter(attribute => attribute.name !== 'WhatsApp confirmation'),
       { name: 'WhatsApp confirmation', value: 'Confirmed' },
     ];
-    await this.put(shopDomain, accessToken, `orders/${order.shopifyOrderId}.json`, {
+    await this.put(shopDomain, accessToken, `orders/${order.externalOrderId}.json`, {
       order: {
-        id: order.shopifyOrderId,
+        id: order.externalOrderId,
         tags: tags.join(', '),
         note_attributes: noteAttributes,
       },
@@ -342,7 +425,7 @@ export class ShopifyService {
     const products = await this.getProducts(shopDomain, accessToken);
     const entities = products.map(product => ({
       storeId,
-      shopifyProductId: String(product.id),
+      externalProductId: String(product.id),
       title: product.title ?? 'Untitled',
       description: product.body_html ?? null,
       handle: product.handle ?? null,
@@ -359,12 +442,12 @@ export class ShopifyService {
       imageUrl: product.image?.src ?? product.images?.[0]?.src ?? null,
       variants: product.variants ?? [],
       price: Number.parseFloat(product.variants?.[0]?.price ?? '0') || 0,
-      shopifyCreatedAt: product.created_at ? new Date(product.created_at) : new Date(),
-      shopifyUpdatedAt: product.updated_at ? new Date(product.updated_at) : new Date(),
+      externalCreatedAt: product.created_at ? new Date(product.created_at) : new Date(),
+      externalUpdatedAt: product.updated_at ? new Date(product.updated_at) : new Date(),
     }));
     if (entities.length) {
       const values = entities as unknown as Parameters<typeof this.productRepository.upsert>[0];
-      await this.productRepository.upsert(values, ['storeId', 'shopifyProductId']);
+      await this.productRepository.upsert(values, ['storeId', 'externalProductId']);
     }
     return products.length;
   }
@@ -374,7 +457,7 @@ export class ShopifyService {
     const entities = orders.map(order => this.mapOrder(order, storeId));
     if (entities.length) {
       const values = entities as unknown as Parameters<typeof this.orderRepository.upsert>[0];
-      await this.orderRepository.upsert(values, ['storeId', 'shopifyOrderId']);
+      await this.orderRepository.upsert(values, ['storeId', 'externalOrderId']);
     }
     return orders.length;
   }
@@ -383,9 +466,9 @@ export class ShopifyService {
     const value = this.mapOrder(order, storeId);
     await this.orderRepository.upsert(value as unknown as Parameters<typeof this.orderRepository.upsert>[0], [
       'storeId',
-      'shopifyOrderId',
+      'externalOrderId',
     ]);
-    const saved = await this.orderRepository.findOneBy({ storeId, shopifyOrderId: String(order.id) });
+    const saved = await this.orderRepository.findOneBy({ storeId, externalOrderId: String(order.id) });
     if (!saved) throw new InternalServerErrorException('Imported Shopify order could not be loaded.');
     return saved;
   }
@@ -398,7 +481,7 @@ export class ShopifyService {
     const confirmedByWhatsApp = hasShopifyWhatsAppConfirmation(order.tags);
     return {
       storeId,
-      shopifyOrderId: String(order.id),
+      externalOrderId: String(order.id),
       orderNumber: order.name ?? (order.order_number == null ? null : String(order.order_number)),
       email: order.email ?? order.contact_email ?? null,
       phone: order.phone ?? order.shipping_address?.phone ?? order.customer?.phone ?? null,
@@ -408,7 +491,16 @@ export class ShopifyService {
       financialStatus: order.financial_status ?? null,
       fulfillmentStatus: order.fulfillment_status ?? null,
       lineItems: order.line_items ?? [],
-      shippingAddress: order.shipping_address ? { ...order.shipping_address, tracking_number: order.fulfillments?.flatMap(item => item.tracking_numbers ?? [item.tracking_number]).find(Boolean) ?? null, tracking_url: order.fulfillments?.flatMap(item => item.tracking_urls ?? [item.tracking_url]).find(Boolean) ?? null } : null,
+      shippingAddress: order.shipping_address
+        ? {
+            ...order.shipping_address,
+            tracking_number:
+              order.fulfillments?.flatMap(item => item.tracking_numbers ?? [item.tracking_number]).find(Boolean) ??
+              null,
+            tracking_url:
+              order.fulfillments?.flatMap(item => item.tracking_urls ?? [item.tracking_url]).find(Boolean) ?? null,
+          }
+        : null,
       customer: order.customer ?? null,
       tags: order.tags
         ? order.tags
@@ -418,7 +510,7 @@ export class ShopifyService {
         : null,
       status: order.cancelled_at ? 'cancelled' : confirmedByWhatsApp ? 'confirmed' : 'open',
       ...(confirmedByWhatsApp ? { confirmationStatus: 'confirmed' } : {}),
-      shopifyCreatedAt: order.created_at ? new Date(order.created_at) : new Date(),
+      externalCreatedAt: order.created_at ? new Date(order.created_at) : new Date(),
     };
   }
 }

@@ -11,7 +11,7 @@ import {
 import { Store } from './store.entity';
 
 @Entity('products')
-@Index(['storeId', 'shopifyProductId'], { unique: true })
+@Index(['storeId', 'externalProductId'], { unique: true })
 export class Product {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -29,10 +29,10 @@ export class Product {
   store: Store;
 
   /**
-   * Shopify product ID.
+   * Product ID assigned by the connected commerce provider.
    */
   @Column({ type: 'varchar', length: 100 })
-  shopifyProductId: string;
+  externalProductId: string;
 
   @Column({ type: 'varchar', length: 255 })
   title: string;
@@ -69,10 +69,7 @@ export class Product {
   imageUrl: string | null;
 
   /**
-   * Shopify product variants.
-   *
-   * Stored as JSON because Shopify's variant structure
-   * can contain multiple fields.
+   * Provider product variants, stored as JSON because schemas differ by platform.
    */
   @Column({
     type: 'simple-json',
@@ -89,10 +86,10 @@ export class Product {
   price: number;
 
   @CreateDateColumn()
-  shopifyCreatedAt: Date | null;
+  externalCreatedAt: Date | null;
 
   @UpdateDateColumn()
-  shopifyUpdatedAt: Date | null;
+  externalUpdatedAt: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;

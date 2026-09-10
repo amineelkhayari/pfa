@@ -5,7 +5,7 @@ import { dateColumnType } from '../../../common/utils/column-types';
 import { DateTransformer } from '../../../common/transformers/date.transformer';
 
 @Entity('orders')
-@Index(['storeId', 'shopifyOrderId'], { unique: true })
+@Index(['storeId', 'externalOrderId'], { unique: true })
 export class Order {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -23,10 +23,10 @@ export class Order {
   store: Store;
 
   /**
-   * Shopify order ID.
+   * Order ID assigned by the connected commerce provider.
    */
   @Column({ type: 'varchar', length: 100 })
-  shopifyOrderId: string;
+  externalOrderId: string;
 
   @Column({ type: 'varchar', length: 100, nullable: true })
   orderNumber: string | null;
@@ -70,7 +70,7 @@ export class Order {
   fulfillmentStatus: string | null;
 
   /**
-   * Shopify order line items.
+   * Provider order line items.
    */
   @Column({
     type: 'simple-json',
@@ -97,7 +97,7 @@ export class Order {
   customer: Record<string, any> | null;
 
   /**
-   * Shopify order tags.
+   * Provider order tags.
    */
   @Column({
     type: 'simple-json',
@@ -134,10 +134,10 @@ export class Order {
   confirmationError: string | null;
 
   /**
-   * Original Shopify creation date.
+   * Original creation date reported by the commerce provider.
    */
   @CreateDateColumn()
-  shopifyCreatedAt: Date | null;
+  externalCreatedAt: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -209,16 +209,39 @@ export class BaileysMessaging {
     this.host.ensureReady();
     const jid = await this.toDeliverableJid(chatId);
     const lib = await this.host.loadLib();
-    const sent = lib.generateWAMessageFromContent(jid, {
-      viewOnceMessage: { message: { interactiveMessage: {
-        body: { text: input.text }, footer: { text: input.footer ?? '' },
-        nativeFlowMessage: { buttons: input.buttons.map(button => ({
-          name: 'quick_reply', buttonParamsJson: JSON.stringify({ display_text: button.label, id: button.id }),
-        })) },
-      } } },
-    } as any, { userJid: this.sock().user!.id });
+    const sent = lib.generateWAMessageFromContent(
+      jid,
+      {
+        viewOnceMessage: {
+          message: {
+            messageContextInfo: {
+              // Multi-device clients require this metadata for native-flow messages.
+              // Without it WhatsApp can accept the relay and return a message ID while
+              // silently refusing to render the message on the recipient device.
+              deviceListMetadata: {},
+              deviceListMetadataVersion: 2,
+            },
+            interactiveMessage: {
+              header: { hasMediaAttachment: false },
+              body: { text: input.text },
+              footer: { text: input.footer ?? '' },
+              nativeFlowMessage: {
+                buttons: input.buttons.map(button => ({
+                  name: 'quick_reply',
+                  buttonParamsJson: JSON.stringify({ display_text: button.label, id: button.id }),
+                })),
+                messageParamsJson: '',
+              },
+            },
+          },
+        },
+      } as any,
+      { userJid: this.sock().user!.id },
+    );
     await this.sock().relayMessage(jid, sent.message!, { messageId: sent.key.id! });
-    void this.host.putStoredMessage(sent)?.catch(error => this.host.logger.warn('Failed to persist sent interactive message', { error: String(error) }));
+    void this.host
+      .putStoredMessage(sent)
+      ?.catch(error => this.host.logger.warn('Failed to persist sent interactive message', { error: String(error) }));
     void this.emitOwnSendEcho(sent);
     return { id: sent.key.id ?? '', timestamp: this.host.toUnixSeconds(sent.messageTimestamp) };
   }
