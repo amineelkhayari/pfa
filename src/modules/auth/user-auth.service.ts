@@ -190,6 +190,10 @@ export class UserAuthService implements OnModuleInit {
     return { accessToken, token: accessToken, tokenType: 'Bearer', expiresAt, user: this.publicView(user) };
   }
 
+  passwordMatches(user: UserAccount, password: string): Promise<boolean> {
+    return this.verifyPassword(password, user.passwordHash);
+  }
+
   private verifyJwt(rawToken: string, ignoreExpiration = false): JwtPayload {
     try {
       const payload = verify(rawToken, this.jwtSecret(), {

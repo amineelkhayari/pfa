@@ -65,7 +65,7 @@ jobs:
             exit 0
           fi
           git config user.name "rmyndharis"
-          git config user.email "yudhi@rmyndharis.com"
+          git config user.email "B_E@rmyndharis.com"
           SPLIT_SHA="$(git subtree split --prefix=sdk/php HEAD)"
           echo "Split SHA: $SPLIT_SHA"
           git push --force \

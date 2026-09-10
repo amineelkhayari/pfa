@@ -450,7 +450,11 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
   }> {
     // Scope to the caller's allowedSessions so a session-restricted key cannot enumerate the count /
     // status distribution of sessions it has no rights to (matches the scoped GET /sessions route).
-    const scope = allowedSessions && allowedSessions.length > 0 ? allowedSessions : null;
+    // JWT account tokens do not carry ApiKey.allowedSessions. Resolve them through the request actor
+    // so an ordinary customer sees only sessions owned by that account. `undefined` means an
+    // unrestricted legacy/admin actor; an empty array means a customer with no sessions.
+    const resolvedScope = await this.planUsage.resolveSessionScope(allowedSessions);
+    const scope = resolvedScope === undefined ? null : resolvedScope;
     // Aggregate status counts in the database instead of loading every row. findAll() is bounded by
     // DEFAULT_LIST_LIMIT for the HTTP routes, so reusing it here would silently undercount `total` and
     // `byStatus` on deployments with more sessions than that cap. A grouped COUNT is correct at any
@@ -459,8 +463,10 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
       .createQueryBuilder('session')
       .select('session.status', 'status')
       .addSelect('COUNT(session.id)', 'count');
-    if (scope) {
+    if (scope?.length) {
       qb.where('session.id IN (:...scope)', { scope });
+    } else if (scope) {
+      qb.where('1 = 0');
     }
     const rows = await qb.groupBy('session.status').getRawMany<{ status: string; count: string }>();
 

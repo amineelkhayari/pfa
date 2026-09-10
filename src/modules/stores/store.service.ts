@@ -44,7 +44,7 @@ export class StoreService {
     // this.messageService.sendText('8e460a4e-2d7e-48fa-b0c6-877131c8afc2',
     //   {
     //     "chatId": "212673518365@c.us",
-    //     "text": "Hello from OpenWA!"+dto.ownerName,
+    //     "text": "Hello from SmartConfirm!"+dto.ownerName,
     //     "mentions": [
     //       "628123456789@c.us"
     //     ]

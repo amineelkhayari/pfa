@@ -69,6 +69,37 @@
   align-items: center;
   gap: 10px;
 }
+.landing-language {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 38px;
+  padding: 0 9px;
+  border: 1px solid #dce5df;
+  border-radius: 9px;
+  background: #fff;
+  color: #405048;
+}
+.landing-language select {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.landing[dir='rtl'] {
+  font-family: 'Noto Sans Arabic', 'Cairo', 'Tajawal', sans-serif;
+}
+html[dir='rtl'] .landing .hero-primary svg,
+html[dir='rtl'] .landing .primary-action svg,
+html[dir='rtl'] .landing .text-link svg,
+html[dir='rtl'] .landing .feature-grid article > a svg,
+html[dir='rtl'] .landing .final-cta button svg {
+  transform: rotate(180deg);
+}
 .landing button {
   border: 0;
 }
@@ -1194,6 +1225,10 @@
   .landing-menu {
     display: block;
     margin-left: auto;
+  }
+  html[dir='rtl'] .landing-menu {
+    margin-right: auto;
+    margin-left: 0;
   }
   .landing-links {
     display: none;

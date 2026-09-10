@@ -143,8 +143,8 @@ export class WooCommerceService {
     const existing = await this.all(credentials, 'webhooks');
     let created = 0;
     for (const hook of [
-      { topic: 'order.created', path: 'order-created', name: 'OpenWA order confirmation' },
-      { topic: 'order.updated', path: 'order-updated', name: 'OpenWA order lifecycle' },
+      { topic: 'order.created', path: 'order-created', name: 'SmartConfirm order confirmation' },
+      { topic: 'order.updated', path: 'order-updated', name: 'SmartConfirm order lifecycle' },
     ]) {
       const deliveryUrl = `${credentials.webhookBaseUrl.replace(/\/$/, '')}/api/woocommerce/webhooks/${storeId}/${hook.path}`;
       if (

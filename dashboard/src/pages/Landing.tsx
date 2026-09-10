@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowRight,
+  AudioLines,
   BarChart3,
   Bot,
   Check,
@@ -9,86 +11,40 @@ import {
   Menu,
   MessageCircle,
   MessageSquareText,
+  Languages,
   PlugZap,
   Send,
   ShieldCheck,
   ShoppingBag,
   Smartphone,
   Store,
+  WalletCards,
+  Wrench,
   X,
   Zap,
 } from 'lucide-react';
 import './Landing.css';
 import { billingApi, type BillingPlan } from '../services/api';
+import { landingCopy, landingLanguage, type LandingLanguage } from './landing-copy';
 
 interface LandingProps {
   onSignIn: () => void;
   onSignUp: () => void;
 }
 
-const features = [
-  {
-    icon: ShoppingBag,
-    title: 'Order confirmation',
-    text: 'Confirm or cancel ecommerce orders automatically and keep their status synchronized.',
-  },
-  {
-    icon: Bot,
-    title: 'Human-like AI agent',
-    text: 'Answer product and order questions in the customer’s language with store context.',
-  },
-  {
-    icon: Send,
-    title: 'Smart campaigns',
-    text: 'Choose customers, reuse templates, personalize messages, and track every delivery.',
-  },
-  {
-    icon: MessageSquareText,
-    title: 'Unified conversations',
-    text: 'See customer chats, order context, templates, and handoff activity in one workspace.',
-  },
-  {
-    icon: PlugZap,
-    title: 'Store integrations',
-    text: 'Connect Shopify and WooCommerce, import products and orders, and receive webhooks.',
-  },
-  {
-    icon: BarChart3,
-    title: 'Clear reporting',
-    text: 'Monitor devices, sent and received messages, campaigns, failures, risk, and usage.',
-  },
-];
-
-const faqs = [
-  [
-    'What is SmartConfirm?',
-    'SmartConfirm connects your ecommerce store and WhatsApp so orders, customer questions, campaigns, and confirmations can be handled from one workspace.',
-  ],
-  [
-    'Does it support Shopify and WooCommerce?',
-    'Yes. You can connect stores, synchronize products and orders, receive new-order webhooks, and link each store to a WhatsApp session.',
-  ],
-  [
-    'Can the AI talk in Darija or French?',
-    'Yes. The agent can respond naturally in the customer’s language and use the relevant store, catalog, and order context.',
-  ],
-  [
-    'Can I control who receives a campaign?',
-    'Yes. Before launch, you can search customers, view their numbers and stores, and exclude any recipients you do not want to contact.',
-  ],
-  [
-    'Do I need a credit card for the Free plan?',
-    'No. Create an account and start on Free. You can upgrade to Pro when you need more stores, devices, and messages.',
-  ],
-];
+const featureIcons = [ShoppingBag, Bot, Send, MessageSquareText, PlugZap, BarChart3, Wrench, AudioLines, WalletCards];
 
 export function Landing({ onSignIn, onSignUp }: LandingProps) {
+  const { i18n } = useTranslation();
+  const language = landingLanguage(i18n.resolvedLanguage || i18n.language);
+  const copy = landingCopy[language];
   const [menuOpen, setMenuOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState(0);
   const [plans, setPlans] = useState<BillingPlan[]>([]);
   useEffect(() => { billingApi.plans().then(setPlans).catch(() => undefined); }, []);
+  const selectLanguage = (next: LandingLanguage) => void i18n.changeLanguage(next);
   return (
-    <div className="landing">
+    <div className="landing" dir={language === 'ar' ? 'rtl' : 'ltr'} lang={language}>
       <nav className="landing-nav">
         <a className="landing-brand" href="#top">
           <span className="brand-mark">
@@ -96,22 +52,21 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
           </span>
           <span>SmartConfirm</span>
         </a>
-        <button className="landing-menu" onClick={() => setMenuOpen(v => !v)} aria-label="Toggle menu">
+        <button className="landing-menu" onClick={() => setMenuOpen(v => !v)} aria-label={copy.menu}>
           {menuOpen ? <X /> : <Menu />}
         </button>
         <div className={`landing-links ${menuOpen ? 'open' : ''}`}>
-          <a href="#features">Features</a>
-          <a href="#automation">How it works</a>
-          <a href="#integrations">Integrations</a>
-          <a href="#pricing">Pricing</a>
-          <a href="#faq">FAQ</a>
+          {copy.nav.map((label, index) => <a key={label} href={['#features', '#automation', '#integrations', '#pricing', '#faq'][index]}>{label}</a>)}
         </div>
         <div className="landing-actions">
+          <label className="landing-language" aria-label="Language">
+            <Languages size={16} />
+            <select value={language} onChange={event => selectLanguage(event.target.value as LandingLanguage)}>
+              <option value="en">EN</option><option value="fr">FR</option><option value="ar">AR</option>
+            </select>
+          </label>
           <button className="text-action" onClick={onSignIn}>
-            Sign in
-          </button>
-          <button className="primary-action" onClick={onSignUp}>
-            Start free <ArrowRight size={16} />
+            {copy.signIn}
           </button>
         </div>
       </nav>
@@ -120,32 +75,31 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
         <section className="landing-hero">
           <div className="hero-copy">
             <div className="hero-badge">
-              <Zap size={14} /> WhatsApp automation for ecommerce
+              <Zap size={14} /> {copy.badge}
             </div>
             <h1>
-              Turn WhatsApp conversations into <span>confirmed orders.</span>
+              {copy.heroStart} <span>{copy.heroAccent}</span>
             </h1>
             <p>
-              Connect your store, automate order confirmation, help customers with AI, and run targeted campaigns—all
-              from one clear workspace.
+              {copy.heroText}
             </p>
             <div className="hero-actions">
               <button className="hero-primary" onClick={onSignUp}>
-                Create free account <ArrowRight />
+                {copy.signUp} <ArrowRight />
               </button>
               <a href="#automation" className="hero-secondary">
-                See how it works
+                {copy.seeHow}
               </a>
             </div>
             <div className="hero-trust">
               <span>
-                <Check /> No card required
+                <Check /> {copy.trust[0]}
               </span>
               <span>
-                <Check /> Shopify & WooCommerce
+                <Check /> {copy.trust[1]}
               </span>
               <span>
-                <Check /> Setup in minutes
+                <Check /> {copy.trust[2]}
               </span>
             </div>
           </div>
@@ -259,7 +213,7 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
         </section>
 
         <section className="logo-strip">
-          <p>Made for ecommerce teams using</p>
+          <p>{copy.madeFor}</p>
           <div>
             <span>SHOPIFY</span>
             <span>Woo</span>
@@ -271,12 +225,14 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
 
         <section className="landing-section" id="features">
           <div className="section-heading">
-            <span>ONE OPERATING SYSTEM</span>
-            <h2>Everything your WhatsApp sales workflow needs</h2>
-            <p>Replace disconnected tools and repetitive follow-up with an ecommerce-first automation workspace.</p>
+            <span>{copy.featureEyebrow}</span>
+            <h2>{copy.featureTitle}</h2>
+            <p>{copy.featureText}</p>
           </div>
           <div className="feature-grid">
-            {features.map(({ icon: Icon, title, text }) => (
+            {copy.features.map(([title, text], index) => {
+              const Icon = featureIcons[index];
+              return (
               <article key={title}>
                 <span>
                   <Icon />
@@ -284,37 +240,24 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
                 <h3>{title}</h3>
                 <p>{text}</p>
                 <a href="#pricing">
-                  Explore feature <ArrowRight />
+                  {copy.explore} <ArrowRight />
                 </a>
               </article>
-            ))}
+              );
+            })}
           </div>
         </section>
 
         <section className="automation-section" id="automation">
           <div className="automation-copy">
-            <span className="section-tag">FROM ORDER TO CONFIRMATION</span>
-            <h2>Your store works—even when your team is offline.</h2>
-            <p>
-              SmartConfirm reacts to store events, starts the right WhatsApp conversation, understands the reply, and
-              writes the result back to your commerce platform.
-            </p>
+            <span className="section-tag">{copy.automationEyebrow}</span>
+            <h2>{copy.automationTitle}</h2>
+            <p>{copy.automationText}</p>
             <ul>
-              <li>
-                <CircleCheck /> New orders trigger the confirmation workflow
-              </li>
-              <li>
-                <CircleCheck /> AI answers natural follow-up questions
-              </li>
-              <li>
-                <CircleCheck /> Confirmed and cancelled statuses stay synchronized
-              </li>
-              <li>
-                <CircleCheck /> Complex conversations can be handed to a person
-              </li>
+              {copy.automationPoints.map(point => <li key={point}><CircleCheck /> {point}</li>)}
             </ul>
             <button className="primary-action large" onClick={onSignUp}>
-              Automate my store <ArrowRight />
+              {copy.automate} <ArrowRight />
             </button>
           </div>
           <div className="flow-card">
@@ -362,9 +305,9 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
 
         <section className="integration-section" id="integrations">
           <div className="section-heading">
-            <span>CONNECTED COMMERCE</span>
-            <h2>Your store, WhatsApp, and AI—working together</h2>
-            <p>Use one standardized automation layer across commerce providers and AI models.</p>
+            <span>{copy.integrationEyebrow}</span>
+            <h2>{copy.integrationTitle}</h2>
+            <p>{copy.integrationText}</p>
           </div>
           <div className="integration-canvas">
             <div className="integration-side">
@@ -380,6 +323,13 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
                 <div>
                   <b>WooCommerce</b>
                   <small>Webhooks and store sync</small>
+                </div>
+              </article>
+              <article>
+                <Zap />
+                <div>
+                  <b>YouCan</b>
+                  <small>OAuth, orders, products, and rest hooks</small>
                 </div>
               </article>
             </div>
@@ -440,8 +390,8 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
                 <Check />
               </span>
               <p>
-                <b>Mohammed Amine</b>
-                <small>+212 673 518 365 · Shopify</small>
+                <b>Amine</b>
+                <small>+212 777 000 777 · Shopify</small>
               </p>
               <em>Sent</em>
             </div>
@@ -450,48 +400,34 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
                 <Check />
               </span>
               <p>
-                <b>Sarah Benali</b>
-                <small>+212 612 345 678 · WooCommerce</small>
+                <b> mohammed</b>
+                <small>+212 000 777 000 · WooCommerce</small>
               </p>
               <em>Delivered</em>
             </div>
           </div>
           <div className="showcase-copy">
-            <span className="section-tag">CAMPAIGNS WITH CONTROL</span>
-            <h2>Reach the right customers, not just every number.</h2>
-            <p>
-              Preview your audience, exclude contacts, choose a template, personalize customer fields, control timing,
-              and watch delivery health live.
-            </p>
+            <span className="section-tag">{copy.campaignEyebrow}</span>
+            <h2>{copy.campaignTitle}</h2>
+            <p>{copy.campaignText}</p>
             <div className="check-grid">
-              <span>
-                <Check /> Customer selection
-              </span>
-              <span>
-                <Check /> Saved templates
-              </span>
-              <span>
-                <Check /> Personal variables
-              </span>
-              <span>
-                <Check /> Risk monitoring
-              </span>
+              {copy.campaignPoints.map(point => <span key={point}><Check /> {point}</span>)}
             </div>
           </div>
         </section>
 
         <section className="pricing-section" id="pricing">
           <div className="section-heading">
-            <span>SIMPLE PRICING</span>
-            <h2>Start free. Upgrade when you grow.</h2>
-            <p>No complicated tiers. Both plans include the core ecommerce automation workspace.</p>
+            <span>{copy.pricingEyebrow}</span>
+            <h2>{copy.pricingTitle}</h2>
+            <p>{copy.pricingText}</p>
           </div>
           <div className="pricing-grid">
             {(plans.length ? plans : [{ id: 'free', slug: 'free', name: 'Free', description: 'Try your first workflows.', priceMonthly: 0, currency: 'USD', limits: { sessions: 1, stores: 1, sentMessages: 20, receivedMessages: 20, aiTokens: 5000, audioTranscriptions: 0, audioReplies: 0 }, features: ['WhatsApp commerce automation', 'AI order assistant'], trialDays: 1, active: true, highlighted: false, sortOrder: 0, stripePriceId: null, paypalPlanId: null }]).map(plan => <article className={plan.highlighted ? 'featured' : ''} key={plan.id}>
-              {plan.highlighted && <div className="popular">MOST POPULAR</div>}
-              <div className="price-head"><div><h3>{plan.name}</h3><p>{plan.description}</p></div><strong>{new Intl.NumberFormat('en', { style: 'currency', currency: plan.currency, maximumFractionDigits: 2 }).format(plan.priceMonthly / 100)}<small>/month</small></strong></div>
-              <button onClick={onSignUp}>{plan.priceMonthly ? `Choose ${plan.name}` : 'Start free'} <ArrowRight /></button>
-              <ul>{plan.features.map(feature => <li key={feature}><Check/> {feature}</li>)}<li><Check/> {plan.limits.sessions} WhatsApp session{plan.limits.sessions === 1 ? '' : 's'}</li><li><Check/> {plan.limits.stores} ecommerce store{plan.limits.stores === 1 ? '' : 's'}</li><li><Check/> {plan.limits.sentMessages.toLocaleString()} sent messages</li><li><Check/> {plan.limits.aiTokens.toLocaleString()} AI tokens</li></ul>
+              {plan.highlighted && <div className="popular">{copy.popular}</div>}
+              <div className="price-head"><div><h3>{plan.name}</h3><p>{plan.description}</p></div><strong>{new Intl.NumberFormat(language, { style: 'currency', currency: plan.currency, maximumFractionDigits: 2 }).format(plan.priceMonthly / 100)}<small>{copy.month}</small></strong></div>
+              <button onClick={onSignUp}>{plan.priceMonthly ? `${copy.choose} ${plan.name}` : copy.startFree} <ArrowRight /></button>
+              <ul>{plan.features.map(feature => <li key={feature}><Check/> {feature}</li>)}<li><Check/> {plan.limits.sessions} {plan.limits.sessions === 1 ? copy.session : copy.sessions}</li><li><Check/> {plan.limits.stores} {plan.limits.stores === 1 ? copy.store : copy.stores}</li><li><Check/> {plan.limits.sentMessages.toLocaleString(language)} {copy.sent}</li><li><Check/> {plan.limits.aiTokens.toLocaleString(language)} {copy.tokens}</li></ul>
             </article>)}
           </div>
         </section>
@@ -499,14 +435,14 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
         <section className="faq-section" id="faq">
           <div className="faq-title">
             <span className="section-tag">FAQ</span>
-            <h2>Questions before you connect?</h2>
-            <p>Everything you need to know before launching your first WhatsApp automation.</p>
+            <h2>{copy.faqTitle}</h2>
+            <p>{copy.faqText}</p>
             <button className="text-link" onClick={onSignUp}>
-              Start free today <ArrowRight />
+              {copy.startToday} <ArrowRight />
             </button>
           </div>
           <div className="faq-list">
-            {faqs.map(([q, a], i) => (
+            {copy.faqs.map(([q, a], i) => (
               <article className={openFaq === i ? 'open' : ''} key={q}>
                 <button onClick={() => setOpenFaq(openFaq === i ? -1 : i)}>
                   <span>{q}</span>
@@ -521,13 +457,13 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
         <section className="final-cta">
           <div>
             <span>
-              <ShieldCheck /> Built for clear, controlled communication
+              <ShieldCheck /> {copy.safe}
             </span>
-            <h2>Ready to confirm more orders with less manual work?</h2>
-            <p>Connect your first WhatsApp session and ecommerce store today.</p>
+            <h2>{copy.finalTitle}</h2>
+            <p>{copy.finalText}</p>
           </div>
           <button onClick={onSignUp}>
-            Create your free account <ArrowRight />
+            {copy.signUp} <ArrowRight />
           </button>
         </section>
       </main>
@@ -540,32 +476,30 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
               </span>
               <span>SmartConfirm</span>
             </a>
-            <p>WhatsApp order confirmation, AI support, and campaigns for ecommerce.</p>
+            <p>{copy.footerText}</p>
           </div>
           <div>
-            <b>Product</b>
-            <a href="#features">Features</a>
-            <a href="#automation">Automation</a>
-            <a href="#pricing">Pricing</a>
+            <b>{copy.product}</b>
+            <a href="#features">{copy.nav[0]}</a>
+            <a href="#automation">{copy.automation}</a>
+            <a href="#pricing">{copy.nav[3]}</a>
           </div>
           <div>
-            <b>Integrations</b>
+            <b>{copy.nav[2]}</b>
             <a href="#integrations">Shopify</a>
             <a href="#integrations">WooCommerce</a>
             <a href="#integrations">AI providers</a>
           </div>
           <div>
-            <b>Account</b>
-            <button onClick={onSignIn}>Sign in</button>
-            <button onClick={onSignUp}>Create account</button>
+            <b>{copy.account}</b>
+            <button onClick={onSignIn}>{copy.signIn}</button>
+            <button onClick={onSignUp}>{copy.createAccount}</button>
           </div>
         </div>
         <div className="footer-bottom">
-          <span>© 2026 SmartConfirm. All rights reserved.</span>
-          <span>Designed for ecommerce teams in Morocco and beyond.</span>
+          <span>© 2026 SmartConfirm. {copy.rights}</span>
         </div>
       </footer>
     </div>
   );
 }
-

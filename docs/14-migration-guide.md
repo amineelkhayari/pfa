@@ -2,7 +2,7 @@
 
 ## 14.1 Overview
 
-This document provides a comprehensive guide for migrating OpenWA, including:
+This document provides a comprehensive guide for migrating SmartConfirm, including:
 
 - Database migration (SQLite → PostgreSQL)
 - Version upgrades within the 0.x line
@@ -91,7 +91,7 @@ flowchart TD
 
 ### API-Based Migration (Recommended for v0.2+)
 
-OpenWA v0.2+ includes built-in migration API endpoints that leverage the **Dual-Database Architecture**:
+SmartConfirm v0.2+ includes built-in migration API endpoints that leverage the **Dual-Database Architecture**:
 
 ```bash
 # Step 1: Export all Data DB tables
@@ -116,7 +116,7 @@ curl -X POST 'http://localhost:2785/api/infra/import-data' \
 > [!NOTE]
 > **Dual-Database Architecture**
 >
-> OpenWA separates databases:
+> SmartConfirm separates databases:
 >
 > - **Main DB** (SQLite): API keys, audit logs - never migrated, always local
 > - **Data DB** (Pluggable): Sessions, webhooks, messages - this is what gets migrated
@@ -168,7 +168,7 @@ curl -X POST 'http://localhost:2785/api/infra/import-data' \
 
 ### Storage Migration (Local ↔ S3/MinIO)
 
-OpenWA v0.2+ supports migrating media files between storage backends:
+SmartConfirm v0.2+ supports migrating media files between storage backends:
 
 ```bash
 # Step 1: Check current storage file count
@@ -207,7 +207,7 @@ curl -X POST 'http://localhost:2785/api/infra/storage/import' \
 
 ### Redis Migration (Cache)
 
-Redis in OpenWA holds only **ephemeral** state: TTL-based cache entries, BullMQ jobs (see below), and — when `REDIS_ENABLED` — the rate-limit hit counters. Cache data automatically regenerates from the database.
+Redis in SmartConfirm holds only **ephemeral** state: TTL-based cache entries, BullMQ jobs (see below), and — when `REDIS_ENABLED` — the rate-limit hit counters. Cache data automatically regenerates from the database.
 
 **No migration API needed** - just change configuration:
 
@@ -279,11 +279,11 @@ docker compose up -d
 > the export/import API above, which always covers the full table set.
 >
 > It uses the standalone `sqlite3` npm package, which is no longer part of
-> OpenWA's dependencies (the app itself uses `better-sqlite3`). Install it ad hoc before running:
+> SmartConfirm's dependencies (the app itself uses `better-sqlite3`). Install it ad hoc before running:
 > `npm install --no-save sqlite3`.
 >
 > The `SQLITE_PATH` / `DATABASE_URL` variables below are inputs to this standalone script only —
-> they are **not** OpenWA configuration. The application itself reads `DATABASE_TYPE` plus
+> they are **not** SmartConfirm configuration. The application itself reads `DATABASE_TYPE` plus
 > `DATABASE_NAME` / `DATABASE_HOST` / `DATABASE_PORT` / `DATABASE_USERNAME` / `DATABASE_PASSWORD`
 > (see `src/config/configuration.ts`).
 
@@ -469,7 +469,7 @@ migrateSqliteToPostgres(config)
 ### Step-by-Step Migration
 
 ```bash
-# Step 1: Stop OpenWA
+# Step 1: Stop SmartConfirm
 docker compose down
 
 # Step 2: Backup current data (both databases + session auth + media)
@@ -614,7 +614,7 @@ curl -X POST 'http://new-server:2785/api/infra/import-data' \
   -d @data-backup.json
 
 # 2. Move the engine auth state with both instances stopped (Method 1), keyed by session NAME.
-#    OLD_DIR/NEW_DIR are each host's OpenWA working directory; SESSION_DATA_PATH defaults to
+#    OLD_DIR/NEW_DIR are each host's SmartConfirm working directory; SESSION_DATA_PATH defaults to
 #    ./data/sessions and BAILEYS_AUTH_DIR to ./data/baileys, relative to it. The production
 #    docker-compose.yml keeps /app/data in the named volume `openwa_openwa-data` rather than on the
 #    host, so on that layout copy through the container (`docker cp`) instead of a host path.
@@ -629,7 +629,7 @@ fresh QR code.
 
 ### Upgrade Matrix
 
-OpenWA is pre-1.0 — every release to date is on the `0.x` line. Under the project's SemVer 0.x policy a
+SmartConfirm is pre-1.0 — every release to date is on the `0.x` line. Under the project's SemVer 0.x policy a
 breaking change bumps the **minor** (`0.10.x` → `0.11.0`) and everything else is a patch, so a minor bump
 is the one that warrants reading the release notes closely.
 
@@ -1063,7 +1063,7 @@ async function fullImport(options: ImportOptions): Promise<void> {
 
 **Cause:** a deployment previously bootstrapped with `DATABASE_SYNCHRONIZE=true` on PostgreSQL has native `uuid` `id`/FK columns (TypeORM derives them from `@PrimaryGeneratedColumn('uuid')`), while the migration chain assumes `varchar`. The two are incompatible, and migrations run unconditionally on the Postgres data connection (`migrationsRun: true`), so boot cannot complete (issue #690).
 
-**Fix (automatic for most deployments):** OpenWA ships a guard migration (`NormalizeSynchronizeUuidColumns`, ordered before the first collision) that converts the affected `uuid` columns to `varchar` on the next boot. For small-to-medium databases this is transparent — upgrade and restart.
+**Fix (automatic for most deployments):** SmartConfirm ships a guard migration (`NormalizeSynchronizeUuidColumns`, ordered before the first collision) that converts the affected `uuid` columns to `varchar` on the next boot. For small-to-medium databases this is transparent — upgrade and restart.
 
 **Large-database maintenance window:** the conversion rewrites `messages` and `message_batches` in full under an exclusive lock. If either table is large (millions of rows) and your orchestrator's liveness/readiness grace is tight, run the migration against the stopped app during a planned window:
 

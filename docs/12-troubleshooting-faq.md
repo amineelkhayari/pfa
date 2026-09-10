@@ -170,7 +170,7 @@ docker compose up -d --build   # `docker compose pull` never updates it
 - You reach the instance directly over plain HTTP (a host:port allocation, a private network, a
   panel like Pterodactyl) rather than through a TLS-terminating reverse proxy
 
-**Cause:** In production OpenWA sends the CSP `upgrade-insecure-requests` directive, which tells the
+**Cause:** In production SmartConfirm sends the CSP `upgrade-insecure-requests` directive, which tells the
 browser to upgrade every sub-resource fetch to HTTPS. That is correct behind a TLS proxy. Over plain
 HTTP the browser upgrades the dashboard's own script requests to `https://`, the non-TLS server
 cannot answer them, no JavaScript runs, and React never mounts — a blank page. The failure happens
@@ -189,7 +189,7 @@ docker compose exec openwa-api printenv NODE_ENV CSP_UPGRADE_INSECURE_REQUESTS
 A production boot that serves the dashboard with the opt-out unset prints a warning naming this
 setting. If you are behind a TLS proxy, ignore that warning — the directive is doing its job.
 
-> The alternative is to front OpenWA with a TLS-terminating reverse proxy (the shipped
+> The alternative is to front SmartConfirm with a TLS-terminating reverse proxy (the shipped
 > `docker-compose.yml` topology), which serves the dashboard over HTTPS and makes the upgrade a
 > no-op.
 
@@ -284,7 +284,7 @@ stuck. Often seen on ARM64 (e.g. Raspberry Pi) after upgrading to v0.2.x.
 stalls the post-link sync. (If you also see `chrome_crashpad_handler: --database is required` *and the
 session never starts at all*, that is a different problem — see "Session fails to launch …" below.)
 
-**Fix:** OpenWA reconciles a missed `ready` event when WhatsApp Web is connected, the injected
+**Fix:** SmartConfirm reconciles a missed `ready` event when WhatsApp Web is connected, the injected
 runtime is available, and whatsapp-web.js has populated the linked account identity. If your
 environment still hits a WA-Web compatibility hang, pin a known-good WA-Web version with
 `WWEBJS_WEB_VERSION`:
@@ -296,7 +296,7 @@ WWEBJS_WEB_VERSION=2.3000.1040641150-alpha
 
 Restart the container after changing it. Browse newer versions at
 [wppconnect-team/wa-version](https://github.com/wppconnect-team/wa-version) (the `html/` folder). With
-`WWEBJS_WEB_VERSION` unset, `latest`, or `auto` (the default), OpenWA auto-resolves a settled build
+`WWEBJS_WEB_VERSION` unset, `latest`, or `auto` (the default), SmartConfirm auto-resolves a settled build
 from that registry and pins its HTML — note this HTML is fetched from a third-party repository and
 executed inside the `web.whatsapp.com` origin without an integrity check. Set
 `WWEBJS_WEB_VERSION=off` to disable pinning and use the first-party build served by WhatsApp.
@@ -423,7 +423,7 @@ limit the instant before the failure — that tells you A vs B. If neither moves
 > **Engine:** This issue applies to the `whatsapp-web.js` engine only (Chromium/Puppeteer-based). It does not affect `ENGINE_TYPE=baileys`.
 
 **Symptoms:** A `whatsapp-web.js` session that was already authenticated fails within seconds of
-**Start** after upgrading OpenWA — no QR is produced — and the session's `lastError` / container log
+**Start** after upgrading SmartConfirm — no QR is produced — and the session's `lastError` / container log
 show:
 
 ```text
@@ -475,7 +475,7 @@ and only gives up after five clicks that fail to land — at that point a human 
 once, so the session stops instead of being silently unlinked by WhatsApp about five minutes later.
 
 > **If the modal is not in English:** the detector matches the English button label (`Continue`) and
-> heading ("What's new"). The language WhatsApp Web renders in follows the browser locale, which OpenWA
+> heading ("What's new"). The language WhatsApp Web renders in follows the browser locale, which SmartConfirm
 > does not set, so it is whatever the browser the container launches defaults to
 > (`PUPPETEER_EXECUTABLE_PATH` — Chrome for Testing on amd64, Debian's `chromium` on arm64). You can
 > pin it yourself by appending `--lang=en-US` to `PUPPETEER_ARGS` — that variable **replaces** the
@@ -607,7 +607,7 @@ curl -H "X-API-Key: $API_KEY" \
 - Startup logs may contain `The installed whatsapp-web.js is missing the message-id backport…`
 
 **Cause:** WhatsApp Web 2.3000.x renamed the internal message-id property that whatsapp-web.js
-reads. OpenWA ships a backport that restores it, applied at install time by
+reads. SmartConfirm ships a backport that restores it, applied at install time by
 `scripts/patch-wwebjs-201832.js`. When the install cannot run it — neither GNU `patch` nor `git`
 available, or `npm install --ignore-scripts` — whatsapp-web.js stays unpatched and every operation
 that reads a message id fails. Source installs only; the Docker image always applies the backport.
@@ -794,7 +794,7 @@ ANALYZE sessions;
 ANALYZE messages;
 ```
 
-Pooling and caching are environment variables — OpenWA has no config file:
+Pooling and caching are environment variables — SmartConfirm has no config file:
 
 ```bash
 # Connection pool + timeouts (applied to the PostgreSQL data connection)
@@ -826,7 +826,7 @@ sqlite3 ./data/openwa.sqlite ".timeout 30000"
 
 # Check WAL mode
 sqlite3 ./data/openwa.sqlite "PRAGMA journal_mode;"
-# Default is: delete (rollback journal) — OpenWA does not force WAL
+# Default is: delete (rollback journal) — SmartConfirm does not force WAL
 
 # Optionally enable WAL mode to reduce writer/reader lock contention
 sqlite3 ./data/openwa.sqlite "PRAGMA journal_mode=WAL;"
@@ -936,8 +936,8 @@ docker exec openwa-api curl http://host.docker.internal:8080
 
 ### General Questions
 
-**Q: Is OpenWA safe to use?**
-> A: OpenWA uses unofficial WhatsApp Web API. While we implement best practices to avoid detection, there's inherent risk of account restrictions. We recommend:
+**Q: Is SmartConfirm safe to use?**
+> A: SmartConfirm uses unofficial WhatsApp Web API. While we implement best practices to avoid detection, there's inherent risk of account restrictions. We recommend:
 > - Use dedicated phone number (not personal)
 > - Don't send spam or bulk unsolicited messages
 > - Follow WhatsApp's Terms of Service
@@ -952,7 +952,7 @@ docker exec openwa-api curl http://host.docker.internal:8080
 > With `ENGINE_TYPE=baileys` (browser-free), RAM per session is significantly lower — you can run more sessions on the same hardware. Exact figures depend on message volume and group membership.
 
 **Q: Can I use WhatsApp Business account?**
-> A: Yes, OpenWA works with both personal and WhatsApp Business accounts. Note that WhatsApp Business API (official Meta API) is different and not supported.
+> A: Yes, SmartConfirm works with both personal and WhatsApp Business accounts. Note that WhatsApp Business API (official Meta API) is different and not supported.
 
 **Q: How to avoid getting banned?**
 > Best practices:
@@ -1028,9 +1028,9 @@ server {
 
 **Q: How to run behind Traefik / Coolify?**
 
-Traefik forwards WebSocket upgrades automatically, so OpenWA's single-port Socket.IO channel works with a normal HTTP router. Two things keep a public deployment stable:
+Traefik forwards WebSocket upgrades automatically, so SmartConfirm's single-port Socket.IO channel works with a normal HTTP router. Two things keep a public deployment stable:
 
-**1. Let Traefik reach the container over the Docker network — don't _also_ publish the host port.** This is the most common cause of intermittent `504`s on Coolify/Traefik. If OpenWA publishes its port to the host (`ports: ["2785:2785"]`) **and** Traefik also routes to it, every request additionally traverses Docker's userland `docker-proxy`. OpenWA holds a long-lived Socket.IO connection per client (HTTP long-poll → WebSocket upgrade), so those held-open connections accumulate across both hops and gradually exhaust the connection pool to the single upstream — the Dashboard, API, and real-time channel then `504` together "after some time", while `curl http://localhost:2785/api/health/ready` keeps returning `200`. Front it with Traefik on a shared network and **expose** the port internally instead of **publishing** it:
+**1. Let Traefik reach the container over the Docker network — don't _also_ publish the host port.** This is the most common cause of intermittent `504`s on Coolify/Traefik. If SmartConfirm publishes its port to the host (`ports: ["2785:2785"]`) **and** Traefik also routes to it, every request additionally traverses Docker's userland `docker-proxy`. SmartConfirm holds a long-lived Socket.IO connection per client (HTTP long-poll → WebSocket upgrade), so those held-open connections accumulate across both hops and gradually exhaust the connection pool to the single upstream — the Dashboard, API, and real-time channel then `504` together "after some time", while `curl http://localhost:2785/api/health/ready` keeps returning `200`. Front it with Traefik on a shared network and **expose** the port internally instead of **publishing** it:
 
 ```yaml
 services:
@@ -1065,7 +1065,7 @@ entryPoints:
         idleTimeout: 600s
 ```
 
-Remember OpenWA is **single-port**: the Dashboard, REST API, and Socket.IO all share `:2785` behind one router, so a choked upstream takes all three down at once. A Dashboard stuck on "Connecting…" while `localhost` is healthy is the proxy hop, not the app.
+Remember SmartConfirm is **single-port**: the Dashboard, REST API, and Socket.IO all share `:2785` behind one router, so a choked upstream takes all three down at once. A Dashboard stuck on "Connecting…" while `localhost` is healthy is the proxy hop, not the app.
 
 **Q: How to backup sessions automatically?**
 ```bash
@@ -1177,7 +1177,7 @@ When creating GitHub issue, include:
 
 ```markdown
 ## Environment
-- OpenWA version: x.x.x
+- SmartConfirm version: x.x.x
 - Docker version: x.x.x
 - OS: Ubuntu 22.04 / macOS / Windows
 - Database: SQLite / PostgreSQL
@@ -1210,8 +1210,8 @@ When creating GitHub issue, include:
 
 ### Community Resources
 
-- **GitHub Issues**: [github.com/rmyndharis/OpenWA/issues](https://github.com/rmyndharis/OpenWA/issues)
-- **Discussions**: [github.com/rmyndharis/OpenWA/discussions](https://github.com/rmyndharis/OpenWA/discussions)
+- **GitHub Issues**: [github.com/your-organization/smartconfirm/issues](https://github.com/your-organization/smartconfirm/issues)
+- **Discussions**: [github.com/your-organization/smartconfirm/discussions](https://github.com/your-organization/smartconfirm/discussions)
 - **Discord**: [discord.gg/openwa](https://discord.gg/openwa) (if available)
 - **Stack Overflow**: Tag with `openwa`
 ---

@@ -324,7 +324,7 @@ describe('Webhooks (e2e)', () => {
     it('drops forged reserved headers but keeps custom ones on the wire', async () => {
       const session = await nextSession();
       await createWebhook(session, {
-        headers: { 'X-OpenWA-Event': 'forged', 'Content-Type': 'text/plain', 'X-Custom': 'ok' },
+        headers: { 'X-SmartConfirm-Event': 'forged', 'Content-Type': 'text/plain', 'X-Custom': 'ok' },
       });
 
       await webhookService.dispatch(session, 'message.received', {});

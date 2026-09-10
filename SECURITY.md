@@ -1,6 +1,6 @@
 # Security Policy
 
-OpenWA is a self-hosted WhatsApp API gateway. It handles API-key authentication,
+SmartConfirm is a self-hosted WhatsApp API gateway. It handles API-key authentication,
 WhatsApp session credentials, message data, and — optionally — access to the Docker
 socket. Security matters here, and we appreciate responsible disclosure.
 
@@ -21,8 +21,8 @@ lines receive no backports — please upgrade older deployments.
 Report it privately through either channel:
 
 - **GitHub Security Advisories** (preferred) — open a private report at
-  <https://github.com/rmyndharis/OpenWA/security/advisories/new>
-- **Email** — yudhi@rmyndharis.com
+  <https://github.com/your-organization/smartconfirm/security/advisories/new>
+- **Email** — support@smartconfirm.example
 
 Please include, where possible:
 
@@ -38,13 +38,13 @@ Please include, where possible:
 
 ## Hardening notes for operators
 
-OpenWA already ships several hardening measures: API-key auth with roles
+SmartConfirm already ships several hardening measures: API-key auth with roles
 (ADMIN / OPERATOR / VIEWER), optional outbound webhook SSRF protection, a production
 CORS policy (wildcard origins refused in production), request body-size limits, a
 non-root application container, path-containment checks on storage import/export,
 and a Docker socket-proxy as the sole gateway to the Docker daemon.
 
-When exposing OpenWA, please review the security-relevant configuration documented in
+When exposing SmartConfirm, please review the security-relevant configuration documented in
 the README and `docs/` — in particular `CORS_ORIGINS`, `ALLOW_DEV_API_KEY`,
 `ENABLE_SWAGGER`, `WEBHOOK_SSRF_PROTECT`, `BODY_SIZE_LIMIT`, and the Docker proxy setup.
 Never expose the dashboard/API to the public internet with the development API key
@@ -73,7 +73,7 @@ Mitigations in place: the proxy is unreachable except from `openwa-api` (dedicat
 `internal: true` network), the orchestration endpoints require an ADMIN-role API key,
 both teardown and start are constrained to the three managed profiles (`postgres`,
 `redis`, `minio`) — non-managed names are dropped before reaching `DockerService` —
-and OpenWA itself never issues deletes (profile teardown is stop-only). If you do not
+and SmartConfirm itself never issues deletes (profile teardown is stop-only). If you do not
 use the built-in datastore orchestration (Dashboard → Infrastructure built-in
 toggles), disable the proxy entirely — see the `docker-proxy` comments in
 `docker-compose.yml`; `DockerService` then reports Docker unavailable and

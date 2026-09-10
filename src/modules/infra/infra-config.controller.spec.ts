@@ -304,7 +304,7 @@ describe('InfraConfigController.saveConfig byte-identical regression (full dashb
       .sort()
       .map(k => `${k}=${keys[k]}`);
     return [
-      '# OpenWA Configuration',
+      '# SmartConfirm Configuration',
       `# Generated at ${NOW}`,
       '# Managed via Dashboard > Infrastructure. Values in process env or project .env take precedence.',
       '',

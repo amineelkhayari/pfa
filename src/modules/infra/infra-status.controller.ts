@@ -16,7 +16,7 @@ import { createLogger } from '../../common/services/logger.service';
 import { readGeneratedEnv } from './generated-env';
 
 interface InfraStatus {
-  // `builtIn` reflects whether OpenWA's own bundled container is actually running and backing this
+  // `builtIn` reflects whether SmartConfirm's own bundled container is actually running and backing this
   // service (detected live from the labeled container), not merely the saved intent. Falls back to the
   // saved flag when Docker is unavailable. (#488)
   database: { connected: boolean; type: string; host: string; builtIn: boolean };

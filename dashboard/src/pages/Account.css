@@ -13,6 +13,12 @@
 .subscription-card .plan-pill.pro { background: rgba(37,211,102,.12); color: var(--primary); }
 .subscription-card p, .subscription-card small { color: var(--text-secondary); }
 .subscription-row { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding-top: .7rem; border-top: 1px solid var(--border); color: var(--text-secondary); font-size: .8rem; }
+.subscription-schedule > span { display: flex; flex-direction: column; gap: .2rem; }
+.subscription-schedule .subscription-date { flex: 1; }
+.subscription-schedule .subscription-date strong { color: var(--text-primary); }
+.subscription-state { text-transform: capitalize; }
+.database-danger-zone { border-color: rgba(239,68,68,.45); }.database-reset-warning { display:flex; flex-direction:column; gap:.3rem; padding:1rem; border-radius:10px; background:rgba(239,68,68,.08); color:var(--error); }.database-reset-warning span { color:var(--text-secondary); }.database-reset-button { align-self:flex-start; border:0; border-radius:8px; padding:.75rem 1rem; background:var(--error); color:#fff; font-weight:700; cursor:pointer; }.database-reset-button:disabled { cursor:not-allowed; opacity:.5; }
+@media (max-width: 680px) { .subscription-schedule { align-items: flex-start; flex-direction: column; } }
 .subscription-link { border: 0; padding: .35rem .55rem; border-radius: 6px; background: rgba(37,211,102,.1); color: var(--primary); font-weight: 650; cursor: pointer; white-space: nowrap; }
 .subscription-link.danger { background: rgba(239,68,68,.1); color: #dc2626; }
 @media (max-width: 760px) { .account-grid { grid-template-columns: 1fr; } }

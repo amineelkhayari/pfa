@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { ContactRound, MessageSquare, RefreshCw, Search, ShieldOff, Smartphone, Users } from 'lucide-react';
+import { ContactRound, MessageSquare, RefreshCw, Search, ShieldOff, Smartphone } from 'lucide-react';
 import { contactApi } from '../services/api';
 import { useSessionsQuery } from '../hooks/queries';
 import { PageHeader } from '../components/PageHeader';
@@ -37,8 +37,6 @@ export function Contacts() {
       `${contactName(contact)} ${contact.number ?? ''} ${contact.id}`.toLowerCase().includes(needle),
     );
   }, [contacts, search]);
-  const saved = contacts.filter(contact => contact.isMyContact).length;
-  const blocked = contacts.filter(contact => contact.isBlocked).length;
   const sendTo = (number: string) =>
     navigate(`/message-tester?sessionId=${encodeURIComponent(sessionId)}&recipient=${encodeURIComponent(number)}`);
 
@@ -88,44 +86,6 @@ export function Contacts() {
             />
           </div>
         </label>
-      </section>
-      <section className="contacts-stats">
-        <article>
-          <span>
-            <Users />
-          </span>
-          <div>
-            <small>Total contacts</small>
-            <strong>{contacts.length}</strong>
-          </div>
-        </article>
-        <article>
-          <span>
-            <ContactRound />
-          </span>
-          <div>
-            <small>Saved contacts</small>
-            <strong>{saved}</strong>
-          </div>
-        </article>
-        <article>
-          <span>
-            <ShieldOff />
-          </span>
-          <div>
-            <small>Blocked</small>
-            <strong>{blocked}</strong>
-          </div>
-        </article>
-        <article>
-          <span>
-            <Smartphone />
-          </span>
-          <div>
-            <small>Connected devices</small>
-            <strong>{readySessions.length}</strong>
-          </div>
-        </article>
       </section>
       <section className="contacts-card">
         <div className="contacts-card-head">

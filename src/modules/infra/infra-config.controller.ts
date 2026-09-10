@@ -327,7 +327,7 @@ export class InfraConfigController {
       .sort()
       .map(key => `${key}=${merged[key]}`);
     const contents = [
-      '# OpenWA Configuration',
+      '# SmartConfirm Configuration',
       `# Generated at ${new Date().toISOString()}`,
       '# Managed via Dashboard > Infrastructure. Values in process env or project .env take precedence.',
       '',
@@ -599,7 +599,7 @@ export class InfraConfigController {
       // otherwise tear down the very backend the app is running on. (Known minor limitation: switching
       // away from a built-in backend and then reloading the page before restarting can leave the old
       // container running until the next explicit change.)
-      // Only ever tear down OpenWA-managed services. An arbitrary profile name (or the empty string)
+      // Only ever tear down SmartConfirm-managed services. An arbitrary profile name (or the empty string)
       // would otherwise reach stopManagedService and, via container-name matching, could stop an unrelated
       // container — so constrain teardown to the managed allowlist and drop anything else.
       const requested = profilesToRemove.filter(p => !profiles.includes(p));

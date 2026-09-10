@@ -19,6 +19,7 @@ import { PlanUsageService } from './plan-usage.service';
 import { AdminUsersController } from './admin-users.controller';
 import { BillingSubscription } from '../billing/entities/subscription.entity';
 import { BillingModule } from '../billing/billing.module';
+import { AdminDatabaseResetService } from './admin-database-reset.service';
 
 @Global()
 @Module({
@@ -32,6 +33,7 @@ import { BillingModule } from '../billing/billing.module';
     AuthService,
     UserAuthService,
     PlanUsageService,
+    AdminDatabaseResetService,
     ApiKeyUsageTracker,
     {
       provide: APP_GUARD,

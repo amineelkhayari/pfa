@@ -357,7 +357,7 @@ export class WebhookService implements OnModuleInit, OnModuleDestroy {
       idempotencyKey: generateIdempotencyKey('test', { webhookId: webhook.id }),
       deliveryId: generateDeliveryId(),
       data: {
-        message: 'This is a test webhook from OpenWA',
+        message: 'This is a test webhook from SmartConfirm',
         webhookId: webhook.id,
         url: webhook.url,
       },
@@ -368,15 +368,15 @@ export class WebhookService implements OnModuleInit, OnModuleDestroy {
       // Custom headers FIRST so the system headers below always win.
       ...this.sanitizeCustomHeaders(webhook.headers),
       'Content-Type': 'application/json',
-      'User-Agent': 'OpenWA-Webhook/1.0.0',
-      'X-OpenWA-Event': 'test',
-      'X-OpenWA-Idempotency-Key': testPayload.idempotencyKey,
-      'X-OpenWA-Delivery-Id': testPayload.deliveryId,
-      'X-OpenWA-Retry-Count': '0',
+      'User-Agent': 'SmartConfirm-Webhook/1.0.0',
+      'X-SmartConfirm-Event': 'test',
+      'X-SmartConfirm-Idempotency-Key': testPayload.idempotencyKey,
+      'X-SmartConfirm-Delivery-Id': testPayload.deliveryId,
+      'X-SmartConfirm-Retry-Count': '0',
     };
 
     if (webhook.secret) {
-      headers['X-OpenWA-Signature'] = this.generateSignature(body, webhook.secret);
+      headers['X-SmartConfirm-Signature'] = this.generateSignature(body, webhook.secret);
     }
 
     try {
@@ -541,7 +541,7 @@ export class WebhookService implements OnModuleInit, OnModuleDestroy {
       const finalPayload = (hookResult as { payload?: WebhookPayload } | null | undefined)?.payload ?? payload;
       // Re-assert EVERY identity field after the (untrusted) hook chain. A hook may rewrite data,
       // but event/sessionId/timestamp and the dedupe ids must remain the server's values: the
-      // receiver verifies the signature over this body and compares it against the X-OpenWA-*
+      // receiver verifies the signature over this body and compares it against the X-SmartConfirm-*
       // headers, and failure records are filed by these fields — a rewritten sessionId/event
       // misfiles them across sessions.
       finalPayload.event = event;
@@ -588,11 +588,11 @@ export class WebhookService implements OnModuleInit, OnModuleDestroy {
       const headers = {
         ...this.sanitizeCustomHeaders(webhook.headers),
         'Content-Type': 'application/json',
-        'User-Agent': 'OpenWA-Webhook/1.0.0',
-        'X-OpenWA-Event': event,
-        'X-OpenWA-Idempotency-Key': idempotencyKey,
-        'X-OpenWA-Delivery-Id': deliveryId,
-        'X-OpenWA-Retry-Count': '0',
+        'User-Agent': 'SmartConfirm-Webhook/1.0.0',
+        'X-SmartConfirm-Event': event,
+        'X-SmartConfirm-Idempotency-Key': idempotencyKey,
+        'X-SmartConfirm-Delivery-Id': deliveryId,
+        'X-SmartConfirm-Retry-Count': '0',
       };
       return { finalPayload, body, headers };
     } catch (error) {
@@ -644,7 +644,7 @@ export class WebhookService implements OnModuleInit, OnModuleDestroy {
       const signature = webhook.secret ? this.generateSignature(body, webhook.secret) : '';
 
       if (webhook.secret) {
-        headers['X-OpenWA-Signature'] = signature;
+        headers['X-SmartConfirm-Signature'] = signature;
       }
 
       const jobData: WebhookJobData = {
@@ -695,7 +695,7 @@ export class WebhookService implements OnModuleInit, OnModuleDestroy {
       // Fallback: deliver directly when the queue add failed (e.g. Redis unreachable with the
       // producer's enableOfflineQueue:false). This is at-least-once — if add() actually reached
       // Redis before rejecting, the queued job AND this fallback may both POST. Both paths carry the
-      // same X-OpenWA-Idempotency-Key / X-OpenWA-Delivery-Id, so a conformant receiver dedupes.
+      // same X-SmartConfirm-Idempotency-Key / X-SmartConfirm-Delivery-Id, so a conformant receiver dedupes.
       try {
         await this.deliverWebhook(webhook, finalPayload, headers, body);
 
@@ -849,11 +849,11 @@ export class WebhookService implements OnModuleInit, OnModuleDestroy {
     attempt = 1,
   ): Promise<void> {
     // Update retry count header
-    headers['X-OpenWA-Retry-Count'] = String(attempt - 1);
+    headers['X-SmartConfirm-Retry-Count'] = String(attempt - 1);
 
     // Add signature if secret is configured and not already present
-    if (webhook.secret && !headers['X-OpenWA-Signature']) {
-      headers['X-OpenWA-Signature'] = this.generateSignature(body, webhook.secret);
+    if (webhook.secret && !headers['X-SmartConfirm-Signature']) {
+      headers['X-SmartConfirm-Signature'] = this.generateSignature(body, webhook.secret);
     }
 
     try {
@@ -956,7 +956,7 @@ export class WebhookService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Drop operator-supplied custom headers that target reserved names (Content-Type or any
-   * X-OpenWA-* header) so a webhook config cannot forge the signature/event/idempotency
+   * X-SmartConfirm-* header) so a webhook config cannot forge the signature/event/idempotency
    * headers. Spread the result BEFORE the system headers so system always wins.
    */
   private sanitizeCustomHeaders(custom: Record<string, string> | null | undefined): Record<string, string> {

@@ -1,4 +1,5 @@
 import { Suspense, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { lazyWithRetry as lazy } from '../utils/lazyWithRetry';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -20,6 +21,9 @@ import {
   ArrowDownLeft,
   BrainCircuit,
   Gauge,
+  Megaphone,
+  Smartphone,
+  Timer,
 } from 'lucide-react';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import {
@@ -27,12 +31,12 @@ import {
   useSessionStatsQuery,
   useWebhooksQuery,
   useStopSessionMutation,
-  useStatsOverviewQuery,
   useOrderConfirmationSummaryQuery,
   useAccountUsageQuery,
 } from '../hooks/queries';
 import { PageHeader } from '../components/PageHeader';
 import { PlanUpgradeNotice, planLimitReason } from '../components/PlanLimitGate';
+import { campaignApi } from '../services/api';
 import './Dashboard.css';
 
 // recharts is heavy (~150kB gzip); load the analytics section on demand so it never bloats the
@@ -46,9 +50,6 @@ export function Dashboard() {
   const { isLoading: loadingSessions, error: sessionsError } = useSessionsQuery();
   const { data: stats } = useSessionStatsQuery();
   const { data: webhooks = [] } = useWebhooksQuery();
-  // /stats/overview is ADMIN-only; for a non-admin key it 403s → overview stays undefined and the
-  // message cards fall back to '—' without breaking the (un-gated) session cards.
-  const { data: overview } = useStatsOverviewQuery();
   const [orderDays, setOrderDays] = useState(30);
   const [orderType, setOrderType] = useState('all');
   const { data: orderSummary } = useOrderConfirmationSummaryQuery({
@@ -56,6 +57,11 @@ export function Dashboard() {
     type: orderType,
   });
   const { data: accountUsage } = useAccountUsageQuery();
+  const { data: campaignReport } = useQuery({
+    queryKey: ['campaign-report'],
+    queryFn: campaignApi.report,
+    refetchInterval: 30_000,
+  });
   const accountLimitReason = accountUsage
     ? planLimitReason(accountUsage, 'receivedMessages') ||
       planLimitReason(accountUsage, 'sentMessages') ||
@@ -64,8 +70,10 @@ export function Dashboard() {
       planLimitReason(accountUsage, 'stores')
     : null;
   const stopMutation = useStopSessionMutation();
-  const messagesToday = overview ? overview.messages.today.sent + overview.messages.today.received : '—';
-  const totalMessages = overview ? overview.messages.sent + overview.messages.received : '—';
+  const messagesToday = campaignReport?.summary.todaySent ?? 0;
+  const totalMessages = orderSummary
+    ? orderSummary.messageTotals.sent + orderSummary.messageTotals.received
+    : 0;
   const loading = loadingSessions;
   const error =
     sessionsError instanceof Error ? sessionsError.message : sessionsError ? t('dashboard.loadError') : null;
@@ -89,7 +97,7 @@ export function Dashboard() {
       icon: MessageSquare,
       detail: stats ? t('dashboard.stats.sessionsDetail', { running: stats.active, total: stats.total }) : undefined,
     },
-    { label: t('dashboard.stats.messagesToday'), value: messagesToday, icon: Send },
+    { label: 'Messages sent today', value: messagesToday, icon: Send },
     { label: t('dashboard.stats.webhooksConfigured'), value: webhookCount, icon: Webhook },
     { label: t('dashboard.stats.totalMessages'), value: totalMessages, icon: Activity },
   ];
@@ -325,8 +333,40 @@ export function Dashboard() {
         </div>
       </section>
 
+      <section className="commerce-summary">
+        <div className="section-header">
+          <div>
+            <h2>Campaign and delivery health</h2>
+            <span className="section-subtitle">Current messaging activity across your connected WhatsApp devices</span>
+          </div>
+          <button className="btn-sm" onClick={() => navigate('/campaigns')}>Manage campaigns</button>
+        </div>
+        <div className="commerce-stats-grid">
+          {([
+            ['Sent today', campaignReport?.summary.todaySent ?? 0, Send, 'total'],
+            ['Delivery success', `${campaignReport?.summary.successRate ?? 0}%`, CircleCheck, 'confirmed'],
+            ['Active campaigns', campaignReport?.summary.activeCampaigns ?? 0, Megaphone, 'total'],
+            ['Connected devices', campaignReport?.summary.connectedDevices ?? 0, Smartphone, 'total'],
+            ['Pending messages', campaignReport?.summary.pendingMessages ?? 0, Timer, 'pending'],
+            ['High-risk campaigns', campaignReport?.summary.highRiskCampaigns ?? 0, TriangleAlert, 'failed'],
+          ] as const).map(([label, value, Icon, tone]) => (
+            <div key={String(label)} className={`stat-card commerce-stat ${tone}`}>
+              <Icon className="stat-watermark" />
+              <div className="stat-header"><span className="stat-label">{label}</span><Icon size={20} className="stat-icon" /></div>
+              <div className="stat-value">{typeof value === 'number' ? value.toLocaleString() : value}</div>
+            </div>
+          ))}
+        </div>
+        {campaignReport && (
+          <div className="usage-item dashboard-campaign-usage">
+            <div><span>Monthly message allowance</span><strong>{campaignReport.monthly.used.toLocaleString()} / {campaignReport.monthly.limit.toLocaleString()}</strong></div>
+            <div className="usage-track"><span style={{ width: `${campaignReport.monthly.percent}%` }} /></div>
+          </div>
+        )}
+      </section>
+
       <Suspense fallback={null}>
-        <DashboardCharts />
+        <DashboardCharts sessions={orderSummary?.sessions ?? []} />
       </Suspense>
 
       <section className="operations-section">

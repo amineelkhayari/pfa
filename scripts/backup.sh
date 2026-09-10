@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# OpenWA backup.
+# SmartConfirm backup.
 #
 # Captures the load-bearing state needed to restore a working install:
 #   - database      — openwa.sqlite (SQLite) OR a pg_dump (when DATABASE_TYPE=postgres)

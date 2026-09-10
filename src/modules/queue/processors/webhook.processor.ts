@@ -78,7 +78,7 @@ export class WebhookProcessor extends WorkerHost {
     // Update retry count in headers
     const requestHeaders = {
       ...headers,
-      'X-OpenWA-Retry-Count': String(job.attemptsMade),
+      'X-SmartConfirm-Retry-Count': String(job.attemptsMade),
     };
 
     const ctx: WebhookDeliveryContext = { job, webhookId, url, event, payload, maxRetries, sessionId, startTime };

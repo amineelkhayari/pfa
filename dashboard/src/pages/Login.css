@@ -1,17 +1,20 @@
 .login-container {
   min-height: 100vh;
+  min-height: 100dvh;
   width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   background: var(--bg-light);
   padding: 2rem;
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .login-container .login-card {
@@ -21,6 +24,9 @@
   padding: 3rem;
   width: 100%;
   max-width: 420px;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  margin-top: auto;
   text-align: center;
 }
 
@@ -94,7 +100,7 @@
 
 .login-container .auth-tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.35rem;
   margin-bottom: 1.25rem;
   padding: 0.3rem;
@@ -227,6 +233,8 @@
 
 .login-container .login-footer {
   margin-top: 2rem;
+  margin-bottom: auto;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -258,7 +266,7 @@
 /* Mobile Responsive */
 @media (max-width: 480px) {
   .login-container {
-    padding: 1rem;
+    padding: 5rem 1rem 1.25rem;
   }
 
   .login-container .login-card {
@@ -283,5 +291,39 @@
 
   .login-container .login-help {
     font-size: 0.8125rem;
+  }
+}
+
+/* Keep every field reachable on short laptop screens and in landscape mode. */
+@media (max-height: 760px) {
+  .login-container {
+    padding-top: 1.25rem;
+    padding-bottom: 1.25rem;
+  }
+
+  .login-container .login-card {
+    margin-top: 0;
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
+  }
+
+  .login-container .login-logo {
+    margin-bottom: 1rem;
+  }
+
+  .login-container .logo-icon {
+    width: 84px;
+    height: 84px;
+  }
+
+  .login-container .login-language,
+  .login-container .input-group {
+    margin-bottom: 1rem;
+  }
+}
+
+@media (max-width: 480px) and (max-height: 760px) {
+  .login-container {
+    padding-top: 5rem;
   }
 }

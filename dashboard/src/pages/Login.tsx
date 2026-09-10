@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Eye, EyeOff, Languages } from 'lucide-react';
 import { GithubIcon } from '../components/GithubIcon';
@@ -11,9 +11,10 @@ interface LoginProps {
   onLogin: (apiKey: string) => void;
   initialMode?: 'signin' | 'signup';
   onBack?: () => void;
+  onModeChange?: (mode: 'signin' | 'signup') => void;
 }
 
-export function Login({ onLogin, initialMode = 'signin', onBack }: LoginProps) {
+export function Login({ onLogin, initialMode = 'signin', onBack, onModeChange }: LoginProps) {
   const { t, i18n } = useTranslation();
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
   const [name, setName] = useState('');
@@ -24,6 +25,16 @@ export function Login({ onLogin, initialMode = 'signin', onBack }: LoginProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const currentLang = resolveSupportedLanguage(i18n.resolvedLanguage || i18n.language);
+
+  useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
+
+  const changeMode = (nextMode: 'signin' | 'signup') => {
+    setMode(nextMode);
+    setError('');
+    onModeChange?.(nextMode);
+  };
 
   const changeLanguage = (language: SupportedLanguage) => {
     void i18n.changeLanguage(language);
@@ -70,7 +81,7 @@ export function Login({ onLogin, initialMode = 'signin', onBack }: LoginProps) {
       )}
       <div className="login-card">
         <div className="login-logo">
-          <img src="/openwa_logo.webp" alt="OpenWA" className="logo-icon" />
+          <img src="/smartconfirm_logo.webp" alt="SmartConfirm" className="logo-icon" />
           <span className="version-info">
             {t('login.version', {
               version: __APP_VERSION__,
@@ -93,10 +104,10 @@ export function Login({ onLogin, initialMode = 'signin', onBack }: LoginProps) {
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="auth-tabs">
-            <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => setMode('signin')}>
+            <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => changeMode('signin')}>
               Sign in
             </button>
-            <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>
+            <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => changeMode('signup')}>
               Sign up
             </button>
           </div>
@@ -162,7 +173,7 @@ export function Login({ onLogin, initialMode = 'signin', onBack }: LoginProps) {
       <footer className="login-footer">
         <span>{t('login.footer')}</span>
         <a
-          href="https://github.com/rmyndharis/OpenWA"
+          href="https://github.com/your-organization/smartconfirm"
           target="_blank"
           rel="noopener noreferrer"
           className="github-link"

@@ -45,7 +45,7 @@ export const queryKeys = {
 };
 
 export function useAccountUsageQuery() {
-  const isUserLogin = Boolean(sessionStorage.getItem('openwa_access_token'));
+  const isUserLogin = Boolean(localStorage.getItem('openwa_access_token'));
   return useQuery({
     queryKey: queryKeys.accountUsage,
     queryFn: accountApi.usage,

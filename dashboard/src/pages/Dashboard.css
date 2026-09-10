@@ -142,6 +142,7 @@
 .dashboard .usage-item > div:first-child { display: flex; justify-content: space-between; gap: .75rem; font-size: .78rem; color: var(--text-secondary); }
 .dashboard .usage-item strong { color: var(--text-primary); white-space: nowrap; }
 .dashboard .usage-track { height: 7px; background: var(--bg-light); border-radius: 999px; overflow: hidden; margin-top: .75rem; }
+.dashboard .dashboard-campaign-usage { margin-top: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-white); }
 .dashboard .usage-track span { display: block; height: 100%; background: var(--primary); border-radius: inherit; }
 
 @media (max-width: 900px) { .dashboard .usage-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

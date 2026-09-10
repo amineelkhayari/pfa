@@ -1,4 +1,4 @@
-// API Service Layer for OpenWA Dashboard
+// API Service Layer for SmartConfirm Dashboard
 // Centralized API client with TypeScript types
 
 import { warnIfInsecureHttpUrl } from '../utils/urlSecurity';
@@ -692,7 +692,7 @@ export interface HealthStatus {
 }
 
 export interface InfraStatus {
-  // `builtIn` = OpenWA's own bundled container is actually running and backing this service (live),
+  // `builtIn` = SmartConfirm's own bundled container is actually running and backing this service (live),
   // not just the saved intent — falls back to the saved flag when Docker is unavailable. (#488)
   database: { connected: boolean; type: string; host: string; builtIn: boolean };
   redis: { enabled: boolean; connected: boolean; host: string; port: number; builtIn: boolean };
@@ -833,7 +833,7 @@ export interface SearchResults {
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
 
-  const accessToken = sessionStorage.getItem('openwa_access_token');
+  const accessToken = localStorage.getItem('openwa_access_token');
 
   // For FormData (file uploads) let the browser set multipart/form-data + boundary itself.
   const isFormData = options.body instanceof FormData;
@@ -848,7 +848,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   if (response.status === 401) {
     // The stored API key is invalid/expired/revoked — clear it and return to login
     // so the user isn't stuck on a dashboard that 401s every request.
-    sessionStorage.removeItem('openwa_access_token');
+    localStorage.removeItem('openwa_access_token');
     if (typeof window !== 'undefined') {
       window.location.assign('/');
       // The page is navigating away — halt this request's promise chain so callers neither
@@ -886,13 +886,13 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
 /** Like {@link request} but returns the raw response text — e.g. a plugin's HTML config-UI bundle. */
 async function requestText(endpoint: string): Promise<string> {
-  const accessToken = sessionStorage.getItem('openwa_access_token');
+  const accessToken = localStorage.getItem('openwa_access_token');
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     headers: { ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
   });
 
   if (response.status === 401) {
-    sessionStorage.removeItem('openwa_access_token');
+    localStorage.removeItem('openwa_access_token');
     if (typeof window !== 'undefined') {
       window.location.assign('/');
       return new Promise<string>(() => {});
@@ -911,7 +911,7 @@ async function requestText(endpoint: string): Promise<string> {
 async function requestBlob(endpoint: string, options: RequestInit = {}): Promise<Blob> {
   const url = `${API_BASE_URL}${endpoint}`;
 
-  const accessToken = sessionStorage.getItem('openwa_access_token');
+  const accessToken = localStorage.getItem('openwa_access_token');
 
   const headers: HeadersInit = {
     ...(options.body ? { 'Content-Type': 'application/json' } : {}),
@@ -923,7 +923,7 @@ async function requestBlob(endpoint: string, options: RequestInit = {}): Promise
 
   if (response.status === 401) {
     // The stored API key is invalid/expired/revoked — clear it and return to login
-    sessionStorage.removeItem('openwa_access_token');
+    localStorage.removeItem('openwa_access_token');
     if (typeof window !== 'undefined') {
       window.location.assign('/');
       // Halt this request's promise chain so callers neither throw nor receive an undefined payload.
@@ -1503,8 +1503,8 @@ export interface CatalogPlugin {
   author?: string;
   license?: string;
   keywords?: string[];
-  minOpenWAVersion?: string;
-  testedOpenWAVersion?: string;
+  minSmartConfirmVersion?: string;
+  testedSmartConfirmVersion?: string;
   homepage?: string;
   download?: string;
   installed: boolean;
@@ -1726,6 +1726,11 @@ export const adminUsersApi = {
   details: (id: string) => request<AdminUserDetails>(`/admin/users/${id}/details`),
   update: (id: string, body: { plan?: string; status?: 'active' | 'suspended' }) =>
     request<AccountUser>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  resetDatabase: (password: string, confirmation: string) =>
+    request<{ reset: boolean; preservedAdmin: string; signInRequired: boolean; restartRecommended: boolean }>('/admin/users/maintenance/reset-database', {
+      method: 'POST',
+      body: JSON.stringify({ password, confirmation }),
+    }),
 };
 
 export interface AdminUserDetails {

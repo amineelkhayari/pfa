@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# OpenWA restore.
+# SmartConfirm restore.
 #
 # Restores the single application database, engine authentication, local
 # media, installed plugins, and bootstrap configuration from an archive produced by scripts/backup.sh.
@@ -22,7 +22,7 @@
 #   BAILEYS_AUTH_DIR, STORAGE_LOCAL_PATH, PLUGINS_DIR
 #                     override the corresponding state directories
 #
-# Stop the OpenWA app before restoring. A snapshot of the current data dir is taken
+# Stop the SmartConfirm app before restoring. A snapshot of the current data dir is taken
 # first so a bad restore can be undone.
 #
 set -euo pipefail

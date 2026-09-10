@@ -608,8 +608,8 @@ Add a new one only when the condition is engine-agnostic and recurs; a one-off s
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/rmyndharis/OpenWA.git
-cd OpenWA
+git clone https://github.com/your-organization/smartconfirm.git
+cd SmartConfirm
 
 # 2. Install the locked dependencies (also installs dashboard dependencies)
 npm ci
@@ -674,7 +674,7 @@ docker compose --profile full up -d
 
 ### Environment Variables
 
-OpenWA supports multiple infrastructure configurations. Choose based on your needs:
+SmartConfirm supports multiple infrastructure configurations. Choose based on your needs:
 
 #### Minimal Profile (Development / Single Session)
 
@@ -697,7 +697,7 @@ STORAGE_LOCAL_PATH=./data/media
 REDIS_ENABLED=false
 QUEUE_ENABLED=false
 
-# Optional: seed a known admin key. If omitted, OpenWA generates a random key and writes data/.api-key.
+# Optional: seed a known admin key. If omitted, SmartConfirm generates a random key and writes data/.api-key.
 API_MASTER_KEY=
 
 # Session

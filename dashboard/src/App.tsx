@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { lazyWithRetry as lazy } from './utils/lazyWithRetry';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
@@ -45,16 +45,22 @@ const queryClient = new QueryClient({
 });
 
 function AppContent() {
-  // Initialize from sessionStorage to avoid setState in effect
-  const savedKey = sessionStorage.getItem('openwa_access_token');
+  // Authentication is browser-wide so signing in or out is reflected in every tab.
+  // Migrate the old per-tab value once so existing sessions are not unexpectedly lost.
+  const legacyKey = sessionStorage.getItem('openwa_access_token');
+  const savedKey = localStorage.getItem('openwa_access_token') || legacyKey;
+  if (legacyKey && !localStorage.getItem('openwa_access_token')) {
+    localStorage.setItem('openwa_access_token', legacyKey);
+    sessionStorage.removeItem('openwa_access_token');
+  }
   const [isAuthenticated, setIsAuthenticated] = useState(!!savedKey);
-  const [publicView, setPublicView] = useState<'landing' | 'signin' | 'signup'>('landing');
   const [, setApiKey] = useState(savedKey || '');
   const { setRole, role } = useRole();
+  const navigate = useNavigate();
 
   const handleLogin = async (key: string) => {
     setApiKey(key);
-    sessionStorage.setItem('openwa_access_token', key);
+    localStorage.setItem('openwa_access_token', key);
 
     // Fetch the role from API
     try {
@@ -72,18 +78,21 @@ function AppContent() {
     }
 
     setIsAuthenticated(true);
+    navigate('/', { replace: true });
   };
 
   const handleLogout = useCallback(() => {
     setApiKey('');
     setIsAuthenticated(false);
     setRole(null);
+    localStorage.removeItem('openwa_access_token');
     sessionStorage.removeItem('openwa_access_token');
     // Wipe the React Query cache too: it is keyed by resource, not actor, so without a full
     // clear a logout → login in the same tab with a different key/scope shows the previous
     // actor's sessions/messages/apiKeys/audit rows.
     clearActorState(queryClient);
-  }, [setRole]);
+    navigate('/login', { replace: true });
+  }, [setRole, navigate]);
 
   // Re-validate and refresh the role on mount if already authenticated
   useEffect(() => {
@@ -107,6 +116,17 @@ function AppContent() {
       });
   }, [savedKey, setRole, handleLogout]);
 
+  useEffect(() => {
+    const synchronizeAuthentication = (event: StorageEvent) => {
+      if (event.key === 'openwa_access_token' && event.oldValue !== event.newValue) {
+        // Reloading also clears actor-scoped React Query data and validates the new JWT cleanly.
+        window.location.reload();
+      }
+    };
+    window.addEventListener('storage', synchronizeAuthentication);
+    return () => window.removeEventListener('storage', synchronizeAuthentication);
+  }, []);
+
   const loadingFallback = (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
       <Loader2 className="animate-spin" size={32} />
@@ -116,44 +136,66 @@ function AppContent() {
   if (!isAuthenticated) {
     return (
       <Suspense fallback={loadingFallback}>
-        {publicView === 'landing' ? (
-          <Landing onSignIn={() => setPublicView('signin')} onSignUp={() => setPublicView('signup')} />
-        ) : (
-          <Login onLogin={handleLogin} initialMode={publicView} onBack={() => setPublicView('landing')} />
-        )}
+        <Routes>
+          <Route
+            path="/"
+            element={<Landing onSignIn={() => navigate('/login')} onSignUp={() => navigate('/signup')} />}
+          />
+          <Route
+            path="/login"
+            element={
+              <Login
+                onLogin={handleLogin}
+                initialMode="signin"
+                onBack={() => navigate('/')}
+                onModeChange={mode => navigate(mode === 'signin' ? '/login' : '/signup')}
+              />
+            }
+          />
+          <Route
+            path="/signup"
+            element={
+              <Login
+                onLogin={handleLogin}
+                initialMode="signup"
+                onBack={() => navigate('/')}
+                onModeChange={mode => navigate(mode === 'signin' ? '/login' : '/signup')}
+              />
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </Suspense>
     );
   }
 
   return (
     <ToastProvider>
-      <BrowserRouter>
-        <Suspense fallback={loadingFallback}>
-          <Routes>
-            <Route path="/" element={<Layout onLogout={handleLogout} userRole={role} />}>
-              <Route index element={role === 'admin' ? <AdminDashboard /> : <Dashboard />} />
-              {role !== 'admin' && <Route path="sessions" element={<Sessions />} />}
-              {role !== 'admin' && <Route path="stores" element={<Stores />} />}
-              {role !== 'admin' && <Route path="chats" element={<Chats />} />}
-              {role !== 'admin' && <Route path="contacts" element={<Contacts />} />}
-              {role !== 'admin' && <Route path="webhooks" element={<Webhooks />} />}
-              {role !== 'admin' && <Route path="templates" element={<Templates />} />}
-              {role !== 'admin' && <Route path="campaigns" element={<Campaigns />} />}
-              <Route path="logs" element={<Logs />} />
-              {role !== 'admin' && <Route path="message-tester" element={<MessageTester />} />}
-              <Route path="account" element={<Account />} />
-              {role !== 'admin' && <Route path="ai-test" element={<AiTestChat />} />}
-              {role === 'admin' && <Route path="admin/users" element={<AdminUsers />} />}
-              {role === 'admin' && <Route path="admin/payments" element={<PaymentSettings />} />}
-              {role === 'admin' && <Route path="admin/ai" element={<AiSettings />} />}
-              {role === 'admin' && <Route path="admin/automation-logs" element={<AutomationLogs />} />}
-              {role === 'admin' && <Route path="infrastructure" element={<Infrastructure />} />}
-              {role === 'admin' && <Route path="plugins" element={<Plugins />} />}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Route>
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
+      <Suspense fallback={loadingFallback}>
+        <Routes>
+          <Route path="/" element={<Layout onLogout={handleLogout} userRole={role} />}>
+            <Route index element={role === 'admin' ? <AdminDashboard /> : <Dashboard />} />
+            {role !== 'admin' && <Route path="sessions" element={<Sessions />} />}
+            {role !== 'admin' && <Route path="stores" element={<Stores />} />}
+            {role !== 'admin' && <Route path="chats" element={<Chats />} />}
+            {role !== 'admin' && <Route path="contacts" element={<Contacts />} />}
+            {role !== 'admin' && <Route path="webhooks" element={<Webhooks />} />}
+            {role !== 'admin' && <Route path="templates" element={<Templates />} />}
+            {role !== 'admin' && <Route path="campaigns" element={<Campaigns />} />}
+            <Route path="logs" element={<Logs />} />
+            {role !== 'admin' && <Route path="message-tester" element={<MessageTester />} />}
+            <Route path="account" element={<Account />} />
+            {role !== 'admin' && <Route path="ai-test" element={<AiTestChat />} />}
+            {role === 'admin' && <Route path="admin/users" element={<AdminUsers />} />}
+            {role === 'admin' && <Route path="admin/payments" element={<PaymentSettings />} />}
+            {role === 'admin' && <Route path="admin/ai" element={<AiSettings />} />}
+            {role === 'admin' && <Route path="admin/automation-logs" element={<AutomationLogs />} />}
+            {role === 'admin' && <Route path="infrastructure" element={<Infrastructure />} />}
+            {role === 'admin' && <Route path="plugins" element={<Plugins />} />}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </Suspense>
     </ToastProvider>
   );
 }
@@ -163,7 +205,9 @@ function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <RoleProvider>
-          <AppContent />
+          <BrowserRouter>
+            <AppContent />
+          </BrowserRouter>
         </RoleProvider>
       </QueryClientProvider>
     </ErrorBoundary>

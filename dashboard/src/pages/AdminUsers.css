@@ -34,5 +34,7 @@
 .user-meter { margin-bottom: .8rem; }.user-meter > div:first-child { display: flex; justify-content: space-between; font-size: .78rem; }.user-meter small { color: var(--text-secondary); }
 .user-meter-track { height: 7px; background: var(--bg-light); border-radius: 99px; overflow: hidden; margin: .35rem 0 .2rem; }.user-meter-track i { display: block; height: 100%; background: var(--primary); border-radius: inherit; }
 .subscription-line { display: flex; justify-content: space-between; align-items: center; padding: .7rem 0; border-bottom: 1px solid var(--border); font-size: .8rem; }.subscription-line div { display: flex; flex-direction: column; }.subscription-line small { text-transform: capitalize; color: var(--text-secondary); }
+.subscription-line .subscription-renewal { align-items: flex-end; gap: .15rem; text-align: right; }.subscription-line .subscription-renewal strong { color: var(--text-primary); }
 @media (max-width: 900px) { .admin-summary { grid-template-columns: repeat(2,1fr); } .admin-users-table { overflow-x: auto; } .admin-user-row { min-width: 760px; } }
 @media (max-width: 760px) { .user-detail-grid { grid-template-columns: 1fr; } .admin-user-details { min-width: 760px; } }
+.admin-dashboard-section-title { margin: 1.5rem 0 .75rem; font-size: 1rem; }

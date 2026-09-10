@@ -4,11 +4,12 @@ import { PageHeader } from '../components/PageHeader';
 import { accountApi, billingApi } from '../services/api';
 import { PricingPlans } from '../components/PricingPlans';
 import type { BillingPlan } from '../services/api';
+import { formatBillingDate, subscriptionSchedule } from '../utils/subscriptionSchedule';
 import './Account.css';
 
 export function Account() {
   const client = useQueryClient();
-  const isUserLogin = Boolean(sessionStorage.getItem('openwa_access_token'));
+  const isUserLogin = Boolean(localStorage.getItem('openwa_access_token'));
   const { data: user, isLoading } = useQuery({ queryKey: ['account', 'me'], queryFn: accountApi.me, enabled: isUserLogin });
   const { data: subscriptions = [] } = useQuery({ queryKey: ['billing', 'status'], queryFn: billingApi.status, enabled: isUserLogin });
   const { data: payments } = useQuery({ queryKey: ['billing', 'history'], queryFn: billingApi.history, enabled: isUserLogin });
@@ -59,7 +60,14 @@ export function Account() {
           <button className="account-secondary" onClick={() => checkout.mutate({ provider: 'paypal' })} disabled={checkout.isPending}>Pay with PayPal</button>
         </div> : <button className="account-secondary" onClick={() => checkout.mutate({ provider: 'portal' })} disabled={checkout.isPending}>Manage Stripe billing</button>}
         {checkout.isError && <small className="billing-error">{checkout.error.message}</small>}
-        {subscriptions.map(subscription => <div className="subscription-row" key={subscription.id}><span><strong>{subscription.provider}</strong>: {subscription.status}{subscription.currentPeriodEnd ? ` · ${subscription.cancelAtPeriodEnd ? 'ends' : 'renews'} ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}` : ''}</span><div>{subscription.cancelAtPeriodEnd ? <button className="subscription-link" disabled={subscriptionAction.isPending} onClick={() => subscriptionAction.mutate({ id: subscription.id, action: 'reactivate' })}>Keep subscription</button> : ['active', 'trialing'].includes(subscription.status.toLowerCase()) && <button className="subscription-link danger" disabled={subscriptionAction.isPending} onClick={() => { const warning = subscription.provider === 'paypal' ? 'PayPal cancellation is immediate and Pro access will end now. Continue?' : 'Automatic renewal will stop, but Pro access remains until the paid period ends. Continue?'; if (window.confirm(warning)) subscriptionAction.mutate({ id: subscription.id, action: 'cancel' }); }}>Cancel subscription</button>}</div></div>)}
+        {subscriptions.map(subscription => {
+          const schedule = subscriptionSchedule(subscription);
+          return <div className="subscription-row subscription-schedule" key={subscription.id}>
+            <span><strong>{subscription.provider.toUpperCase()}</strong><small className={`subscription-state ${subscription.status.toLowerCase()}`}>{subscription.status}</small></span>
+            <span className="subscription-date"><small>{schedule.label}</small><strong>{formatBillingDate(schedule.date)}</strong><small>{schedule.autoRenew ? 'Automatic renewal enabled' : 'Automatic renewal disabled'}</small></span>
+            <div>{subscription.cancelAtPeriodEnd ? <button className="subscription-link" disabled={subscriptionAction.isPending} onClick={() => subscriptionAction.mutate({ id: subscription.id, action: 'reactivate' })}>Keep subscription</button> : ['active', 'trialing'].includes(subscription.status.toLowerCase()) && <button className="subscription-link danger" disabled={subscriptionAction.isPending} onClick={() => { const warning = subscription.provider === 'paypal' ? 'PayPal cancellation is immediate and Pro access will end now. Continue?' : 'Automatic renewal will stop, but Pro access remains until the paid period ends. Continue?'; if (window.confirm(warning)) subscriptionAction.mutate({ id: subscription.id, action: 'cancel' }); }}>Cancel subscription</button>}</div>
+          </div>;
+        })}
         {subscriptionAction.isError && <small className="billing-error">{subscriptionAction.error.message}</small>}
       </div>
     </div>

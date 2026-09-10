@@ -2,14 +2,10 @@ import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Activity,
-  AlertTriangle,
-  CheckCircle2,
   Megaphone,
   Send,
   Smartphone,
-  Timer,
   XCircle,
-  type LucideIcon,
 } from 'lucide-react';
 import { campaignApi, sessionApi, templateApi } from '../services/api';
 import { useToast } from '../hooks/useToast';
@@ -65,108 +61,15 @@ export function Campaigns() {
   const selectedCount = customers.length - excluded.length;
   const toggleCustomer = (chatId: string) =>
     setExcluded(current => (current.includes(chatId) ? current.filter(id => id !== chatId) : [...current, chatId]));
-  const cards: Array<[string, string | number, LucideIcon]> = data
-    ? [
-        ['Today Sent', data.summary.todaySent, Send],
-        ['Success Rate', `${data.summary.successRate}%`, CheckCircle2],
-        ['Active Campaigns', data.summary.activeCampaigns, Megaphone],
-        ['Connected Devices', data.summary.connectedDevices, Smartphone],
-        ['Pending Messages', data.summary.pendingMessages, Timer],
-        ['High Risk Campaigns', data.summary.highRiskCampaigns, AlertTriangle],
-      ]
-    : [];
   return (
     <div className="campaign-page">
       <header>
-        <p className="eyebrow">WHATSAPP OPERATIONS</p>
-        <h1>WhatsApp report</h1>
-        <p>Campaign delivery, device health, and automation activity in one place.</p>
+        <p className="eyebrow">CUSTOMER OUTREACH</p>
+        <h1>Campaigns</h1>
+        <p>Compose targeted messages, manage recipients, and review campaign records.</p>
       </header>
       {messageLimit.reason && <PlanUpgradeNotice reason={messageLimit.reason} />}
-      {report.isLoading ? (
-        <div className="campaign-panel">Loading report…</div>
-      ) : (
-        data && (
-          <>
-            <section className="campaign-kpis">
-              {cards.map(([label, value, Icon]) => (
-                <article key={String(label)}>
-                  <span>
-                    <Icon size={19} />
-                  </span>
-                  <p>{label as string}</p>
-                  <strong>{value as string | number}</strong>
-                </article>
-              ))}
-            </section>
-            <section className="campaign-grid">
-              <article className="campaign-panel wide">
-                <div className="section-title">
-                  <div>
-                    <h2>Quick overview</h2>
-                    <p>Messages in your current monthly plan period</p>
-                  </div>
-                  <strong>
-                    {data.monthly.used.toLocaleString()} / {data.monthly.limit.toLocaleString()}
-                  </strong>
-                </div>
-                <div className="progress">
-                  <i style={{ width: `${data.monthly.percent}%` }} />
-                </div>
-                <small>{data.monthly.percent}% used</small>
-              </article>
-              <article className="campaign-panel">
-                <h2>Total messages sent</h2>
-                <div className="hero-number">{data.totalSent.toLocaleString()}</div>
-                <p>Messages across connected sessions</p>
-              </article>
-              <article className="campaign-panel">
-                <h2>Message channels</h2>
-                {Object.entries(data.channels).map(([k, v]) => (
-                  <div className="metric-row" key={k}>
-                    <span>{k[0].toUpperCase() + k.slice(1)}</span>
-                    <b>{v}</b>
-                  </div>
-                ))}
-              </article>
-              <article className="campaign-panel">
-                <h2>Bulk delivery health</h2>
-                <div className="ring-label">
-                  {data.bulk.successRate}% <small>success</small>
-                </div>
-                <div className="metric-row">
-                  <span>Sent</span>
-                  <b className="ok">{data.bulk.sent}</b>
-                </div>
-                <div className="metric-row">
-                  <span>Failed</span>
-                  <b className="bad">{data.bulk.failed}</b>
-                </div>
-                <div className="metric-row">
-                  <span>Pending / skipped</span>
-                  <b>
-                    {data.bulk.pending} / {data.bulk.skipped}
-                  </b>
-                </div>
-              </article>
-              <article className="campaign-panel">
-                <h2>Account health</h2>
-                <div className="ring-label">
-                  {data.accountHealth.percent}% <small>connected</small>
-                </div>
-                <div className="metric-row">
-                  <span>Connected</span>
-                  <b>{data.accountHealth.connected}</b>
-                </div>
-                <div className="metric-row">
-                  <span>Disconnected</span>
-                  <b>{data.accountHealth.disconnected}</b>
-                </div>
-              </article>
-            </section>
-          </>
-        )
-      )}
+      {report.isLoading && <div className="campaign-panel">Loading campaigns…</div>}
       <section className="campaign-grid lower">
         <form className="campaign-panel compose" onSubmit={submit}>
           <div className="section-title">

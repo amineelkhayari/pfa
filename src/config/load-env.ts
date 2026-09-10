@@ -70,7 +70,7 @@ export function loadEnvironment(): void {
     // subsequently be managed from Dashboard > Infrastructure. JSON quoting is compatible with
     // dotenv and prevents spaces, #, quotes, or other password characters from corrupting the file.
     const envValue = (name: string, fallback = ''): string => JSON.stringify(process.env[name] || fallback);
-    const minimalConfig = `# OpenWA Configuration
+    const minimalConfig = `# SmartConfirm Configuration
 # Generated automatically on first run
 # Edit via Dashboard > Infrastructure or modify this file directly.
 # Note: values in process env or project .env take precedence over this file.

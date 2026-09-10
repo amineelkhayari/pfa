@@ -633,7 +633,7 @@ export function Stores() {
                 <strong>
                   {form.provider === 'shopify' ? 'Shopify connection guide' : form.provider === 'woocommerce' ? 'WooCommerce connection guide' : 'YouCan connection guide'}
                 </strong>
-                <span>Follow these steps—OpenWA completes the import and webhook setup.</span>
+                <span>Follow these steps—SmartConfirm completes the import and webhook setup.</span>
               </div>
             </div>
             {form.provider === 'woocommerce' ? (
@@ -657,7 +657,7 @@ export function Stores() {
                 <li>
                   <span>3</span>
                   <div>
-                    <strong>Add your public OpenWA URL</strong>
+                    <strong>Add your public SmartConfirm URL</strong>
                     <small>
                       Use only the tunnel/domain base URL. The order webhook path and secure signature secret are
                       created automatically.
@@ -678,7 +678,7 @@ export function Stores() {
                   <span>2</span>
                   <div>
                     <strong>Set the callback URL</strong>
-                    <small>It must match the OpenWA OAuth callback shown below exactly.</small>
+                    <small>It must match the SmartConfirm OAuth callback shown below exactly.</small>
                   </div>
                 </li>
                 <li>

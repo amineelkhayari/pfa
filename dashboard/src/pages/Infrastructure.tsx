@@ -178,7 +178,7 @@ export function Infrastructure() {
       ...prev,
       type: (infraStatus.database.type as 'sqlite' | 'postgres') || 'sqlite',
       host: infraStatus.database.host || 'localhost',
-      // builtIn reflects whether OpenWA's bundled container is actually running (live), not saved intent.
+      // builtIn reflects whether SmartConfirm's bundled container is actually running (live), not saved intent.
       builtIn: infraStatus.database.builtIn,
     }));
     setRedisConfig(prev => ({

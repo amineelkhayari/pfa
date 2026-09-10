@@ -1,4 +1,4 @@
-# OpenWA - Docker Compose Configuration
+# SmartConfirm - Docker Compose Configuration
 # Smart Orchestration with Profiles
 
 services:
@@ -21,7 +21,7 @@ services:
       # method gate for non-GET requests (haproxy.cfg: `deny unless METH_GET || env(POST)`).
       # Two consequences of the pinned v0.4.2 config, accepted and documented in SECURITY.md:
       #  - its `DELETE` env flag is dead config (never read), so it is not set here; DELETE is
-      #    admitted to enabled paths as a side effect of POST — OpenWA itself never issues
+      #    admitted to enabled paths as a side effect of POST — SmartConfirm itself never issues
       #    deletes (profile teardown is stop-only, see DockerService.stopManagedService).
       #  - the proxy cannot scope container-create payloads, so a compromised API container
       #    could create containers with host bind-mounts. If you don't use the built-in
@@ -42,7 +42,7 @@ services:
       - 'com.openwa.service=docker-proxy'
       - 'com.openwa.core=true'
 
-  # ===== CORE: OpenWA Backend API =====
+  # ===== CORE: SmartConfirm Backend API =====
   openwa-api:
     build:
       context: .
@@ -231,7 +231,7 @@ services:
       # production boot guard rejects empty/placeholder secrets before startup.
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-}
       POSTGRES_DB: ${DATABASE_NAME:-openwa}
-      # PostgreSQL schema for OpenWA's tables + migration ledger. Default 'public'. The init
+      # PostgreSQL schema for SmartConfirm's tables + migration ledger. Default 'public'. The init
       # script below creates the schema (if non-public) and sets the database default search_path,
       # so the built-in container works zero-config with a custom schema. Ignored when 'public'.
       POSTGRES_SCHEMA: ${POSTGRES_SCHEMA:-public}

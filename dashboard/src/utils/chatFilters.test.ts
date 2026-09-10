@@ -32,7 +32,7 @@ test('search matches name or id, case-insensitively, and an absent name never th
 
 test('channels match on their own name and id', () => {
   const channels = [
-    { id: '111@newsletter', name: 'OpenWA News' },
+    { id: '111@newsletter', name: 'SmartConfirm News' },
     { id: '222@newsletter', name: 'Other' },
   ];
 

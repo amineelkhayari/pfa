@@ -19,7 +19,7 @@ import type { Request, Response, NextFunction } from 'express';
  */
 function makeBuild(root: string): string {
   mkdirSync(join(root, 'assets'), { recursive: true });
-  writeFileSync(join(root, 'index.html'), '<!doctype html><title>OpenWA Dashboard</title>');
+  writeFileSync(join(root, 'index.html'), '<!doctype html><title>SmartConfirm Dashboard</title>');
   writeFileSync(join(root, 'assets', 'app.js'), 'console.log(1)');
   writeFileSync(join(root, '.env.secret'), 'TOKEN=nope');
   return root;
@@ -127,7 +127,7 @@ describe.each([
     const res = await request(app.getHttpServer()).get('/');
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/html/);
-    expect(res.text).toContain('OpenWA Dashboard');
+    expect(res.text).toContain('SmartConfirm Dashboard');
   });
 
   it('serves index.html for client-side routes (SPA fallback)', async () => {
@@ -146,7 +146,7 @@ describe.each([
     const res = await request(app.getHttpServer()).get('/assets/app.js');
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/javascript/);
-    expect(res.text).not.toContain('OpenWA Dashboard');
+    expect(res.text).not.toContain('SmartConfirm Dashboard');
   });
 
   it('404s a missing asset instead of handing back the SPA shell', async () => {
@@ -154,7 +154,7 @@ describe.each([
     // parse the shell as JavaScript and report a syntax error, hiding the real cause.
     const res = await request(app.getHttpServer()).get('/assets/missing.js');
     expect(res.status).toBe(404);
-    expect(res.text).not.toContain('OpenWA Dashboard');
+    expect(res.text).not.toContain('SmartConfirm Dashboard');
   });
 
   it('404s a missing top-level file rather than serving the shell', async () => {
@@ -178,7 +178,7 @@ describe.each([
     const res = await request(app.getHttpServer()).get('/api/does-not-exist');
     expect(res.status).toBe(404);
     expect(res.headers['content-type']).toMatch(/json/);
-    expect(res.text).not.toContain('OpenWA Dashboard');
+    expect(res.text).not.toContain('SmartConfirm Dashboard');
   });
 
   it('does not hand the SPA to a non-GET request', async () => {

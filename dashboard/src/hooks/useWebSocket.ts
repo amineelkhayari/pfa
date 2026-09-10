@@ -143,7 +143,7 @@ export function useWebSocket(events: WebSocketEvents = {}) {
   const connect = useCallback(() => {
     if (socketRef.current?.connected) return;
 
-    const accessToken = sessionStorage.getItem('openwa_access_token');
+    const accessToken = localStorage.getItem('openwa_access_token');
 
     if (!accessToken) {
       console.warn('[WebSocket] No access token found, skipping connection');

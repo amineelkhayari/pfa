@@ -53,7 +53,7 @@ export function exemptPublicOperations(document: OpenAPIObject): OpenAPIObject {
 }
 
 /**
- * Builds the OpenAPI document configuration for the OpenWA API.
+ * Builds the OpenAPI document configuration for the SmartConfirm API.
  */
 export function createSwaggerConfig(): Omit<OpenAPIObject, 'paths'> {
   // Source the API version from package.json so it tracks releases automatically — no manual bump, no drift.
@@ -61,7 +61,7 @@ export function createSwaggerConfig(): Omit<OpenAPIObject, 'paths'> {
   const { version } = require('../../package.json') as { version: string };
   return (
     new DocumentBuilder()
-      .setTitle('OpenWA API')
+      .setTitle('SmartConfirm API')
       .setDescription('Open Source WhatsApp API Gateway - Free, Self-Hosted HTTP API')
       .setVersion(version)
       .addBearerAuth(
@@ -85,7 +85,7 @@ export function createSwaggerConfig(): Omit<OpenAPIObject, 'paths'> {
         METRICS_BEARER_SCHEME,
       )
       .addSecurityRequirements(ACCOUNT_JWT_SECURITY_SCHEME)
-      .setContact('OpenWA', 'https://github.com/rmyndharis/OpenWA', 'yudhi@rmyndharis.com')
+      .setContact('SmartConfirm', 'https://github.com/your-organization/smartconfirm', 'support@smartconfirm.example')
       .addTag('sessions', 'WhatsApp session management')
       .addTag('messages', 'Send and manage messages')
       .addTag('webhooks', 'Webhook configuration')
@@ -112,7 +112,7 @@ export function createSwaggerConfig(): Omit<OpenAPIObject, 'paths'> {
       // variables keep Swagger UI "Try it" usable on real deployments (a hardcoded
       // localhost URL would break Try-it for anyone serving elsewhere). Static consumers
       // of the spec (the docs site) also get a concrete base URL to display.
-      .addServer('http://{host}:{port}', 'OpenWA instance', {
+      .addServer('http://{host}:{port}', 'SmartConfirm instance', {
         host: { default: 'localhost' },
         port: { default: '2785', description: 'PORT env var' },
       })

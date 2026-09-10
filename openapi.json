@@ -5875,13 +5875,13 @@
     }
   },
   "info": {
-    "title": "OpenWA API",
+    "title": "SmartConfirm API",
     "description": "Open Source WhatsApp API Gateway - Free, Self-Hosted HTTP API",
     "version": "0.12.4",
     "contact": {
-      "name": "OpenWA",
-      "url": "https://github.com/rmyndharis/OpenWA",
-      "email": "yudhi@rmyndharis.com"
+      "name": "SmartConfirm",
+      "url": "https://github.com/your-organization/smartconfirm",
+      "email": "support@smartconfirm.example"
     }
   },
   "tags": [
@@ -5977,7 +5977,7 @@
   "servers": [
     {
       "url": "http://{host}:{port}",
-      "description": "OpenWA instance",
+      "description": "SmartConfirm instance",
       "variables": {
         "host": {
           "default": "localhost"
@@ -6727,7 +6727,7 @@
           "text": {
             "type": "string",
             "description": "Text message content",
-            "example": "Hello from OpenWA!",
+            "example": "Hello from SmartConfirm!",
             "maxLength": 4096
           },
           "mentions": {
@@ -7284,7 +7284,7 @@
           "header": {
             "type": "string",
             "description": "Optional header text, prepended to the rendered body",
-            "example": "OpenWA Store",
+            "example": "SmartConfirm Store",
             "maxLength": 1024
           },
           "footer": {

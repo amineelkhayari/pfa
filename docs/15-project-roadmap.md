@@ -4,7 +4,7 @@
 
 ```mermaid
 timeline
-    title OpenWA Release Timeline
+    title SmartConfirm Release Timeline
 
     section v0.0.1 - MVP
         Month 1-3 : Foundation & Engine
@@ -576,7 +576,7 @@ in `0.2.2` and the five client SDKs across `0.7.3`–`0.8.19`; the rest remain o
 | Python SDK             | P2       | ✅ Shipped (`rmyndharis-openwa`) | Python client library |
 | PHP SDK                | P2       | ✅ Shipped (`rmyndharis/openwa`) | PHP client library |
 | Java SDK               | P2       | ✅ Shipped (`com.rmyndharis:openwa`) | Java client library |
-| Go SDK                 | P2       | ✅ Shipped (`github.com/rmyndharis/OpenWA/sdk/go`) | Go client library |
+| Go SDK                 | P2       | ✅ Shipped (`github.com/your-organization/smartconfirm/sdk/go`) | Go client library |
 | Postman Collection     | P1       | ◐ cURL collection (doc 07); Postman export TBD | Ready-to-use API collection |
 | Docs Site              | P1       | ☐ Open | Documentation website |
 | Video Tutorials        | P2       | ☐ Open | Getting started video series    |
@@ -622,7 +622,7 @@ architecture and design rationale):
 > `supabase-otp-hook`, the second official ingress plugin — a different vehicle than the chatbot flow
 > builder this row originally named, but it is what proved the substrate generalizes to an independent
 > consumer. Adapters ship from the
-> [OpenWA-plugins](https://github.com/rmyndharis/OpenWA-plugins) catalog, so consult that repository for
+> [SmartConfirm-plugins](https://github.com/your-organization/smartconfirm-plugins) catalog, so consult that repository for
 > each plugin's declared capabilities. P4 remains open: the published SDK reference, a compatibility test
 > suite, and multi-node routing.
 
@@ -762,7 +762,7 @@ v0.10.5 published its GitHub Release.
 
 Upgrading a Compose deployment is `git pull && docker compose up -d --build`: the bundled
 `docker-compose.yml` **builds** the API service rather than pulling it, so `docker compose pull` is
-a no-op for OpenWA itself.
+a no-op for SmartConfirm itself.
 
 ## 15.8 Success Metrics
 
