@@ -9,7 +9,7 @@ import './Account.css';
 
 export function Account() {
   const client = useQueryClient();
-  const isUserLogin = Boolean(localStorage.getItem('openwa_access_token'));
+  const isUserLogin = Boolean(localStorage.getItem('smartConfirm_access_token'));
   const { data: user, isLoading } = useQuery({ queryKey: ['account', 'me'], queryFn: accountApi.me, enabled: isUserLogin });
   const { data: subscriptions = [] } = useQuery({ queryKey: ['billing', 'status'], queryFn: billingApi.status, enabled: isUserLogin });
   const { data: payments } = useQuery({ queryKey: ['billing', 'history'], queryFn: billingApi.history, enabled: isUserLogin });

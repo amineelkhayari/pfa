@@ -276,7 +276,7 @@ DLQ redrive, handover); **P2** shipped operator provisioning in v0.8.0 — an AD
 dashboard **Instances** tab; **P3** validated the substrate against a second ingress adapter
 (`supabase-otp-hook`). The official
 ingress adapters ship as sandboxed plugins in the
-[SmartConfirm-plugins](https://github.com/your-organization/smartconfirm-plugins) catalog, not in this repository. What
+[SmartConfirm-plugins](https://github.com/amineelkhayari/pfa-plugins) catalog, not in this repository. What
 remains open is **P4**: the published SDK reference, a compatibility test suite, and multi-node routing.
 
 > **Provisioning is a first-class operator surface.** An ADMIN key mints a plugin instance against an

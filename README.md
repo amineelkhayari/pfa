@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/your-organization/smartconfirm/actions/workflows/ci.yml"><img src="https://github.com/your-organization/smartconfirm/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"/></a>
+  <a href="https://github.com/amineelkhayari/pfa/actions/workflows/ci.yml"><img src="https://github.com/amineelkhayari/pfa/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"/></a>
   <img src="https://img.shields.io/github/package-json/v/your-organization/smartconfirm?label=version&color=blue" alt="Version"/>
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License"/>
   <img src="https://img.shields.io/badge/node-22_LTS-brightgreen.svg" alt="Node"/>
@@ -40,7 +40,7 @@ Built on a **pluggable architecture**, SmartConfirm lets you select database eng
 | 🖥️ **Full Dashboard**         | Modern React UI for session, webhook, and API key management                               |
 | 🔹 **Multi-Session Ready**    | Run multiple WhatsApp sessions concurrently on one instance                                |
 | 🐳 **Docker Native**          | Production-ready with zero configuration                                                   |
-| 🧩 **Official Plugins**       | Chatwoot, Typebot & more as sandboxed plugins on the Integration Fabric — [SmartConfirm-plugins](https://github.com/your-organization/smartconfirm-plugins) |
+| 🧩 **Official Plugins**       | Chatwoot, Typebot & more as sandboxed plugins on the Integration Fabric — [SmartConfirm-plugins](https://github.com/amineelkhayari/pfa-plugins) |
 | 🔗 **n8n Integration**        | Community nodes for workflow automation                                                    |
 | 🧩 **Community Adapters**     | Third-party integrations (e.g. ioBroker) — see [docs](./docs/23-community-integrations.md) |
 
@@ -78,7 +78,7 @@ These are practical guardrails, not guarantees — but they materially reduce th
 
 A few things that look like bugs but are actually server-side WhatsApp policy, not SmartConfirm defects — we track them separately so we can distinguish them from real bugs:
 
-- **First message to a brand-new contact sometimes never arrives.** The API returns success because the message leaves SmartConfirm, but WhatsApp's server-side reach-out / trust policy drops it at delivery. This is independent of SmartConfirm. We track it in [#830](https://github.com/your-organization/smartconfirm/issues/830).
+- **First message to a brand-new contact sometimes never arrives.** The API returns success because the message leaves SmartConfirm, but WhatsApp's server-side reach-out / trust policy drops it at delivery. This is independent of SmartConfirm. We track it in [#830](https://github.com/amineelkhayari/pfa/issues/830).
 - **Accounts that get restricted cannot be "unrestricted" by us.** If WhatsApp disables a number, you need to appeal through their channels — SmartConfirm has no lever to pull.
 
 ### Compliance
@@ -147,7 +147,7 @@ For any deployment where ethical, legal, or regulatory compliance matters (healt
 
 ```bash
 # Clone and start
-git clone https://github.com/your-organization/smartconfirm.git
+git clone https://github.com/amineelkhayari/pfa.git
 cd SmartConfirm
 docker compose -f docker-compose.dev.yml up -d
 
@@ -172,7 +172,7 @@ docker compose -f docker-compose.dev.yml up -d
 
 ```bash
 # Clone repository
-git clone https://github.com/your-organization/smartconfirm.git
+git clone https://github.com/amineelkhayari/pfa.git
 cd SmartConfirm
 
 # Install the locked dependencies (includes dashboard)
@@ -200,7 +200,7 @@ disable that policy globally.
 The production stack never exposes `/var/run/docker.sock` directly to the application container. Instead, a dedicated `docker-proxy` sidecar (based on [`tecnativa/docker-socket-proxy`](https://github.com/Tecnativa/docker-socket-proxy)) acts as the sole gateway to the Docker daemon:
 
 ```
-openwa-api  ──TCP 2375──▶  docker-proxy  ──unix──▶  /var/run/docker.sock
+smartConfirm-api  ──TCP 2375──▶  docker-proxy  ──unix──▶  /var/run/docker.sock
 ```
 
 Only the operations needed for container orchestration are enabled (`CONTAINERS`, `IMAGES`, `VOLUMES`, `INFO`, `PING`, plus the `POST` method switch). The application connects via the `DOCKER_HOST=tcp://docker-proxy:2375` environment variable, which `DockerService` detects automatically. Note this is an operational gateway, not a fine-grained privilege boundary: with `POST` enabled the proxy admits every method to the enabled paths and cannot scope container-create payloads, so a compromised API container would be host-root-equivalent — see `SECURITY.md` for the full threat model, mitigations, and how to disable the proxy if you don't use the built-in datastore orchestration.
@@ -212,14 +212,14 @@ The production image never runs the Node.js process as root. On startup, the con
 ```
 dumb-init (PID 1)
   └─ docker-entrypoint.sh (root — fixes named-volume ownership via chown)
-       └─ gosu openwa node dist/main  (drops to the openwa user)
+       └─ gosu smartConfirm node dist/main  (drops to the smartConfirm user)
 ```
 
 - **dumb-init** is PID 1 and forwards signals (SIGTERM, etc.) for graceful shutdown.
-- **docker-entrypoint.sh** runs as root only long enough to `chown` the named-volume mount points so the `openwa` user can write to them.
+- **docker-entrypoint.sh** runs as root only long enough to `chown` the named-volume mount points so the `smartConfirm` user can write to them.
 - **gosu** performs a clean `exec`-based privilege drop — no `su` or `sudo` wrappers, so the node process is the direct child of dumb-init.
 
-Named volumes (e.g. `openwa-data`) get their ownership corrected automatically on every start, so no manual `chown` step is needed after volume creation.
+Named volumes (e.g. `smartConfirm-data`) get their ownership corrected automatically on every start, so no manual `chown` step is needed after volume creation.
 
 ---
 
@@ -246,7 +246,7 @@ docker compose --profile full up -d
 | `full`     | All services above    |
 
 > The dashboard is bundled into the API image and served by NestJS on the API port, so it
-> needs no profile — it is always available wherever `openwa-api` runs. For TLS/public exposure,
+> needs no profile — it is always available wherever `smartConfirm-api` runs. For TLS/public exposure,
 > put your own reverse proxy (nginx, Caddy, a cloud load balancer, or a k8s Ingress) in front;
 > see the nginx example in `docs/12-troubleshooting-faq.md`.
 
@@ -338,7 +338,7 @@ Point an MCP client at it (e.g. for Claude Code, a `.mcp.json` at your project r
 ```json
 {
   "mcpServers": {
-    "openwa": {
+    "smartConfirm": {
       "type": "http",
       "url": "http://localhost:2785/mcp",
       "headers": { "Authorization": "Bearer YOUR_API_KEY" }
@@ -379,7 +379,7 @@ The key can be passed as `Authorization: Bearer …` or `X-API-Key: …`. Every 
 ## 📁 Project Structure
 
 ```
-openwa/
+smartConfirm/
 ├── src/
 │   ├── main.ts                 # Application entry point
 │   ├── app.module.ts           # Root module
@@ -452,7 +452,7 @@ See [LICENSE](./LICENSE) for details.
 
 **SmartConfirm** – Free, Open Source WhatsApp API Gateway
 
-[📖 Documentation](./docs/README.md) · [🔌 API Docs](http://localhost:2785/api/docs) · [🐛 Report Bug](https://github.com/your-organization/smartconfirm/issues) · [💡 Request Feature](https://github.com/your-organization/smartconfirm/issues)
+[📖 Documentation](./docs/README.md) · [🔌 API Docs](http://localhost:2785/api/docs) · [🐛 Report Bug](https://github.com/amineelkhayari/pfa/issues) · [💡 Request Feature](https://github.com/amineelkhayari/pfa/issues)
 
 <br/>
 

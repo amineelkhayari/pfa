@@ -103,9 +103,9 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/local/bin/puppeteer-chrome
 COPY --from=build /app/dist ./dist
 
 # Create non-root user
-RUN groupadd -r openwa && useradd -r -g openwa openwa
-RUN chown -R openwa:openwa /app /opt/puppeteer
-USER openwa
+RUN groupadd -r smartConfirm && useradd -r -g smartConfirm smartConfirm
+RUN chown -R smartConfirm:smartConfirm /app /opt/puppeteer
+USER smartConfirm
 
 
 # Expose port
@@ -144,9 +144,9 @@ services:
       - DATABASE_TYPE=postgres
       - DATABASE_HOST=postgres
       - DATABASE_PORT=5432
-      - DATABASE_NAME=openwa
-      - DATABASE_USERNAME=openwa
-      - DATABASE_PASSWORD=openwa
+      - DATABASE_NAME=smartConfirm
+      - DATABASE_USERNAME=smartConfirm
+      - DATABASE_PASSWORD=smartConfirm
       - REDIS_ENABLED=true
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -161,7 +161,7 @@ services:
       - /app/node_modules
       # Everything the app writes locally (session auth, the main (auth/audit) SQLite DB, media,
       # plugins) lives under /app/data; with DATABASE_TYPE=postgres above, the data DB does not
-      - openwa-data:/app/data
+      - smartConfirm-data:/app/data
     depends_on:
       - postgres
       - redis
@@ -170,9 +170,9 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_USER=openwa
-      - POSTGRES_PASSWORD=openwa
-      - POSTGRES_DB=openwa
+      - POSTGRES_USER=smartConfirm
+      - POSTGRES_PASSWORD=smartConfirm
+      - POSTGRES_DB=smartConfirm
     volumes:
       - postgres-data:/var/lib/postgresql/data
     ports:
@@ -191,7 +191,7 @@ services:
 volumes:
   postgres-data:
   redis-data:
-  openwa-data:
+  smartConfirm-data:
 ```
 
 ### Docker Compose (Production)
@@ -210,7 +210,7 @@ version: '3.8'
 
 services:
   app:
-    image: ghcr.io/rmyndharis/openwa:latest
+    image: ghcr.io/rmyndharis/smartConfirm:latest
     deploy:
       replicas: 1
       resources:
@@ -238,7 +238,7 @@ services:
     volumes:
       # Session auth, the main (auth/audit) SQLite DB, media and plugins all live here — losing
       # this volume loses the linked WhatsApp sessions and the API keys.
-      - openwa-data:/app/data
+      - smartConfirm-data:/app/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:2785/api/health/ready"]
       interval: 30s
@@ -259,7 +259,7 @@ services:
     restart: always
 
 volumes:
-  openwa-data:
+  smartConfirm-data:
     driver: local
 ```
 
@@ -374,13 +374,13 @@ LOG_FORMAT=json
 # Option 1: SQLite (for minimal deployments)
 # For SQLite, DATABASE_NAME is the database FILE PATH.
 DATABASE_TYPE=sqlite
-DATABASE_NAME=./data/openwa.sqlite
+DATABASE_NAME=./data/smartConfirm.sqlite
 
 # Option 2: PostgreSQL (for production) — DATABASE_NAME is the database NAME here
 # DATABASE_TYPE=postgres
 # DATABASE_HOST=localhost
 # DATABASE_PORT=5432
-# DATABASE_NAME=openwa
+# DATABASE_NAME=smartConfirm
 # DATABASE_USERNAME=user
 # DATABASE_PASSWORD=pass
 # DATABASE_POOL_SIZE=20
@@ -397,7 +397,7 @@ STORAGE_LOCAL_PATH=./data/media
 
 # Option 2: S3 (AWS) — leave S3_ENDPOINT unset; the SDK derives it from the region
 # STORAGE_TYPE=s3
-# S3_BUCKET=openwa
+# S3_BUCKET=smartConfirm
 # S3_REGION=ap-southeast-1
 # S3_ACCESS_KEY_ID=your-access-key
 # S3_SECRET_ACCESS_KEY=your-secret-key
@@ -406,7 +406,7 @@ STORAGE_LOCAL_PATH=./data/media
 # Setting S3_ENDPOINT is what enables path-style addressing; there is no separate flag.
 # STORAGE_TYPE=s3
 # S3_ENDPOINT=http://minio:9000
-# S3_BUCKET=openwa
+# S3_BUCKET=smartConfirm
 # S3_ACCESS_KEY_ID=minioadmin
 # S3_SECRET_ACCESS_KEY=minioadmin
 
@@ -477,8 +477,8 @@ export default () => ({
   dataDatabase: {
     type: process.env.DATABASE_TYPE || 'sqlite',
     // SQLite file path when type is sqlite; PostgreSQL database name when type is postgres
-    database: process.env.DATABASE_NAME || './data/openwa.sqlite',
-    name: process.env.DATABASE_NAME || 'openwa',
+    database: process.env.DATABASE_NAME || './data/smartConfirm.sqlite',
+    name: process.env.DATABASE_NAME || 'smartConfirm',
     host: process.env.DATABASE_HOST || 'localhost',
     port: parseInt(process.env.DATABASE_PORT || '5432', 10),
     username: process.env.DATABASE_USERNAME,
@@ -667,7 +667,7 @@ rule_files:
   - 'alerts.yml'
 
 scrape_configs:
-  - job_name: 'openwa'
+  - job_name: 'smartConfirm'
     static_configs:
       - targets: ['app:2785']
     metrics_path: '/api/metrics'
@@ -689,17 +689,17 @@ scrape_configs:
 
 ### Alert Rules
 
-These rules use the metric names SmartConfirm actually exports (`openwa_*`). The memory rule below uses a
+These rules use the metric names SmartConfirm actually exports (`smartConfirm_*`). The memory rule below uses a
 node-exporter metric — an **external** exporter, not the app — and is kept as a host-level example.
 
 ```yaml
 # monitoring/alerts.yml
 groups:
-  - name: openwa-alerts
+  - name: smartConfirm-alerts
     rules:
-      # Service Down — openwa_up disappears (or the scrape fails)
+      # Service Down — smartConfirm_up disappears (or the scrape fails)
       - alert: ServiceDown
-        expr: up{job="openwa"} == 0 or absent(openwa_up)
+        expr: up{job="smartConfirm"} == 0 or absent(smartConfirm_up)
         for: 1m
         labels:
           severity: critical
@@ -709,7 +709,7 @@ groups:
 
       # Session(s) disconnected
       - alert: SessionDisconnected
-        expr: openwa_sessions{status="disconnected"} > 0
+        expr: smartConfirm_sessions{status="disconnected"} > 0
         for: 2m
         labels:
           severity: warning
@@ -719,7 +719,7 @@ groups:
 
       # Failed messages currently stored
       - alert: FailedMessagesPresent
-        expr: openwa_messages_failed_total > 0
+        expr: smartConfirm_messages_failed_total > 0
         for: 5m
         labels:
           severity: warning
@@ -729,7 +729,7 @@ groups:
 
       # Process memory growth (app-exported RSS; ~2GB example threshold)
       - alert: HighProcessMemory
-        expr: openwa_process_resident_memory_bytes > 2e9
+        expr: smartConfirm_process_resident_memory_bytes > 2e9
         for: 10m
         labels:
           severity: warning
@@ -775,19 +775,19 @@ route:
 receivers:
   - name: 'slack-notifications'
     slack_configs:
-      - channel: '#openwa-alerts'
+      - channel: '#smartConfirm-alerts'
         send_resolved: true
 
   - name: 'slack-critical'
     slack_configs:
-      - channel: '#openwa-critical'
+      - channel: '#smartConfirm-critical'
         send_resolved: true
         title: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
         text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
 
   - name: 'slack-warnings'
     slack_configs:
-      - channel: '#openwa-alerts'
+      - channel: '#smartConfirm-alerts'
         send_resolved: true
         title: '⚠️ WARNING: {{ .GroupLabels.alertname }}'
 ```
@@ -865,15 +865,15 @@ export class MetricsService {
     const mem = process.memoryUsage();
     const lines: string[] = [];
     // ... gauge() helper pushes `# HELP` / `# TYPE` / value lines ...
-    gauge('openwa_up', '...', 1);
-    gauge('openwa_process_uptime_seconds', '...', Math.round(process.uptime()));
-    gauge('openwa_process_resident_memory_bytes', '...', mem.rss);
-    gauge('openwa_process_heap_used_bytes', '...', mem.heapUsed);
-    gauge('openwa_sessions_total', '...', overview.sessions.total);
-    gauge('openwa_sessions_active', '...', overview.sessions.active);
-    // openwa_sessions{status="..."} — one line per status
-    // openwa_messages_total{direction="outgoing"|"incoming"}
-    // openwa_messages_failed_total
+    gauge('smartConfirm_up', '...', 1);
+    gauge('smartConfirm_process_uptime_seconds', '...', Math.round(process.uptime()));
+    gauge('smartConfirm_process_resident_memory_bytes', '...', mem.rss);
+    gauge('smartConfirm_process_heap_used_bytes', '...', mem.heapUsed);
+    gauge('smartConfirm_sessions_total', '...', overview.sessions.total);
+    gauge('smartConfirm_sessions_active', '...', overview.sessions.active);
+    // smartConfirm_sessions{status="..."} — one line per status
+    // smartConfirm_messages_total{direction="outgoing"|"incoming"}
+    // smartConfirm_messages_failed_total
     return lines.join('\n') + '\n';
   }
 }
@@ -883,30 +883,30 @@ export class MetricsService {
 
 | Metric | Type | Labels | Meaning |
 |--------|------|--------|---------|
-| `openwa_up` | gauge | — | Always `1` when scraped |
-| `openwa_process_uptime_seconds` | gauge | — | Process uptime |
-| `openwa_process_resident_memory_bytes` | gauge | — | RSS |
-| `openwa_process_heap_used_bytes` | gauge | — | V8 heap used |
-| `openwa_sessions_total` | gauge | — | Configured sessions |
-| `openwa_sessions_active` | gauge | — | READY (active) sessions |
-| `openwa_sessions` | gauge | `status` | Session count per status |
-| `openwa_messages_total` | gauge | `direction` (`incoming`/`outgoing`) | Current stored messages by direction |
-| `openwa_messages_failed_total` | gauge | — | Current messages in FAILED state |
+| `smartConfirm_up` | gauge | — | Always `1` when scraped |
+| `smartConfirm_process_uptime_seconds` | gauge | — | Process uptime |
+| `smartConfirm_process_resident_memory_bytes` | gauge | — | RSS |
+| `smartConfirm_process_heap_used_bytes` | gauge | — | V8 heap used |
+| `smartConfirm_sessions_total` | gauge | — | Configured sessions |
+| `smartConfirm_sessions_active` | gauge | — | READY (active) sessions |
+| `smartConfirm_sessions` | gauge | `status` | Session count per status |
+| `smartConfirm_messages_total` | gauge | `direction` (`incoming`/`outgoing`) | Current stored messages by direction |
+| `smartConfirm_messages_failed_total` | gauge | — | Current messages in FAILED state |
 
 ### Grafana Dashboard Definition
 
 ```json
-// monitoring/grafana/dashboards/openwa.json — panels use the openwa_* metrics SmartConfirm exports
+// monitoring/grafana/dashboards/smartConfirm.json — panels use the smartConfirm_* metrics SmartConfirm exports
 {
   "title": "SmartConfirm Dashboard",
-  "uid": "openwa-main",
+  "uid": "smartConfirm-main",
   "panels": [
     {
       "title": "Active Sessions",
       "type": "stat",
       "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
       "targets": [
-        { "expr": "openwa_sessions_active" }
+        { "expr": "smartConfirm_sessions_active" }
       ]
     },
     {
@@ -914,7 +914,7 @@ export class MetricsService {
       "type": "stat",
       "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
       "targets": [
-        { "expr": "openwa_messages_total{direction=\"outgoing\"}" }
+        { "expr": "smartConfirm_messages_total{direction=\"outgoing\"}" }
       ]
     },
     {
@@ -922,7 +922,7 @@ export class MetricsService {
       "type": "stat",
       "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
       "targets": [
-        { "expr": "openwa_messages_failed_total" }
+        { "expr": "smartConfirm_messages_failed_total" }
       ]
     },
     {
@@ -930,7 +930,7 @@ export class MetricsService {
       "type": "timeseries",
       "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
       "targets": [
-        { "expr": "openwa_sessions", "legendFormat": "{{status}}" }
+        { "expr": "smartConfirm_sessions", "legendFormat": "{{status}}" }
       ]
     },
     {
@@ -938,7 +938,7 @@ export class MetricsService {
       "type": "timeseries",
       "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
       "targets": [
-        { "expr": "openwa_messages_total", "legendFormat": "{{direction}}" }
+        { "expr": "smartConfirm_messages_total", "legendFormat": "{{direction}}" }
       ]
     },
     {
@@ -946,8 +946,8 @@ export class MetricsService {
       "type": "timeseries",
       "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
       "targets": [
-        { "expr": "openwa_process_resident_memory_bytes / 1024 / 1024", "legendFormat": "RSS (MB)" },
-        { "expr": "openwa_process_heap_used_bytes / 1024 / 1024", "legendFormat": "Heap used (MB)" }
+        { "expr": "smartConfirm_process_resident_memory_bytes / 1024 / 1024", "legendFormat": "RSS (MB)" },
+        { "expr": "smartConfirm_process_heap_used_bytes / 1024 / 1024", "legendFormat": "Heap used (MB)" }
       ]
     },
     {
@@ -955,7 +955,7 @@ export class MetricsService {
       "type": "stat",
       "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
       "targets": [
-        { "expr": "openwa_process_uptime_seconds" }
+        { "expr": "smartConfirm_process_uptime_seconds" }
       ]
     }
   ]
@@ -1002,16 +1002,16 @@ These are the metrics SmartConfirm actually exports at `GET /api/metrics`:
 
 | Category | Metric | Description | Alert Idea |
 |----------|--------|-------------|------------|
-| **Liveness** | `openwa_up` | Always `1` when scraped (absence/scrape-failure = down) | Target down |
-| **Sessions** | `openwa_sessions_total` | Configured sessions | Near your expected session count |
-| **Sessions** | `openwa_sessions_active` | READY (active) sessions | Drops below expected |
-| **Sessions** | `openwa_sessions{status="..."}` | Per-status counts (e.g. `disconnected`, `failed`) | `disconnected`/`failed` > 0 |
-| **Messages** | `openwa_messages_total{direction="outgoing"}` | Current stored outgoing messages | Unexpected change |
-| **Messages** | `openwa_messages_total{direction="incoming"}` | Current stored incoming messages | Unexpected change |
-| **Messages** | `openwa_messages_failed_total` | Current messages in FAILED state | Above acceptable threshold |
-| **System** | `openwa_process_resident_memory_bytes` | RSS | Growth / near limit |
-| **System** | `openwa_process_heap_used_bytes` | V8 heap used | Growth |
-| **System** | `openwa_process_uptime_seconds` | Process uptime | Frequent restarts (resets) |
+| **Liveness** | `smartConfirm_up` | Always `1` when scraped (absence/scrape-failure = down) | Target down |
+| **Sessions** | `smartConfirm_sessions_total` | Configured sessions | Near your expected session count |
+| **Sessions** | `smartConfirm_sessions_active` | READY (active) sessions | Drops below expected |
+| **Sessions** | `smartConfirm_sessions{status="..."}` | Per-status counts (e.g. `disconnected`, `failed`) | `disconnected`/`failed` > 0 |
+| **Messages** | `smartConfirm_messages_total{direction="outgoing"}` | Current stored outgoing messages | Unexpected change |
+| **Messages** | `smartConfirm_messages_total{direction="incoming"}` | Current stored incoming messages | Unexpected change |
+| **Messages** | `smartConfirm_messages_failed_total` | Current messages in FAILED state | Above acceptable threshold |
+| **System** | `smartConfirm_process_resident_memory_bytes` | RSS | Growth / near limit |
+| **System** | `smartConfirm_process_heap_used_bytes` | V8 heap used | Growth |
+| **System** | `smartConfirm_process_uptime_seconds` | Process uptime | Frequent restarts (resets) |
 
 > SmartConfirm does **not** expose request-rate, latency-histogram, webhook, queue, or Node default
 > (`nodejs_*`) metrics. For host/container-level signals (CPU, memory pressure, event-loop), scrape

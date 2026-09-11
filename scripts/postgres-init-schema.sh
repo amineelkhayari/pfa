@@ -12,8 +12,8 @@
 #
 # Limitation: the postgres image only runs docker-entrypoint-initdb.d scripts on FIRST init.
 # An existing postgres-data volume will NOT re-run this script. To adopt a custom schema on an
-# already-initialized volume, create it manually once (e.g. `CREATE SCHEMA openwa;`) and set
-# POSTGRES_SCHEMA on the openwa-api service.
+# already-initialized volume, create it manually once (e.g. `CREATE SCHEMA smartConfirm;`) and set
+# POSTGRES_SCHEMA on the smartConfirm-api service.
 set -euo pipefail
 
 schema="${POSTGRES_SCHEMA:-public}"

@@ -31,7 +31,7 @@ const crypto = require('crypto');
 const express = require('express');
 
 const app = express();
-const WEBHOOK_SECRET = process.env.OPENWA_WEBHOOK_SECRET;
+const WEBHOOK_SECRET = process.env.smartConfirm_WEBHOOK_SECRET;
 
 function verifySmartConfirmSignature(rawBody, signature, secret) {
   if (!signature || !secret) return false;
@@ -47,7 +47,7 @@ function verifySmartConfirmSignature(rawBody, signature, secret) {
   return crypto.timingSafeEqual(signatureBuffer, expectedBuffer);
 }
 
-app.post('/openwa/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+app.post('/smartConfirm/webhook', express.raw({ type: 'application/json' }), (req, res) => {
   const signature = req.header('X-SmartConfirm-Signature');
 
   if (!verifySmartConfirmSignature(req.body, signature, WEBHOOK_SECRET)) {
@@ -73,10 +73,10 @@ import os
 from fastapi import FastAPI, Request, HTTPException
 
 app = FastAPI()
-WEBHOOK_SECRET = os.environ["OPENWA_WEBHOOK_SECRET"]
+WEBHOOK_SECRET = os.environ["smartConfirm_WEBHOOK_SECRET"]
 
 
-def verify_openwa_signature(raw_body: bytes, signature: str | None, secret: str) -> bool:
+def verify_smartConfirm_signature(raw_body: bytes, signature: str | None, secret: str) -> bool:
     if not signature:
         return False
 
@@ -87,12 +87,12 @@ def verify_openwa_signature(raw_body: bytes, signature: str | None, secret: str)
     return hmac.compare_digest(signature, expected)
 
 
-@app.post("/openwa/webhook")
-async def openwa_webhook(request: Request):
+@app.post("/smartConfirm/webhook")
+async def smartConfirm_webhook(request: Request):
     raw_body = await request.body()
-    signature = request.headers.get("x-openwa-signature")
+    signature = request.headers.get("x-smartConfirm-signature")
 
-    if not verify_openwa_signature(raw_body, signature, WEBHOOK_SECRET):
+    if not verify_smartConfirm_signature(raw_body, signature, WEBHOOK_SECRET):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
     event = await request.json()

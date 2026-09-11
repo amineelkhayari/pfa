@@ -101,7 +101,7 @@ When using PostgreSQL, SmartConfirm can place its tables and migration ledger in
 **Configuration:**
 ```bash
 # .env or dashboard Infrastructure page
-POSTGRES_SCHEMA=openwa  # Use a dedicated schema
+POSTGRES_SCHEMA=smartConfirm  # Use a dedicated schema
 POSTGRES_SCHEMA=public   # Default behavior (historical)
 ```
 
@@ -862,16 +862,16 @@ flowchart TB
 
 DATE=$(date +%Y%m%d_%H%M%S)
 BACKUP_DIR="/backups"
-DB_NAME="openwa"
+DB_NAME="smartConfirm"
 
 # Create backup
-pg_dump -Fc $DB_NAME > $BACKUP_DIR/openwa_$DATE.dump
+pg_dump -Fc $DB_NAME > $BACKUP_DIR/smartConfirm_$DATE.dump
 
 # Compress
-gzip $BACKUP_DIR/openwa_$DATE.dump
+gzip $BACKUP_DIR/smartConfirm_$DATE.dump
 
 # Upload to S3 (optional)
-aws s3 cp $BACKUP_DIR/openwa_$DATE.dump.gz s3://backups/openwa/
+aws s3 cp $BACKUP_DIR/smartConfirm_$DATE.dump.gz s3://backups/smartConfirm/
 
 # Cleanup old backups (keep last 7 days)
 find $BACKUP_DIR -name "*.dump.gz" -mtime +7 -delete

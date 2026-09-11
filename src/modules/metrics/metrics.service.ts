@@ -77,45 +77,45 @@ export class MetricsService {
       lines.push(`${name}${labels} ${value}`);
     };
 
-    gauge('openwa_up', 'Whether the SmartConfirm process is up (always 1 when scraped).', 1);
-    gauge('openwa_process_uptime_seconds', 'Process uptime in seconds.', Math.round(process.uptime()));
-    gauge('openwa_process_resident_memory_bytes', 'Resident set size in bytes.', mem.rss);
-    gauge('openwa_process_heap_used_bytes', 'V8 heap used in bytes.', mem.heapUsed);
+    gauge('smartConfirm_up', 'Whether the SmartConfirm process is up (always 1 when scraped).', 1);
+    gauge('smartConfirm_process_uptime_seconds', 'Process uptime in seconds.', Math.round(process.uptime()));
+    gauge('smartConfirm_process_resident_memory_bytes', 'Resident set size in bytes.', mem.rss);
+    gauge('smartConfirm_process_heap_used_bytes', 'V8 heap used in bytes.', mem.heapUsed);
 
-    gauge('openwa_sessions_total', 'Total number of configured sessions.', overview.sessions.total);
-    gauge('openwa_sessions_active', 'Number of READY (active) sessions.', overview.sessions.active);
+    gauge('smartConfirm_sessions_total', 'Total number of configured sessions.', overview.sessions.total);
+    gauge('smartConfirm_sessions_active', 'Number of READY (active) sessions.', overview.sessions.active);
 
     // Per-status session counts share one metric name with a `status` label.
-    lines.push('# HELP openwa_sessions Number of sessions by status.');
-    lines.push('# TYPE openwa_sessions gauge');
+    lines.push('# HELP smartConfirm_sessions Number of sessions by status.');
+    lines.push('# TYPE smartConfirm_sessions gauge');
     for (const [status, count] of Object.entries(overview.sessions.byStatus)) {
-      lines.push(`openwa_sessions{status="${this.escapeLabel(status)}"} ${count}`);
+      lines.push(`smartConfirm_sessions{status="${this.escapeLabel(status)}"} ${count}`);
     }
 
-    lines.push('# HELP openwa_messages_total Current stored messages by direction.');
-    lines.push('# TYPE openwa_messages_total gauge');
-    lines.push(`openwa_messages_total{direction="outgoing"} ${overview.messages.sent}`);
-    lines.push(`openwa_messages_total{direction="incoming"} ${overview.messages.received}`);
+    lines.push('# HELP smartConfirm_messages_total Current stored messages by direction.');
+    lines.push('# TYPE smartConfirm_messages_total gauge');
+    lines.push(`smartConfirm_messages_total{direction="outgoing"} ${overview.messages.sent}`);
+    lines.push(`smartConfirm_messages_total{direction="incoming"} ${overview.messages.received}`);
 
-    lines.push('# HELP openwa_messages_failed_total Current stored messages in FAILED state.');
-    lines.push('# TYPE openwa_messages_failed_total gauge');
-    lines.push(`openwa_messages_failed_total ${overview.messages.failed}`);
-
-    lines.push(
-      '# HELP openwa_webhook_delivery_failures_total Webhook deliveries that terminally failed (all retries exhausted) since process start.',
-    );
-    lines.push('# TYPE openwa_webhook_delivery_failures_total counter');
-    lines.push(`openwa_webhook_delivery_failures_total ${getWebhookDeliveryFailuresTotal()}`);
+    lines.push('# HELP smartConfirm_messages_failed_total Current stored messages in FAILED state.');
+    lines.push('# TYPE smartConfirm_messages_failed_total gauge');
+    lines.push(`smartConfirm_messages_failed_total ${overview.messages.failed}`);
 
     lines.push(
-      '# HELP openwa_session_reconnect_attempts_total Reconnect attempts scheduled across all sessions since process start.',
+      '# HELP smartConfirm_webhook_delivery_failures_total Webhook deliveries that terminally failed (all retries exhausted) since process start.',
     );
-    lines.push('# TYPE openwa_session_reconnect_attempts_total counter');
-    lines.push(`openwa_session_reconnect_attempts_total ${getSessionReconnectAttemptsTotal()}`);
+    lines.push('# TYPE smartConfirm_webhook_delivery_failures_total counter');
+    lines.push(`smartConfirm_webhook_delivery_failures_total ${getWebhookDeliveryFailuresTotal()}`);
 
-    lines.push('# HELP openwa_session_reconnect_loop_alerts_total Reconnect-loop alerts emitted since process start.');
-    lines.push('# TYPE openwa_session_reconnect_loop_alerts_total counter');
-    lines.push(`openwa_session_reconnect_loop_alerts_total ${getSessionReconnectLoopAlertsTotal()}`);
+    lines.push(
+      '# HELP smartConfirm_session_reconnect_attempts_total Reconnect attempts scheduled across all sessions since process start.',
+    );
+    lines.push('# TYPE smartConfirm_session_reconnect_attempts_total counter');
+    lines.push(`smartConfirm_session_reconnect_attempts_total ${getSessionReconnectAttemptsTotal()}`);
+
+    lines.push('# HELP smartConfirm_session_reconnect_loop_alerts_total Reconnect-loop alerts emitted since process start.');
+    lines.push('# TYPE smartConfirm_session_reconnect_loop_alerts_total counter');
+    lines.push(`smartConfirm_session_reconnect_loop_alerts_total ${getSessionReconnectLoopAlertsTotal()}`);
 
     // HTTP RED metrics (request rate + duration per route), recorded by RequestMetricsInterceptor.
     // Included in the same cached render — a few seconds of staleness is fine for Prometheus.

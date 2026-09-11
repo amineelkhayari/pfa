@@ -136,7 +136,7 @@ export class DockerService implements OnModuleInit {
         .filter(c => {
           // Filter by SmartConfirm labels or name prefix
           const labels = c.Labels || {};
-          return labels['com.openwa.service'] || c.Names?.some(n => n.startsWith('/openwa-'));
+          return labels['com.smartConfirm.service'] || c.Names?.some(n => n.startsWith('/smartConfirm-'));
         })
         .map(c => ({
           id: c.Id.substring(0, 12),
@@ -153,7 +153,7 @@ export class DockerService implements OnModuleInit {
 
   /**
    * Which bundled (SmartConfirm-managed) service containers are currently RUNNING, keyed by the
-   * `com.openwa.service` label (`database` | `cache` | `storage`). Lets the dashboard show the real
+   * `com.smartConfirm.service` label (`database` | `cache` | `storage`). Lets the dashboard show the real
    * built-in state instead of the saved intent. All false when Docker is unavailable or none run.
    */
   async getRunningBuiltinServices(): Promise<{ database: boolean; cache: boolean; storage: boolean }> {
@@ -161,7 +161,7 @@ export class DockerService implements OnModuleInit {
     const isRunning = (svc: string): boolean =>
       containers.some(
         c =>
-          c.labels['com.openwa.service'] === svc && c.labels['com.openwa.builtin'] === 'true' && c.state === 'running',
+          c.labels['com.smartConfirm.service'] === svc && c.labels['com.smartConfirm.builtin'] === 'true' && c.state === 'running',
       );
     return { database: isRunning('database'), cache: isRunning('cache'), storage: isRunning('storage') };
   }
@@ -178,7 +178,7 @@ export class DockerService implements OnModuleInit {
       const containers = await this.docker.listContainers({
         all: true,
         filters: {
-          label: [`com.openwa.service=${service}`],
+          label: [`com.smartConfirm.service=${service}`],
         },
       });
 
@@ -187,8 +187,8 @@ export class DockerService implements OnModuleInit {
       }
 
       // Fallback: try by EXACT name (never a substring — a substring, and especially the empty
-      // string, would resolve an arbitrary container). SmartConfirm-managed containers are `openwa-<service>`.
-      const target = `openwa-${service}`;
+      // string, would resolve an arbitrary container). SmartConfirm-managed containers are `smartConfirm-<service>`.
+      const target = `smartConfirm-${service}`;
       const allContainers = await this.docker.listContainers({ all: true });
       const match = allContainers.find(c => c.Names?.some(n => n === target || n === `/${target}`));
 
@@ -213,7 +213,7 @@ export class DockerService implements OnModuleInit {
    *  - Credentials: the compose services are the MANUAL operator path and deliberately ship no
    *    default secret (empty POSTGRES_PASSWORD / MINIO_ROOT_* fail fast on boot). The specs below
    *    are the dashboard built-in path: they provision the fixed built-in credentials
-   *    (openwa/openwa, minioadmin/minioadmin) that infra-config.controller writes to data/.env.generated
+   *    (smartConfirm/smartConfirm, minioadmin/minioadmin) that infra-config.controller writes to data/.env.generated
    *    and that the production boot guard (bootstrap-security.ts) exempts only while the
    *    *_BUILTIN flag is set AND the datastore host resolves to the internal-only container.
    *  - Postgres init script: compose bind-mounts scripts/postgres-init-schema.sh from the host
@@ -221,7 +221,7 @@ export class DockerService implements OnModuleInit {
    *    to mount, and the built-in flow always pins POSTGRES_SCHEMA=public, so no init script (or
    *    POSTGRES_SCHEMA env) is set here.
    *  - Resource limits: neither path sets CPU/memory/PID limits on the datastore containers;
-   *    only openwa-api carries mem_limit/pids_limit (in compose).
+   *    only smartConfirm-api carries mem_limit/pids_limit (in compose).
    */
   private getContainerSpec(profile: string): {
     image: string;
@@ -238,10 +238,10 @@ export class DockerService implements OnModuleInit {
     const specs: Record<string, ReturnType<typeof this.getContainerSpec>> = {
       redis: {
         image: 'redis:7-alpine',
-        name: 'openwa-redis',
+        name: 'smartConfirm-redis',
         alias: 'redis', // DNS alias for resolution
         cmd: ['redis-server', '--appendonly', 'yes'],
-        volumes: [{ name: 'openwa_redis-data', path: '/data' }],
+        volumes: [{ name: 'smartConfirm_redis-data', path: '/data' }],
         healthcheck: {
           test: ['CMD', 'redis-cli', 'ping'],
           interval: 5000000000, // 5s in nanoseconds
@@ -249,36 +249,36 @@ export class DockerService implements OnModuleInit {
           retries: 5,
         },
         labels: {
-          'com.openwa.service': 'cache',
-          'com.openwa.builtin': 'true',
+          'com.smartConfirm.service': 'cache',
+          'com.smartConfirm.builtin': 'true',
         },
         securityOpt: ['no-new-privileges:true'],
       },
       postgres: {
         image: 'postgres:16-alpine',
-        name: 'openwa-postgres',
+        name: 'smartConfirm-postgres',
         alias: 'postgres',
         // Fixed built-in credentials — the dashboard saves these same values to
         // data/.env.generated (infra-config.controller) and the production boot guard exempts them only
         // for the built-in, internal-host deployment (see the getContainerSpec docblock).
-        env: ['POSTGRES_USER=openwa', 'POSTGRES_PASSWORD=openwa', 'POSTGRES_DB=openwa'],
-        volumes: [{ name: 'openwa_postgres-data', path: '/var/lib/postgresql/data' }],
+        env: ['POSTGRES_USER=smartConfirm', 'POSTGRES_PASSWORD=smartConfirm', 'POSTGRES_DB=smartConfirm'],
+        volumes: [{ name: 'smartConfirm_postgres-data', path: '/var/lib/postgresql/data' }],
         healthcheck: {
-          test: ['CMD-SHELL', 'pg_isready -U openwa'],
+          test: ['CMD-SHELL', 'pg_isready -U smartConfirm'],
           interval: 5000000000,
           timeout: 3000000000,
           retries: 5,
         },
         labels: {
-          'com.openwa.service': 'database',
-          'com.openwa.builtin': 'true',
+          'com.smartConfirm.service': 'database',
+          'com.smartConfirm.builtin': 'true',
         },
         securityOpt: ['no-new-privileges:true'],
       },
       minio: {
         // Same pin as the compose minio service — never track the floating `latest` tag.
         image: 'minio/minio:RELEASE.2025-09-07T16-13-09Z',
-        name: 'openwa-minio',
+        name: 'smartConfirm-minio',
         alias: 'minio',
         cmd: ['server', '/data', '--console-address', ':9001'],
         env: [
@@ -287,7 +287,7 @@ export class DockerService implements OnModuleInit {
           `MINIO_ROOT_USER=${process.env.S3_ACCESS_KEY_ID || process.env.S3_ACCESS_KEY || 'minioadmin'}`,
           `MINIO_ROOT_PASSWORD=${process.env.S3_SECRET_ACCESS_KEY || process.env.S3_SECRET_KEY || 'minioadmin'}`,
         ],
-        volumes: [{ name: 'openwa_minio-data', path: '/data' }],
+        volumes: [{ name: 'smartConfirm_minio-data', path: '/data' }],
         ports: [
           { container: 9000, host: 9000 },
           { container: 9001, host: 9001 },
@@ -299,8 +299,8 @@ export class DockerService implements OnModuleInit {
           retries: 3,
         },
         labels: {
-          'com.openwa.service': 'storage',
-          'com.openwa.builtin': 'true',
+          'com.smartConfirm.service': 'storage',
+          'com.smartConfirm.builtin': 'true',
         },
         securityOpt: ['no-new-privileges:true'],
       },
@@ -372,7 +372,7 @@ export class DockerService implements OnModuleInit {
         Env: spec.env,
         Labels: spec.labels,
         HostConfig: {
-          NetworkMode: 'openwa-network',
+          NetworkMode: 'smartConfirm-network',
           RestartPolicy: { Name: 'unless-stopped' },
           Binds: spec.volumes?.map(v => `${v.name}:${v.path}`),
           SecurityOpt: spec.securityOpt,
@@ -391,7 +391,7 @@ export class DockerService implements OnModuleInit {
           : undefined,
         NetworkingConfig: {
           EndpointsConfig: {
-            'openwa-network': {
+            'smartConfirm-network': {
               Aliases: [spec.alias, profile], // Add DNS aliases for network resolution
             },
           },

@@ -34,7 +34,7 @@ const dataMigrations = [sourceGlob('migrations', '*{.ts,.js}')];
 // SQLite configuration
 const sqliteDataSourceOptions: DataSourceOptions = {
   type: 'better-sqlite3',
-  database: process.env.DATABASE_NAME || './data/openwa.sqlite',
+  database: process.env.DATABASE_NAME || './data/smartConfirm.sqlite',
   entities: dataEntities,
   migrations: dataMigrations,
   synchronize: false,
@@ -66,7 +66,7 @@ export function buildPostgresDataSourceOptions(env: NodeJS.ProcessEnv = process.
     port: parseInt(env.DATABASE_PORT || '5432', 10),
     username: env.DATABASE_USERNAME,
     password: env.DATABASE_PASSWORD,
-    database: env.DATABASE_NAME || 'openwa',
+    database: env.DATABASE_NAME || 'smartConfirm',
     entities: dataEntities,
     migrations: dataMigrations,
     synchronize: false, // Never auto-sync in production

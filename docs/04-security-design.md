@@ -547,7 +547,7 @@ docker secret create db_password ./secret.txt
 # Illustrative overlay — not the docker-compose.yml shipped in this repo
 services:
   app:
-    image: openwa:latest
+    image: smartConfirm:latest
     secrets:
       - db_password
       - api_master_key
@@ -858,7 +858,7 @@ communication:
 
 ### Evidence Collection
 
-- Capture the audit log (the `audit_logs` table / audit query API) and the application logs (`docker compose logs openwa`) — there is no `logs:export` script
+- Capture the audit log (the `audit_logs` table / audit query API) and the application logs (`docker compose logs smartConfirm`) — there is no `logs:export` script
 - Database query logs
 - Network traffic captures
 - System metrics at incident time

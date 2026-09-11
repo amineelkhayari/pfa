@@ -962,7 +962,7 @@ export class WebhookService implements OnModuleInit, OnModuleDestroy {
   private sanitizeCustomHeaders(custom: Record<string, string> | null | undefined): Record<string, string> {
     const safe: Record<string, string> = {};
     for (const [key, value] of Object.entries(custom ?? {})) {
-      if (!/^(content-type|x-openwa-)/i.test(key)) {
+      if (!/^(content-type|x-smartConfirm-)/i.test(key)) {
         safe[key] = value;
       }
     }

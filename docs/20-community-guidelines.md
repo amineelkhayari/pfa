@@ -57,11 +57,11 @@ flowchart LR
 # 1. Fork the repository on GitHub
 
 # 2. Clone your fork
-git clone https://github.com/YOUR_USERNAME/openwa.git
-cd openwa
+git clone https://github.com/YOUR_USERNAME/smartConfirm.git
+cd smartConfirm
 
 # 3. Add upstream remote
-git remote add upstream https://github.com/your-organization/smartconfirm.git
+git remote add upstream https://github.com/amineelkhayari/pfa.git
 
 # 4. Install dependencies
 npm install
@@ -415,7 +415,7 @@ pull requests.
 Report privately through either channel:
 
 1. **GitHub Security Advisories** (preferred) — open a private report at
-   <https://github.com/your-organization/smartconfirm/security/advisories/new>
+   <https://github.com/amineelkhayari/pfa/security/advisories/new>
 2. **Email** — support@smartconfirm.example
 
 Include, where possible:

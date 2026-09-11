@@ -21,7 +21,7 @@ docker compose ps
 docker compose logs --tail=50
 
 # System resources
-docker stats openwa-api
+docker stats smartConfirm-api
 ```
 
 ### Diagnostic Flowchart
@@ -146,17 +146,17 @@ netstat -tlnp | grep 2785
 # Kill process using port
 kill -9 $(lsof -t -i:2785)
 
-# Check Docker logs (service name in the shipped production compose; it is `openwa` in
+# Check Docker logs (service name in the shipped production compose; it is `smartConfirm` in
 # docker-compose.dev.yml)
-docker compose logs openwa-api
+docker compose logs smartConfirm-api
 
 # Common fixes
 docker system prune -f         # Clean up dangling images/containers
-git pull                       # The shipped compose BUILDS openwa-api from source —
+git pull                       # The shipped compose BUILDS smartConfirm-api from source —
 docker compose up -d --build   # `docker compose pull` never updates it
 ```
 
-> Do **not** reach for `docker compose down --volumes` here. It deletes the `openwa-data` volume,
+> Do **not** reach for `docker compose down --volumes` here. It deletes the `smartConfirm-data` volume,
 > which holds the linked WhatsApp session profiles, the auth/audit database and every API key — a
 > port conflict never requires it.
 
@@ -183,7 +183,7 @@ in the browser, so the server log stays clean.
 CSP_UPGRADE_INSECURE_REQUESTS=false
 
 # Confirm it actually reached the process
-docker compose exec openwa-api printenv NODE_ENV CSP_UPGRADE_INSECURE_REQUESTS
+docker compose exec smartConfirm-api printenv NODE_ENV CSP_UPGRADE_INSECURE_REQUESTS
 ```
 
 A production boot that serves the dashboard with the opt-out unset prints a warning naming this
@@ -208,13 +208,13 @@ curl -H "X-API-Key: $API_KEY" \
   http://localhost:2785/api/sessions/{sessionId}
 
 # Check WhatsApp engine logs
-docker compose logs openwa-api 2>&1 | grep -i "whatsapp\|puppeteer\|browser"
+docker compose logs smartConfirm-api 2>&1 | grep -i "whatsapp\|puppeteer\|browser"
 
 # Check auth folder. Both engines key it on the session NAME, but the location differs:
 #   whatsapp-web.js → SESSION_DATA_PATH (default /app/data/sessions), dir `session-<name>`
 #   baileys         → BAILEYS_AUTH_DIR  (default /app/data/baileys),  dir `<name>` (no prefix)
-docker compose exec openwa-api ls -la /app/data/sessions/session-<name>/   # whatsapp-web.js
-docker compose exec openwa-api ls -la /app/data/baileys/<name>/            # baileys
+docker compose exec smartConfirm-api ls -la /app/data/sessions/session-<name>/   # whatsapp-web.js
+docker compose exec smartConfirm-api ls -la /app/data/baileys/<name>/            # baileys
 ```
 
 **Solutions:**
@@ -230,15 +230,15 @@ docker compose exec openwa-api ls -la /app/data/baileys/<name>/            # bai
 ```bash
 # Clear auth and restart (the profile dir carries the session NAME, not its UUID id).
 # Remove the one that matches the session's engine — deleting the other path is a silent no-op.
-docker compose exec openwa-api rm -rf /app/data/sessions/session-<name>   # whatsapp-web.js
-docker compose exec openwa-api rm -rf /app/data/baileys/<name>            # baileys
-docker compose restart openwa-api
+docker compose exec smartConfirm-api rm -rf /app/data/sessions/session-<name>   # whatsapp-web.js
+docker compose exec smartConfirm-api rm -rf /app/data/baileys/<name>            # baileys
+docker compose restart smartConfirm-api
 ```
 
-> The service name above is the one in the shipped production `docker-compose.yml` (`openwa-api`),
+> The service name above is the one in the shipped production `docker-compose.yml` (`smartConfirm-api`),
 > which mounts `/app/data` from a **named volume** — there is no `./data` on the host to inspect;
-> reach into the container (`docker compose exec openwa-api ls /app/data/sessions`) instead. In
-> `docker-compose.dev.yml` the app service is called `openwa` and `./data` is bind-mounted, so the
+> reach into the container (`docker compose exec smartConfirm-api ls /app/data/sessions`) instead. In
+> `docker-compose.dev.yml` the app service is called `smartConfirm` and `./data` is bind-mounted, so the
 > same paths can be read directly from the host. Host-relative `./data/...` commands elsewhere in
 > this document assume a source install (`npm run start:dev`) or that dev bind mount.
 
@@ -329,13 +329,13 @@ Restart the container after setting it. Leave it unset to keep the default (3000
 `trap int3` / `Trace/breakpoint trap (core dumped)`. Seen on hardened, `read_only` containers.
 
 **Cause:** Chromium resolves its home directory from the passwd entry (glibc `getpwuid()`) and **ignores
-`$HOME`**. The non-root `openwa` user has no home dir, so Chromium tries to use `/home/openwa`, which does
+`$HOME`**. The non-root `smartConfirm` user has no home dir, so Chromium tries to use `/home/smartConfirm`, which does
 not exist on the read-only rootfs — and aborts at launch. (Setting `HOME=` does **not** help, and
 `--crash-dumps-dir` is a no-op for the crashpad database on Debian/Ubuntu system Chromium.)
 
 **Fix:** Give Chromium writable, pre-created config/cache dirs via `XDG_CONFIG_HOME` / `XDG_CACHE_HOME`.
 The bundled image and `docker-compose.yml` already do this (the entrypoint creates them on the tmpfs `/tmp`,
-owned by `openwa`). If you run a custom container, ensure both are set to a writable, existing path:
+owned by `smartConfirm`). If you run a custom container, ensure both are set to a writable, existing path:
 
 ```bash
 XDG_CONFIG_HOME=/tmp/.config
@@ -377,14 +377,14 @@ mid-spawn when a `fork()` returns `EAGAIN`. This is silent in the log.
 *Diagnose:* watch the PIDS column while you click **Start**:
 
 ```bash
-docker stats openwa-api   # watch the PIDS column — does it climb toward the limit right before the failure?
+docker stats smartConfirm-api   # watch the PIDS column — does it climb toward the limit right before the failure?
 ```
 
-*Fix:* raise the ceiling. The bundled `docker-compose.yml` exposes it as `OPENWA_PIDS_LIMIT` (default `2048`,
+*Fix:* raise the ceiling. The bundled `docker-compose.yml` exposes it as `smartConfirm_PIDS_LIMIT` (default `2048`,
 which fits ~8-10 sessions with startup-spike headroom):
 
 ```bash
-OPENWA_PIDS_LIMIT=4096   # in your .env, then docker compose up -d
+smartConfirm_PIDS_LIMIT=4096   # in your .env, then docker compose up -d
 ```
 
 Do **not** set `-1` (unlimited) — the PID ceiling is a fork-bomb guard and should stay finite. Baileys
@@ -398,10 +398,10 @@ Chromium was starting. The OOM killer sends `SIGKILL`, which Puppeteer reports a
 
 ```bash
 dmesg -T | grep -i "killed process"          # Linux host
-# Docker Desktop: check the VM via the app, or nudge OPENWA_MEM_LIMIT up and retry
+# Docker Desktop: check the VM via the app, or nudge smartConfirm_MEM_LIMIT up and retry
 ```
 
-*Fix:* raise the ceiling (`OPENWA_MEM_LIMIT=4g` in your `.env`, or Docker Desktop → Settings → Resources →
+*Fix:* raise the ceiling (`smartConfirm_MEM_LIMIT=4g` in your `.env`, or Docker Desktop → Settings → Resources →
 Memory for the VM).
 
 **Cause C — the XDG/crashpad home-dir crash.**
@@ -414,7 +414,7 @@ custom container that drops the `XDG_CONFIG_HOME` / `XDG_CACHE_HOME` setup or th
 If `Code: null` happens on Kubernetes, and the host kernel logs or `dmesg` shows `Trace/breakpoint trap (core dumped)` with exit code 133, the underlying Debian 12 OS `chromium` package has crashed due to strict non-root or seccomp constraints (even with `--no-zygote` or `Unconfined` seccomp). 
 *Fix:* On amd64, do not use the `chromium` package from Debian's `apt` — it SIGTRAPs under strict non-root/seccomp. Instead, download Chrome for Testing via Puppeteer during the Docker build (`./node_modules/.bin/puppeteer browsers install 'chrome@146.0.7680.31'`) and point `PUPPETEER_EXECUTABLE_PATH` to it. (Chrome for Testing has no linux-arm64 build, so arm64 keeps Debian's `chromium`, which ships a native arm64 binary.) The official `Dockerfile` implements this mixed approach.
 
-**Quick triage:** run `docker stats openwa-api`, click **Start**, and watch which resource spikes toward its
+**Quick triage:** run `docker stats smartConfirm-api`, click **Start**, and watch which resource spikes toward its
 limit the instant before the failure — that tells you A vs B. If neither moves and you see the crashpad
 `--database` line, it's C. If running in K8s as non-root with the Debian `chromium` package, it is likely D.
 
@@ -448,7 +448,7 @@ The profile dir is named after the session **name**, while the REST API addresse
 **id** (a UUID) — so the two placeholders below are different values:
 
 ```bash
-docker exec openwa-api rm -rf /app/data/sessions/session-<name>
+docker exec smartConfirm-api rm -rf /app/data/sessions/session-<name>
 # then POST /sessions/<id>/force-kill and POST /sessions/<id>/start (the session's UUID id), and scan the new QR
 ```
 
@@ -684,7 +684,7 @@ curl -H "X-API-Key: $API_KEY" \
   http://localhost:2785/api/sessions/{sessionId}/webhooks
 
 # No webhook-delivery log API — check the server logs / audit trail instead
-docker compose logs openwa-api 2>&1 | grep -i webhook
+docker compose logs smartConfirm-api 2>&1 | grep -i webhook
 
 # Test webhook endpoint
 curl -X POST http://your-webhook-url \
@@ -730,9 +730,9 @@ WEBHOOK_RETRY_DELAY=5000   # base retry backoff in ms (default 5000)
 
 ```bash
 # Check memory usage
-docker stats openwa-api --no-stream
+docker stats smartConfirm-api --no-stream
 
-# Check process memory (Prometheus text; read openwa_process_resident_memory_bytes)
+# Check process memory (Prometheus text; read smartConfirm_process_resident_memory_bytes)
 curl -H "Authorization: Bearer $METRICS_TOKEN" \
   http://localhost:2785/api/metrics
 
@@ -745,8 +745,8 @@ curl -H "Authorization: Bearer $METRICS_TOKEN" \
 ```yaml
 # docker-compose.yml - Set memory limits
 services:
-  openwa-api:
-    # The shipped compose already exposes this as mem_limit: ${OPENWA_MEM_LIMIT:-2g}
+  smartConfirm-api:
+    # The shipped compose already exposes this as mem_limit: ${smartConfirm_MEM_LIMIT:-2g}
     mem_limit: 2g
     environment:
       # Optimize Puppeteer (whatsapp-web.js engine only)
@@ -822,14 +822,14 @@ REDIS_PORT=6379
 
 ```bash
 # Check for long-running queries (default SQLite file; override with DATABASE_NAME)
-sqlite3 ./data/openwa.sqlite ".timeout 30000"
+sqlite3 ./data/smartConfirm.sqlite ".timeout 30000"
 
 # Check WAL mode
-sqlite3 ./data/openwa.sqlite "PRAGMA journal_mode;"
+sqlite3 ./data/smartConfirm.sqlite "PRAGMA journal_mode;"
 # Default is: delete (rollback journal) — SmartConfirm does not force WAL
 
 # Optionally enable WAL mode to reduce writer/reader lock contention
-sqlite3 ./data/openwa.sqlite "PRAGMA journal_mode=WAL;"
+sqlite3 ./data/smartConfirm.sqlite "PRAGMA journal_mode=WAL;"
 ```
 
 There is no `DATABASE_SQLITE_BUSY_TIMEOUT`-style env knob — busy handling comes from the
@@ -895,7 +895,7 @@ sudo chown -R $(id -u):$(id -g) ./data/
 # Or use Docker's user mapping
 # docker-compose.yml
 services:
-  openwa-api:
+  smartConfirm-api:
     user: "1000:1000"  # Your UID:GID
 ```
 
@@ -911,25 +911,25 @@ services:
 ```yaml
 # docker-compose.yml - Ensure proper networking
 services:
-  openwa-api:
+  smartConfirm-api:
     networks:
-      - openwa-network
+      - smartConfirm-network
     extra_hosts:
       - "host.docker.internal:host-gateway"  # Access host from container
 
   postgres:
     networks:
-      - openwa-network
+      - smartConfirm-network
 
 networks:
-  openwa-network:
+  smartConfirm-network:
     driver: bridge
 ```
 
 ```bash
 # Test connectivity from container
-docker exec openwa-api ping postgres
-docker exec openwa-api curl http://host.docker.internal:8080
+docker exec smartConfirm-api ping postgres
+docker exec smartConfirm-api curl http://host.docker.internal:8080
 ```
 
 ## 12.8 Frequently Asked Questions
@@ -996,7 +996,7 @@ curl -X POST http://localhost:2785/api/sessions/{id}/messages/reply \
 **Q: How to use with n8n?**
 > See [n8n Integration Guide](./22-n8n-integration.md). Quick setup:
 > 1. Add HTTP Request node
-> 2. Set URL: `http://openwa:2785/api/sessions/{id}/messages/send-text`
+> 2. Set URL: `http://smartConfirm:2785/api/sessions/{id}/messages/send-text`
 > 3. Add header: `X-API-Key: your-key`
 > 4. Configure webhook trigger for incoming messages
 
@@ -1034,17 +1034,17 @@ Traefik forwards WebSocket upgrades automatically, so SmartConfirm's single-port
 
 ```yaml
 services:
-  openwa:
-    image: ghcr.io/rmyndharis/openwa:latest
+  smartConfirm:
+    image: ghcr.io/rmyndharis/smartConfirm:latest
     expose:
       - '2785' # internal only — drop any public `ports:` mapping when Traefik is on this network
     networks: [proxy]
     labels:
       - traefik.enable=true
-      - traefik.http.routers.openwa.rule=Host(`api.example.com`)
-      - traefik.http.routers.openwa.entrypoints=websecure
-      - traefik.http.routers.openwa.tls.certresolver=le
-      - traefik.http.services.openwa.loadbalancer.server.port=2785
+      - traefik.http.routers.smartConfirm.rule=Host(`api.example.com`)
+      - traefik.http.routers.smartConfirm.entrypoints=websecure
+      - traefik.http.routers.smartConfirm.tls.certresolver=le
+      - traefik.http.services.smartConfirm.loadbalancer.server.port=2785
 networks:
   proxy:
     external: true # the network your Traefik already runs on
@@ -1069,8 +1069,8 @@ Remember SmartConfirm is **single-port**: the Dashboard, REST API, and Socket.IO
 
 **Q: How to backup sessions automatically?**
 ```bash
-# Add to crontab, for example: 0 */6 * * * cd /path/to/openwa && ./scripts/backup.sh
-BACKUP_DIR=/backups/openwa ./scripts/backup.sh
+# Add to crontab, for example: 0 */6 * * * cd /path/to/smartConfirm && ./scripts/backup.sh
+BACKUP_DIR=/backups/smartConfirm ./scripts/backup.sh
 ```
 
 The shipped script also covers `main.sqlite`, the selected data store, whatsapp-web.js state,
@@ -1167,7 +1167,7 @@ There are no machine-readable WhatsApp error codes. Errors use the NestJS defaul
 ### Before Asking for Help
 
 1. **Check this FAQ** - Most common issues are covered
-2. **Check logs** - `docker compose logs openwa-api --tail=100`
+2. **Check logs** - `docker compose logs smartConfirm-api --tail=100`
 3. **Try basic troubleshooting** - Restart, clear cache, etc.
 4. **Search GitHub issues** - Your issue might be already reported
 
@@ -1210,10 +1210,10 @@ When creating GitHub issue, include:
 
 ### Community Resources
 
-- **GitHub Issues**: [github.com/your-organization/smartconfirm/issues](https://github.com/your-organization/smartconfirm/issues)
-- **Discussions**: [github.com/your-organization/smartconfirm/discussions](https://github.com/your-organization/smartconfirm/discussions)
-- **Discord**: [discord.gg/openwa](https://discord.gg/openwa) (if available)
-- **Stack Overflow**: Tag with `openwa`
+- **GitHub Issues**: [github.com/your-organization/smartconfirm/issues](https://github.com/amineelkhayari/pfa/issues)
+- **Discussions**: [github.com/your-organization/smartconfirm/discussions](https://github.com/amineelkhayari/pfa/discussions)
+- **Discord**: [discord.gg/smartConfirm](https://discord.gg/smartConfirm) (if available)
+- **Stack Overflow**: Tag with `smartConfirm`
 ---
 
 <div align="center">

@@ -47,11 +47,11 @@ const queryClient = new QueryClient({
 function AppContent() {
   // Authentication is browser-wide so signing in or out is reflected in every tab.
   // Migrate the old per-tab value once so existing sessions are not unexpectedly lost.
-  const legacyKey = sessionStorage.getItem('openwa_access_token');
-  const savedKey = localStorage.getItem('openwa_access_token') || legacyKey;
-  if (legacyKey && !localStorage.getItem('openwa_access_token')) {
-    localStorage.setItem('openwa_access_token', legacyKey);
-    sessionStorage.removeItem('openwa_access_token');
+  const legacyKey = sessionStorage.getItem('smartConfirm_access_token');
+  const savedKey = localStorage.getItem('smartConfirm_access_token') || legacyKey;
+  if (legacyKey && !localStorage.getItem('smartConfirm_access_token')) {
+    localStorage.setItem('smartConfirm_access_token', legacyKey);
+    sessionStorage.removeItem('smartConfirm_access_token');
   }
   const [isAuthenticated, setIsAuthenticated] = useState(!!savedKey);
   const [, setApiKey] = useState(savedKey || '');
@@ -60,7 +60,7 @@ function AppContent() {
 
   const handleLogin = async (key: string) => {
     setApiKey(key);
-    localStorage.setItem('openwa_access_token', key);
+    localStorage.setItem('smartConfirm_access_token', key);
 
     // Fetch the role from API
     try {
@@ -85,8 +85,8 @@ function AppContent() {
     setApiKey('');
     setIsAuthenticated(false);
     setRole(null);
-    localStorage.removeItem('openwa_access_token');
-    sessionStorage.removeItem('openwa_access_token');
+    localStorage.removeItem('smartConfirm_access_token');
+    sessionStorage.removeItem('smartConfirm_access_token');
     // Wipe the React Query cache too: it is keyed by resource, not actor, so without a full
     // clear a logout → login in the same tab with a different key/scope shows the previous
     // actor's sessions/messages/apiKeys/audit rows.
@@ -118,7 +118,7 @@ function AppContent() {
 
   useEffect(() => {
     const synchronizeAuthentication = (event: StorageEvent) => {
-      if (event.key === 'openwa_access_token' && event.oldValue !== event.newValue) {
+      if (event.key === 'smartConfirm_access_token' && event.oldValue !== event.newValue) {
         // Reloading also clears actor-scoped React Query data and validates the new JWT cleanly.
         window.location.reload();
       }

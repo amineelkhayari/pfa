@@ -3,22 +3,22 @@
 # SmartConfirm backup.
 #
 # Captures the load-bearing state needed to restore a working install:
-#   - database      — openwa.sqlite (SQLite) OR a pg_dump (when DATABASE_TYPE=postgres)
+#   - database      — smartConfirm.sqlite (SQLite) OR a pg_dump (when DATABASE_TYPE=postgres)
 #   - baileys/      — Baileys engine authentication state
 #   - media/        — locally-stored media (skipped automatically when using S3)
 #   - plugin-packages/ — installed plugin packages from PLUGINS_DIR
-#   - plugin-state/    — registry and persisted ctx.storage state under OPENWA_DATA_DIR
+#   - plugin-state/    — registry and persisted ctx.storage state under smartConfirm_DATA_DIR
 #   - .env.generated and .api-key — dashboard config and plaintext bootstrap admin key
 #
 # Usage:
 #   ./scripts/backup.sh
 # Environment:
-#   DATABASE_NAME       application SQLite file (default: ./data/openwa.sqlite; sqlite only)
+#   DATABASE_NAME       application SQLite file (default: ./data/smartConfirm.sqlite; sqlite only)
 #                       It resolves EXACTLY like the app: the environment first, then ./.env, then
 #                       <data dir>/.env.generated, otherwise the fixed ./data default (see
-#                       lib-env.sh). They are NOT derived from OPENWA_DATA_DIR — the app never does
+#                       lib-env.sh). They are NOT derived from smartConfirm_DATA_DIR — the app never does
 #                       that either.
-#   OPENWA_DATA_DIR   data directory for the non-DB state below (default: ./data)
+#   smartConfirm_DATA_DIR   data directory for the non-DB state below (default: ./data)
 #   BACKUP_DIR        where archives are written (default: ./backups)
 #   DATABASE_TYPE     sqlite (default) | postgres
 #   BAILEYS_AUTH_DIR, STORAGE_LOCAL_PATH, PLUGINS_DIR
@@ -35,27 +35,27 @@ set -euo pipefail
 # permissive operator umask for newly-created backup artifacts.
 umask 077
 
-# OPENWA_DATA_DIR and BACKUP_DIR steer the script itself and are never written to an env file, so
+# smartConfirm_DATA_DIR and BACKUP_DIR steer the script itself and are never written to an env file, so
 # they stay environment-only. Everything below them is application configuration and must be read
 # through the same layers the app reads (see lib-env.sh).
-DATA_DIR="${OPENWA_DATA_DIR:-./data}"
+DATA_DIR="${smartConfirm_DATA_DIR:-./data}"
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
 # shellcheck source=scripts/lib-env.sh
 . "$(dirname "$0")/lib-env.sh"
-DATABASE_TYPE="$(openwa_resolve DATABASE_TYPE sqlite)"
+DATABASE_TYPE="$(smartConfirm_resolve DATABASE_TYPE sqlite)"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 
 # Database paths resolve exactly like the app: an explicit environment value wins, then ./.env, then
-# the dashboard's <data dir>/.env.generated, otherwise the fixed ./data default. OPENWA_DATA_DIR
+# the dashboard's <data dir>/.env.generated, otherwise the fixed ./data default. smartConfirm_DATA_DIR
 # below only bases the non-DB state directories — deriving DB paths from it would back up files the
 # app never reads.
-DATA_DB="$(openwa_resolve DATABASE_NAME ./data/openwa.sqlite)"
-BAILEYS_DIR="$(openwa_resolve BAILEYS_AUTH_DIR "$DATA_DIR/baileys")"
-MEDIA_DIR="$(openwa_resolve STORAGE_LOCAL_PATH "$DATA_DIR/media")"
+DATA_DB="$(smartConfirm_resolve DATABASE_NAME ./data/smartConfirm.sqlite)"
+BAILEYS_DIR="$(smartConfirm_resolve BAILEYS_AUTH_DIR "$DATA_DIR/baileys")"
+MEDIA_DIR="$(smartConfirm_resolve STORAGE_LOCAL_PATH "$DATA_DIR/media")"
 # Installed plugin code. The app defaults this to <dataDir>/plugins — the same tree as the
 # registry and each plugin's ctx.storage below — so an unset PLUGINS_DIR must resolve there
 # too, or the archive silently omits the plugin packages.
-PLUGIN_PACKAGES_DIR="$(openwa_resolve PLUGINS_DIR "$DATA_DIR/plugins")"
+PLUGIN_PACKAGES_DIR="$(smartConfirm_resolve PLUGINS_DIR "$DATA_DIR/plugins")"
 PLUGIN_STATE_DIR="$DATA_DIR/plugins"
 GENERATED_ENV="$DATA_DIR/.env.generated"
 ADMIN_KEY_FILE="$DATA_DIR/.api-key"
@@ -117,17 +117,17 @@ if [ "$DATABASE_TYPE" = "postgres" ]; then
   else
     # Same layered resolution as the paths above: a dashboard-provisioned Postgres keeps its
     # connection details in <data dir>/.env.generated, never in the operator's shell.
-    PGPASSWORD="$(openwa_resolve DATABASE_PASSWORD '')" pg_dump \
-      -h "$(openwa_resolve DATABASE_HOST localhost)" \
-      -p "$(openwa_resolve DATABASE_PORT 5432)" \
-      -U "$(openwa_resolve DATABASE_USERNAME openwa)" \
-      "$(openwa_resolve DATABASE_NAME openwa)" >"$STAGE/database.sql"
+    PGPASSWORD="$(smartConfirm_resolve DATABASE_PASSWORD '')" pg_dump \
+      -h "$(smartConfirm_resolve DATABASE_HOST localhost)" \
+      -p "$(smartConfirm_resolve DATABASE_PORT 5432)" \
+      -U "$(smartConfirm_resolve DATABASE_USERNAME smartConfirm)" \
+      "$(smartConfirm_resolve DATABASE_NAME smartConfirm)" >"$STAGE/database.sql"
   fi
   REQUIRED_MEMBERS+=("./database.sql")
 else
   log "Backing up data store ($DATA_DB)"
-  backup_sqlite "$DATA_DB" "$STAGE/openwa.sqlite"
-  REQUIRED_MEMBERS+=("./openwa.sqlite")
+  backup_sqlite "$DATA_DB" "$STAGE/smartConfirm.sqlite"
+  REQUIRED_MEMBERS+=("./smartConfirm.sqlite")
 fi
 
 if [ -d "$BAILEYS_DIR" ]; then
@@ -163,7 +163,7 @@ if [ -f "$ADMIN_KEY_FILE" ]; then
 fi
 
 mkdir -p "$BACKUP_DIR"
-ARCHIVE="$BACKUP_DIR/openwa-backup-$TIMESTAMP.tar.gz"
+ARCHIVE="$BACKUP_DIR/smartConfirm-backup-$TIMESTAMP.tar.gz"
 tar -czf "$ARCHIVE" -C "$STAGE" .
 
 ARCHIVE_LIST="$(tar -tzf "$ARCHIVE")"

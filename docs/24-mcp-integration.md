@@ -189,7 +189,7 @@ Point an MCP client at `POST /mcp`. For Claude Code, a `.mcp.json` at your proje
 ```json
 {
   "mcpServers": {
-    "openwa": {
+    "smartConfirm": {
       "type": "http",
       "url": "http://localhost:2785/mcp",
       "headers": { "Authorization": "Bearer YOUR_API_KEY" }

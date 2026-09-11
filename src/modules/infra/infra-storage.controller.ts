@@ -148,7 +148,7 @@ export class InfraStorageController implements OnApplicationBootstrap {
       writeStream.on('error', reject);
       // pipe() does NOT forward source errors: an archiver/gzip failure surfaces as an 'error' event on
       // the source stream, which without a listener crashes the process. Fail the request instead and
-      // tear down the sink so its fd isn't held open waiting for a 'finish' that never comes.
+      // tear down the sink so its fd isn't held smart Confirmiting for a 'finish' that never comes.
       stream.on('error', (err: Error) => {
         writeStream.destroy();
         reject(err);

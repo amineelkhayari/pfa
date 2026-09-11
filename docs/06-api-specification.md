@@ -3380,7 +3380,7 @@ Create a webhook for the session.
 | url | string | yes | `@IsUrl({ require_tld: false })` (allows hostnames without a dot, e.g. `http://localhost:3000`); also run through the SSRF guard, which can reject with `400`. Entity column max 2048 chars. | Webhook URL to receive events. |
 | events | string[] | no | `@IsArray`, `@ArrayMinSize(1)`, `@IsIn([...WEBHOOK_EVENTS, '*'], { each: true })` | Event names to subscribe to (see allowed set above). Defaults to `["message.received"]` when omitted. |
 | secret | string | no | `@IsString`, `@MaxLength(255)` | HMAC-SHA256 signing key. **Write-only** — never returned. Used for `X-SmartConfirm-Signature`. Defaults to `null`. |
-| headers | Record<string,string> | no | `@IsHeaderMap()` — flat object (not array), ≤50 entries, names match `/^[A-Za-z0-9-]+$/`, values are strings ≤1024 chars with no C0 control/DEL (CR/LF injection guard). | Custom headers added to deliveries. **Write-only** — never returned. At delivery, `content-type` and `x-openwa-*` names are stripped. Defaults to `{}`. |
+| headers | Record<string,string> | no | `@IsHeaderMap()` — flat object (not array), ≤50 entries, names match `/^[A-Za-z0-9-]+$/`, values are strings ≤1024 chars with no C0 control/DEL (CR/LF injection guard). | Custom headers added to deliveries. **Write-only** — never returned. At delivery, `content-type` and `x-smartConfirm-*` names are stripped. Defaults to `{}`. |
 | filters | WebhookFilters \| null | no | `@IsValidWebhookFilters()` — `{ conditions: [...] }`; each condition `{ field, operator('is'\|'isNot'\|'contains'\|'equals'), value(string\|string[]\|boolean), caseSensitive?:boolean }`; bounds: max 20 conditions, 100 values/condition, 1000-char text values. Message fields: `sender`, `recipient`, `body`, `type`, `isGroup`, `fromMe`, `hasMedia`, `mentions`. | Optional AND pre-filter; **all** conditions must match for the webhook to fire. Omit/null = fire on every subscribed event. Defaults to `null`. |
 | retryCount | number (int) | no | `@IsInt`, `@Min(0)`, `@Max(5)` | Delivery retry attempts on failure. Defaults to `3`. |
 
@@ -3830,27 +3830,27 @@ Prometheus exposition scrape of SmartConfirm process + session + message metrics
 Content-Type `text/plain; version=0.0.4; charset=utf-8`, `Cache-Control: no-store`. Raw text (no JSON envelope):
 
 ```
-# HELP openwa_up 1 if the SmartConfirm process is running
-# TYPE openwa_up gauge
-openwa_up 1
-# TYPE openwa_process_uptime_seconds gauge
-openwa_process_uptime_seconds 3600
-# TYPE openwa_process_resident_memory_bytes gauge
-openwa_process_resident_memory_bytes 187432960
-# TYPE openwa_process_heap_used_bytes gauge
-openwa_process_heap_used_bytes 64512000
-# TYPE openwa_sessions_total gauge
-openwa_sessions_total 3
-# TYPE openwa_sessions_active gauge
-openwa_sessions_active 2
-# TYPE openwa_sessions gauge
-openwa_sessions{status="ready"} 2
-openwa_sessions{status="disconnected"} 1
-# TYPE openwa_messages_total gauge
-openwa_messages_total{direction="outgoing"} 1280
-openwa_messages_total{direction="incoming"} 940
-# TYPE openwa_messages_failed_total gauge
-openwa_messages_failed_total 4
+# HELP smartConfirm_up 1 if the SmartConfirm process is running
+# TYPE smartConfirm_up gauge
+smartConfirm_up 1
+# TYPE smartConfirm_process_uptime_seconds gauge
+smartConfirm_process_uptime_seconds 3600
+# TYPE smartConfirm_process_resident_memory_bytes gauge
+smartConfirm_process_resident_memory_bytes 187432960
+# TYPE smartConfirm_process_heap_used_bytes gauge
+smartConfirm_process_heap_used_bytes 64512000
+# TYPE smartConfirm_sessions_total gauge
+smartConfirm_sessions_total 3
+# TYPE smartConfirm_sessions_active gauge
+smartConfirm_sessions_active 2
+# TYPE smartConfirm_sessions gauge
+smartConfirm_sessions{status="ready"} 2
+smartConfirm_sessions{status="disconnected"} 1
+# TYPE smartConfirm_messages_total gauge
+smartConfirm_messages_total{direction="outgoing"} 1280
+smartConfirm_messages_total{direction="incoming"} 940
+# TYPE smartConfirm_messages_failed_total gauge
+smartConfirm_messages_failed_total 4
 ```
 
 Values come from `StatsService.getOverview()` plus `process.memoryUsage()`/`process.uptime()`. The render is memoized for 5000 ms to avoid re-running the overview query on every scrape.
@@ -4200,7 +4200,7 @@ Merge-save infrastructure config to `data/.env.generated` (a `0600` secret file)
 | `database` | object | No | — | DB section (see nested) |
 | `database.type` | `'sqlite' \| 'postgres'` | If `database` is present | enum | `sqlite` drops stale postgres keys; `postgres` writes connection keys |
 | `database.builtIn` | boolean | No | — | When `true`+postgres, forces the bundled `postgres` container creds + pushes `postgres` Docker profile |
-| `database.host` / `.port` / `.username` / `.database` | string | No | `port` is a string | External postgres connection (defaults `localhost`/`5432`/`postgres`/`openwa`) |
+| `database.host` / `.port` / `.username` / `.database` | string | No | `port` is a string | External postgres connection (defaults `localhost`/`5432`/`postgres`/`smartConfirm`) |
 | `database.schema` | string | No | — | Postgres schema, saved as `POSTGRES_SCHEMA`; an empty value writes `public` (also forced to `public` when switching to the built-in DB) |
 | `database.password` | string | No | secret | Empty/omitted keeps the existing stored secret |
 | `database.poolSize` | number | No | — | Default 10 |
@@ -4222,7 +4222,7 @@ Merge-save infrastructure config to `data/.env.generated` (a `0600` secret file)
 
 ```json
 {
-  "database": { "type": "postgres", "builtIn": false, "host": "db.example.com", "port": "5432", "username": "openwa", "password": "s3cret", "database": "openwa", "poolSize": 10, "sslEnabled": true, "sslRejectUnauthorized": false },
+  "database": { "type": "postgres", "builtIn": false, "host": "db.example.com", "port": "5432", "username": "smartConfirm", "password": "s3cret", "database": "smartConfirm", "poolSize": 10, "sslEnabled": true, "sslRejectUnauthorized": false },
   "redis": { "enabled": true, "builtIn": true },
   "queue": { "enabled": true },
   "storage": { "type": "s3", "builtIn": false, "s3Bucket": "my-bucket", "s3Region": "ap-southeast-1", "s3AccessKey": "AKIA...", "s3SecretKey": "...", "s3Endpoint": "https://s3.example.com" },
@@ -4455,7 +4455,7 @@ List all loaded plugins (built-in + installed), with secret config values redact
     "version": "1.0.0",
     "type": "extension",
     "description": "Visual reply flows",
-    "author": "openwa-plugins",
+    "author": "smartConfirm-plugins",
     "status": "enabled",
     "config": { "apiKey": "********" },
     "builtIn": false,
@@ -4490,8 +4490,8 @@ List the remote plugin catalog annotated with this instance's install state. (De
     "version": "1.2.0",
     "type": "extension",
     "description": "Auto-translate group messages",
-    "author": "openwa-plugins",
-    "download": "https://github.com/openwa-plugins/group-translate/releases/download/v1.2.0/group-translate.zip",
+    "author": "smartConfirm-plugins",
+    "download": "https://github.com/smartConfirm-plugins/group-translate/releases/download/v1.2.0/group-translate.zip",
     "installed": true,
     "installedVersion": "1.1.0",
     "updateAvailable": true
@@ -4599,7 +4599,7 @@ Optional content pinning: append `#sha256=<64 hex>` (URL fragment — never sent
 | `url` | string | Yes | `@IsUrl({ protocols:['https'], require_protocol:true })` | Absolute https URL of the package; optional `#sha256=` digest pin |
 
 ```json
-{ "url": "https://github.com/openwa-plugins/chat-flow/releases/download/v1.0.0/chat-flow.zip" }
+{ "url": "https://github.com/smartConfirm-plugins/chat-flow/releases/download/v1.0.0/chat-flow.zip" }
 ```
 
 **Response** `201` — the newly installed `PluginDto`.
@@ -5108,7 +5108,7 @@ A subscribe request whose `events` array contains no recognized name (after filt
 import { io } from 'socket.io-client';
 
 const socket = io('ws://localhost:2785/events', {
-  auth: { apiKey: process.env.OPENWA_API_KEY },
+  auth: { apiKey: process.env.smartConfirm_API_KEY },
 });
 
 socket.on('connect', () => {

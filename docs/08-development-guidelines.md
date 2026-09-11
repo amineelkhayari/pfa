@@ -3,7 +3,7 @@
 ## 8.1 Project Structure
 
 ```
-openwa/
+smartConfirm/
 ├── src/
 │   ├── main.ts                    # Application entry
 │   ├── app.module.ts              # Root module
@@ -608,7 +608,7 @@ Add a new one only when the condition is engine-agnostic and recurs; a one-off s
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/your-organization/smartconfirm.git
+git clone https://github.com/amineelkhayari/pfa.git
 cd SmartConfirm
 
 # 2. Install the locked dependencies (also installs dashboard dependencies)
@@ -686,7 +686,7 @@ LOG_LEVEL=debug
 
 # Database: SQLite (zero config)
 DATABASE_TYPE=sqlite
-DATABASE_NAME=./data/openwa.sqlite
+DATABASE_NAME=./data/smartConfirm.sqlite
 DATABASE_SYNCHRONIZE=true
 
 # Storage: Local filesystem
@@ -723,9 +723,9 @@ LOG_LEVEL=info
 DATABASE_TYPE=postgres
 DATABASE_HOST=postgres
 DATABASE_PORT=5432
-DATABASE_USERNAME=openwa
+DATABASE_USERNAME=smartConfirm
 DATABASE_PASSWORD=<set-a-strong-password>
-DATABASE_NAME=openwa
+DATABASE_NAME=smartConfirm
 DATABASE_SYNCHRONIZE=false
 DATABASE_POOL_SIZE=10
 
@@ -900,9 +900,9 @@ npm run lint -- --fix
 # DATABASE_LOGGING=true
 # (there is no DEBUG=typeorm:query switch; both connections read DATABASE_LOGGING)
 
-# View Docker logs (service is `openwa-api` in docker-compose.yml, `openwa` in
+# View Docker logs (service is `smartConfirm-api` in docker-compose.yml, `smartConfirm` in
 # docker-compose.dev.yml — there is no service named `app`)
-docker compose logs -f openwa-api
+docker compose logs -f smartConfirm-api
 ```
 
 ## 8.10 Performance Best Practices
@@ -1111,7 +1111,7 @@ constructor(
 
 **Check logs:**
 ```bash
-docker compose logs openwa-api --tail 100
+docker compose logs smartConfirm-api --tail 100
 ```
 
 **Common causes:**
@@ -1124,13 +1124,13 @@ docker compose logs openwa-api --tail 100
 **Solution:**
 ```dockerfile
 # Add shared memory size
-docker run --shm-size=2gb openwa
+docker run --shm-size=2gb smartConfirm
 ```
 
 Or in docker-compose.yml:
 ```yaml
 services:
-  openwa-api:
+  smartConfirm-api:
     shm_size: '2gb'
 ```
 ```

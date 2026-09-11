@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 
 export type Theme = 'light' | 'dark' | 'system';
 
-const THEME_KEY = 'openwa_theme';
+const THEME_KEY = 'smartConfirm_theme';
 // Legacy key from the removed palette picker (pre-0.9.0). Cleaned up on mount so old installs
 // don't carry dead state; the picker was dropped for being hard to maintain and off-brand.
-const LEGACY_PALETTE_KEY = 'openwa_palette';
+const LEGACY_PALETTE_KEY = 'smartConfirm_palette';
+const LEGACY_LANDING_THEME_KEY = 'smartconfirm_landing_theme';
 
 function isTheme(value: string | null): value is Theme {
   return value === 'light' || value === 'dark' || value === 'system';
@@ -33,9 +34,18 @@ export function useTheme() {
     localStorage.setItem(THEME_KEY, theme);
   }, [theme, applyTheme]);
 
+  useEffect(() => {
+    const syncTheme = (event: StorageEvent) => {
+      if (event.key === THEME_KEY && isTheme(event.newValue)) setThemeState(event.newValue);
+    };
+    window.addEventListener('storage', syncTheme);
+    return () => window.removeEventListener('storage', syncTheme);
+  }, []);
+
   // One-time cleanup of the removed palette picker's storage + document attribute.
   useEffect(() => {
     localStorage.removeItem(LEGACY_PALETTE_KEY);
+    localStorage.removeItem(LEGACY_LANDING_THEME_KEY);
     document.documentElement.removeAttribute('data-palette');
   }, []);
 

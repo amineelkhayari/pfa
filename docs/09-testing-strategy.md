@@ -260,7 +260,7 @@ For production-compose changes:
 
 ```bash
 docker compose up -d --build
-docker compose logs -f openwa-api
+docker compose logs -f smartConfirm-api
 ```
 
 Live WhatsApp checks require an operator-owned account and should not be part of CI:

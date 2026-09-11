@@ -75,9 +75,9 @@ describe('InfraConfigController PostgreSQL schema (POSTGRES_SCHEMA)', () => {
 
   it('writes POSTGRES_SCHEMA for external Postgres', () => {
     const env = written({
-      database: { type: 'postgres', builtIn: false, host: 'db', schema: 'openwa', password: 'unit-test-pw' },
+      database: { type: 'postgres', builtIn: false, host: 'db', schema: 'smartConfirm', password: 'unit-test-pw' },
     });
-    expect(env).toContain('POSTGRES_SCHEMA=openwa');
+    expect(env).toContain('POSTGRES_SCHEMA=smartConfirm');
   });
 
   it('leaves POSTGRES_SCHEMA untouched when the payload omits it (the runtime default is public)', () => {
@@ -87,9 +87,9 @@ describe('InfraConfigController PostgreSQL schema (POSTGRES_SCHEMA)', () => {
     expect(fresh).not.toContain('POSTGRES_SCHEMA=');
     const preserved = written(
       { database: { type: 'postgres', builtIn: false, host: 'db', password: 'unit-test-pw' } },
-      'DATABASE_TYPE=postgres\nPOSTGRES_SCHEMA=openwa\n',
+      'DATABASE_TYPE=postgres\nPOSTGRES_SCHEMA=smartConfirm\n',
     );
-    expect(preserved).toContain('POSTGRES_SCHEMA=openwa');
+    expect(preserved).toContain('POSTGRES_SCHEMA=smartConfirm');
   });
 
   it('pins POSTGRES_SCHEMA=public for the built-in Postgres container', () => {
@@ -104,8 +104,8 @@ describe('InfraConfigController PostgreSQL schema (POSTGRES_SCHEMA)', () => {
 
   it('getConfig surfaces the saved POSTGRES_SCHEMA, defaulting to public', () => {
     (fs.existsSync as jest.Mock).mockReturnValue(true);
-    (fs.readFileSync as jest.Mock).mockReturnValue('DATABASE_TYPE=postgres\nPOSTGRES_SCHEMA=openwa\n');
-    expect(newController().getConfig().database.schema).toBe('openwa');
+    (fs.readFileSync as jest.Mock).mockReturnValue('DATABASE_TYPE=postgres\nPOSTGRES_SCHEMA=smartConfirm\n');
+    expect(newController().getConfig().database.schema).toBe('smartConfirm');
     (fs.readFileSync as jest.Mock).mockReturnValue('DATABASE_TYPE=postgres\n');
     expect(newController().getConfig().database.schema).toBe('public');
     (fs.existsSync as jest.Mock).mockReturnValue(false);
@@ -190,7 +190,7 @@ describe('InfraConfigController.saveConfig env-name correctness and merge (#226)
 
   it('drops stale postgres keys (including POSTGRES_SCHEMA) when switching to sqlite', () => {
     const existing =
-      'DATABASE_TYPE=postgres\nDATABASE_HOST=oldhost\nDATABASE_PASSWORD=secret\nDATABASE_PORT=5432\nPOSTGRES_SCHEMA=openwa\n';
+      'DATABASE_TYPE=postgres\nDATABASE_HOST=oldhost\nDATABASE_PASSWORD=secret\nDATABASE_PORT=5432\nPOSTGRES_SCHEMA=smartConfirm\n';
     const env = written({ database: { type: 'sqlite' } }, existing);
     expect(env).toContain('DATABASE_TYPE=sqlite');
     expect(env).not.toContain('DATABASE_HOST=');
@@ -328,9 +328,9 @@ describe('InfraConfigController.saveConfig byte-identical regression (full dashb
       'POSTGRES_BUILTIN=true',
       'DATABASE_HOST=postgres',
       'DATABASE_PORT=5432',
-      'DATABASE_USERNAME=openwa',
-      'DATABASE_PASSWORD=openwa',
-      'DATABASE_NAME=openwa',
+      'DATABASE_USERNAME=smartConfirm',
+      'DATABASE_PASSWORD=smartConfirm',
+      'DATABASE_NAME=smartConfirm',
       'POSTGRES_SCHEMA=public',
       'DATABASE_POOL_SIZE=10',
       'DATABASE_SSL=false',
@@ -344,7 +344,7 @@ describe('InfraConfigController.saveConfig byte-identical regression (full dashb
       'S3_ENDPOINT=http://minio:9000',
       'S3_ACCESS_KEY_ID=minioadmin',
       'S3_SECRET_ACCESS_KEY=minioadmin',
-      'S3_BUCKET=openwa',
+      'S3_BUCKET=smartConfirm',
       'S3_REGION=us-east-1',
       'ENGINE_TYPE=baileys',
       'PUPPETEER_HEADLESS=true',
@@ -361,9 +361,9 @@ describe('InfraConfigController.saveConfig byte-identical regression (full dashb
         builtIn: true,
         host: 'postgres',
         port: '5432',
-        username: 'openwa',
+        username: 'smartConfirm',
         password: '',
-        database: 'openwa',
+        database: 'smartConfirm',
         schema: 'public',
         poolSize: 10,
         sslEnabled: false,
@@ -375,7 +375,7 @@ describe('InfraConfigController.saveConfig byte-identical regression (full dashb
         type: 's3',
         builtIn: true,
         localPath: '',
-        s3Bucket: 'openwa',
+        s3Bucket: 'smartConfirm',
         s3Region: 'us-east-1',
         s3AccessKey: '',
         s3SecretKey: '',
@@ -394,13 +394,13 @@ describe('InfraConfigController.saveConfig byte-identical regression (full dashb
     expect(content).toBe(
       expectedEnv({
         DATABASE_HOST: 'postgres',
-        DATABASE_NAME: 'openwa',
-        DATABASE_PASSWORD: 'openwa',
+        DATABASE_NAME: 'smartConfirm',
+        DATABASE_PASSWORD: 'smartConfirm',
         DATABASE_POOL_SIZE: '10',
         DATABASE_PORT: '5432',
         DATABASE_SSL: 'false',
         DATABASE_TYPE: 'postgres',
-        DATABASE_USERNAME: 'openwa',
+        DATABASE_USERNAME: 'smartConfirm',
         ENGINE_TYPE: 'baileys',
         MINIO_BUILTIN: 'true',
         POSTGRES_BUILTIN: 'true',
@@ -413,7 +413,7 @@ describe('InfraConfigController.saveConfig byte-identical regression (full dashb
         REDIS_HOST: 'redis',
         REDIS_PORT: '6379',
         S3_ACCESS_KEY_ID: 'minioadmin',
-        S3_BUCKET: 'openwa',
+        S3_BUCKET: 'smartConfirm',
         S3_ENDPOINT: 'http://minio:9000',
         S3_REGION: 'us-east-1',
         S3_SECRET_ACCESS_KEY: 'minioadmin',
@@ -430,10 +430,10 @@ describe('InfraConfigController.saveConfig byte-identical regression (full dashb
       'POSTGRES_BUILTIN=false',
       'DATABASE_HOST=db.example.com',
       'DATABASE_PORT=5433',
-      'DATABASE_USERNAME=openwauser',
+      'DATABASE_USERNAME=smartConfirmuser',
       'DATABASE_PASSWORD=Str0ng!Passw0rd',
-      'DATABASE_NAME=openwa',
-      'POSTGRES_SCHEMA=openwa',
+      'DATABASE_NAME=smartConfirm',
+      'POSTGRES_SCHEMA=smartConfirm',
       'DATABASE_POOL_SIZE=20',
       'DATABASE_SSL=true',
       'DATABASE_SSL_REJECT_UNAUTHORIZED=false',
@@ -452,7 +452,7 @@ describe('InfraConfigController.saveConfig byte-identical regression (full dashb
       'S3_REGION=eu-west-1',
       'ENGINE_TYPE=baileys',
       'PUPPETEER_HEADLESS=false',
-      'SESSION_DATA_PATH=/var/lib/openwa/sessions',
+      'SESSION_DATA_PATH=/var/lib/smartConfirm/sessions',
       'PUPPETEER_ARGS=--no-sandbox',
       '',
     ].join('\n');
@@ -462,10 +462,10 @@ describe('InfraConfigController.saveConfig byte-identical regression (full dashb
         builtIn: false,
         host: 'db.example.com',
         port: '5433',
-        username: 'openwauser',
+        username: 'smartConfirmuser',
         password: '',
-        database: 'openwa',
-        schema: 'openwa',
+        database: 'smartConfirm',
+        schema: 'smartConfirm',
         poolSize: 20,
         sslEnabled: true,
         sslRejectUnauthorized: false,
@@ -485,7 +485,7 @@ describe('InfraConfigController.saveConfig byte-identical regression (full dashb
       engine: {
         type: 'baileys',
         headless: false,
-        sessionDataPath: '/var/lib/openwa/sessions',
+        sessionDataPath: '/var/lib/smartConfirm/sessions',
         browserArgs: '--no-sandbox',
       },
     };
@@ -495,18 +495,18 @@ describe('InfraConfigController.saveConfig byte-identical regression (full dashb
     expect(content).toBe(
       expectedEnv({
         DATABASE_HOST: 'db.example.com',
-        DATABASE_NAME: 'openwa',
+        DATABASE_NAME: 'smartConfirm',
         DATABASE_PASSWORD: 'Str0ng!Passw0rd',
         DATABASE_POOL_SIZE: '20',
         DATABASE_PORT: '5433',
         DATABASE_SSL: 'true',
         DATABASE_SSL_REJECT_UNAUTHORIZED: 'false',
         DATABASE_TYPE: 'postgres',
-        DATABASE_USERNAME: 'openwauser',
+        DATABASE_USERNAME: 'smartConfirmuser',
         ENGINE_TYPE: 'baileys',
         MINIO_BUILTIN: 'false',
         POSTGRES_BUILTIN: 'false',
-        POSTGRES_SCHEMA: 'openwa',
+        POSTGRES_SCHEMA: 'smartConfirm',
         PUPPETEER_ARGS: '--no-sandbox',
         PUPPETEER_HEADLESS: 'false',
         QUEUE_ENABLED: 'false',
@@ -520,7 +520,7 @@ describe('InfraConfigController.saveConfig byte-identical regression (full dashb
         S3_ENDPOINT: 'https://s3.eu-west-1.amazonaws.com',
         S3_REGION: 'eu-west-1',
         S3_SECRET_ACCESS_KEY: 's3-super-secret',
-        SESSION_DATA_PATH: '/var/lib/openwa/sessions',
+        SESSION_DATA_PATH: '/var/lib/smartConfirm/sessions',
         STORAGE_TYPE: 's3',
       }),
     );
@@ -566,11 +566,11 @@ describe('InfraConfigController.saveConfig per-key merge (partial payloads)', ()
 
   it('a partial database save keeps unmentioned keys (pool size, schema, stored password)', () => {
     const existing =
-      'DATABASE_TYPE=postgres\nPOSTGRES_BUILTIN=false\nDATABASE_HOST=old.example.com\nDATABASE_PASSWORD=keepme\nDATABASE_POOL_SIZE=25\nPOSTGRES_SCHEMA=openwa\n';
+      'DATABASE_TYPE=postgres\nPOSTGRES_BUILTIN=false\nDATABASE_HOST=old.example.com\nDATABASE_PASSWORD=keepme\nDATABASE_POOL_SIZE=25\nPOSTGRES_SCHEMA=smartConfirm\n';
     const env = written({ database: { type: 'postgres', host: 'new.example.com' } }, existing);
     expect(env).toContain('DATABASE_HOST=new.example.com');
     expect(env).toContain('DATABASE_POOL_SIZE=25');
-    expect(env).toContain('POSTGRES_SCHEMA=openwa');
+    expect(env).toContain('POSTGRES_SCHEMA=smartConfirm');
     expect(env).toContain('DATABASE_PASSWORD=keepme');
   });
 
@@ -620,9 +620,9 @@ describe('InfraConfigController.saveConfig built-in/external mode flips and the 
   }
 
   const BUILTIN_POSTGRES_ENV =
-    'DATABASE_TYPE=postgres\nPOSTGRES_BUILTIN=true\nDATABASE_HOST=postgres\nDATABASE_PORT=5432\nDATABASE_USERNAME=openwa\nDATABASE_PASSWORD=openwa\nDATABASE_NAME=openwa\nPOSTGRES_SCHEMA=public\n';
+    'DATABASE_TYPE=postgres\nPOSTGRES_BUILTIN=true\nDATABASE_HOST=postgres\nDATABASE_PORT=5432\nDATABASE_USERNAME=smartConfirm\nDATABASE_PASSWORD=smartConfirm\nDATABASE_NAME=smartConfirm\nPOSTGRES_SCHEMA=public\n';
   const BUILTIN_MINIO_ENV =
-    'STORAGE_TYPE=s3\nMINIO_BUILTIN=true\nS3_ENDPOINT=http://minio:9000\nS3_ACCESS_KEY_ID=minioadmin\nS3_SECRET_ACCESS_KEY=minioadmin\nS3_BUCKET=openwa\nS3_REGION=us-east-1\n';
+    'STORAGE_TYPE=s3\nMINIO_BUILTIN=true\nS3_ENDPOINT=http://minio:9000\nS3_ACCESS_KEY_ID=minioadmin\nS3_SECRET_ACCESS_KEY=minioadmin\nS3_BUCKET=smartConfirm\nS3_REGION=us-east-1\n';
 
   it('flipping Postgres built-in -> external with a fresh password drops the bundled password', () => {
     const env = written(
@@ -641,12 +641,12 @@ describe('InfraConfigController.saveConfig built-in/external mode flips and the 
     expect(env).toContain('POSTGRES_BUILTIN=false');
     expect(env).toContain('DATABASE_HOST=db.example.com');
     expect(env).toContain('DATABASE_PASSWORD=Sup3rSecret!');
-    // No trace of the bundled 'openwa' credential may survive the flip.
-    expect(env).not.toContain('openwa');
+    // No trace of the bundled 'smartConfirm' credential may survive the flip.
+    expect(env).not.toContain('smartConfirm');
   });
 
   it('rejects flipping Postgres built-in -> external without a fresh password instead of crash-looping', () => {
-    // Without the mode-flip drop + save-time guard this saved the bundled 'openwa' password into
+    // Without the mode-flip drop + save-time guard this saved the bundled 'smartConfirm' password into
     // the external config; the production boot guard then refused to start and the dashboard died
     // with it. The save itself must now fail with a 400 naming the variable.
     expectRejected(
@@ -780,7 +780,7 @@ describe('InfraConfigController.saveConfig built-in/external mode flips and the 
       database: { type: 'postgres', builtIn: true },
       storage: { type: 's3', builtIn: true },
     });
-    expect(env).toContain('DATABASE_PASSWORD=openwa');
+    expect(env).toContain('DATABASE_PASSWORD=smartConfirm');
     expect(env).toContain('POSTGRES_BUILTIN=true');
     expect(env).toContain('S3_ACCESS_KEY_ID=minioadmin');
     expect(env).toContain('MINIO_BUILTIN=true');
@@ -788,11 +788,11 @@ describe('InfraConfigController.saveConfig built-in/external mode flips and the 
 
   it('an absent builtIn field inherits built-in mode without clobbering a stored custom password', () => {
     // Secrets are never echoed back to the form, so an absent password field means "unchanged".
-    // Merely inheriting the built-in mode must not re-stamp the bundled 'openwa' over a custom
+    // Merely inheriting the built-in mode must not re-stamp the bundled 'smartConfirm' over a custom
     // password (e.g. an operator who re-keyed the bundled container via POSTGRES_PASSWORD).
     const env = written(
       { database: { type: 'postgres', poolSize: 25 } },
-      'DATABASE_TYPE=postgres\nPOSTGRES_BUILTIN=true\nDATABASE_HOST=postgres\nDATABASE_PORT=5432\nDATABASE_USERNAME=openwa\nDATABASE_PASSWORD=CustomPw123!\nDATABASE_NAME=openwa\nPOSTGRES_SCHEMA=public\n',
+      'DATABASE_TYPE=postgres\nPOSTGRES_BUILTIN=true\nDATABASE_HOST=postgres\nDATABASE_PORT=5432\nDATABASE_USERNAME=smartConfirm\nDATABASE_PASSWORD=CustomPw123!\nDATABASE_NAME=smartConfirm\nPOSTGRES_SCHEMA=public\n',
     );
     expect(env).toContain('POSTGRES_BUILTIN=true');
     expect(env).toContain('DATABASE_PASSWORD=CustomPw123!');
@@ -802,10 +802,10 @@ describe('InfraConfigController.saveConfig built-in/external mode flips and the 
   it('an explicit password wins while the built-in mode is only inherited', () => {
     const env = written(
       { database: { type: 'postgres', password: 'NewPw456!' } },
-      'DATABASE_TYPE=postgres\nPOSTGRES_BUILTIN=true\nDATABASE_HOST=postgres\nDATABASE_PASSWORD=openwa\nDATABASE_NAME=openwa\n',
+      'DATABASE_TYPE=postgres\nPOSTGRES_BUILTIN=true\nDATABASE_HOST=postgres\nDATABASE_PASSWORD=smartConfirm\nDATABASE_NAME=smartConfirm\n',
     );
     expect(env).toContain('DATABASE_PASSWORD=NewPw456!');
-    expect(env).not.toContain('DATABASE_PASSWORD=openwa');
+    expect(env).not.toContain('DATABASE_PASSWORD=smartConfirm');
   });
 
   it('an explicit builtIn:true keeps a re-keyed bundled password (the dashboard always sends builtIn)', () => {
@@ -814,19 +814,19 @@ describe('InfraConfigController.saveConfig built-in/external mode flips and the 
     // credential on each save, breaking the next boot's DB auth.
     const env = written(
       { database: { type: 'postgres', builtIn: true } },
-      'DATABASE_TYPE=postgres\nPOSTGRES_BUILTIN=true\nDATABASE_HOST=postgres\nDATABASE_PASSWORD=CustomPw123!\nDATABASE_NAME=openwa\n',
+      'DATABASE_TYPE=postgres\nPOSTGRES_BUILTIN=true\nDATABASE_HOST=postgres\nDATABASE_PASSWORD=CustomPw123!\nDATABASE_NAME=smartConfirm\n',
     );
     expect(env).toContain('DATABASE_PASSWORD=CustomPw123!');
   });
 
   it('does not carry an EXTERNAL password into the bundled container when switching to built-in', () => {
-    // The stored secret belongs to the external DB; the bundled container is seeded with 'openwa'
+    // The stored secret belongs to the external DB; the bundled container is seeded with 'smartConfirm'
     // unless the operator re-keys it, so switching modes must reset rather than inherit.
     const env = written(
       { database: { type: 'postgres', builtIn: true } },
       'DATABASE_TYPE=postgres\nPOSTGRES_BUILTIN=false\nDATABASE_HOST=db.example.com\nDATABASE_PASSWORD=ExternalPw!\nDATABASE_NAME=appdb\n',
     );
-    expect(env).toContain('DATABASE_PASSWORD=openwa');
+    expect(env).toContain('DATABASE_PASSWORD=smartConfirm');
     expect(env).not.toContain('ExternalPw!');
   });
 
@@ -914,7 +914,7 @@ describe('InfraConfigController.saveConfig built-in/external mode flips and the 
         process.env.DATABASE_TYPE = 'postgres';
         process.env.POSTGRES_BUILTIN = 'true';
         process.env.DATABASE_HOST = 'postgres';
-        process.env.DATABASE_PASSWORD = 'openwa';
+        process.env.DATABASE_PASSWORD = 'smartConfirm';
         expectRejected(
           {
             database: { type: 'postgres', builtIn: false, host: 'db.example.com', username: 'app', database: 'appdb' },

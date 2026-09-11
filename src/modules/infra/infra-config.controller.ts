@@ -290,7 +290,7 @@ export class InfraConfigController {
     // Only a HOST-supplied key may win. load-env also merges .env and data/.env.generated into
     // process.env, so reading process.env alone would hand back the very file this save is
     // replacing — the guard would then bless a flip by validating the OLD config (a built-in ->
-    // external switch keeping the bundled 'openwa' password would save cleanly and crash-loop the
+    // external switch keeping the bundled 'smartConfirm' password would save cleanly and crash-loop the
     // next production boot, the exact case this guard exists for). isOsProvidedEnv separates the
     // two using the snapshot load-env takes before either file is loaded.
     const bootValue = (key: string): string | undefined => {
@@ -385,17 +385,17 @@ export class InfraConfigController {
         // Built-in PostgreSQL - use container name as host
         updates.DATABASE_HOST = 'postgres';
         updates.DATABASE_PORT = '5432';
-        updates.DATABASE_USERNAME = 'openwa';
+        updates.DATABASE_USERNAME = 'smartConfirm';
         // The bundled credential is only the DEFAULT. Secrets are never echoed back to the form,
-        // so an absent password field means "unchanged", not "reset to 'openwa'" — and the
+        // so an absent password field means "unchanged", not "reset to 'smartConfirm'" — and the
         // dashboard ALWAYS sends builtIn, so keying the reset on "explicit builtIn:true" reset a
         // re-keyed container on every save from the Infrastructure page.
         // What decides it is whether the stored password belongs to this same bundled container:
         // it does when the previous mode was already built-in. Coming from external, the stored
         // value is the external DB's credential and must not be carried into the container.
         const storedPassword = existing.POSTGRES_BUILTIN === 'true' ? existing.DATABASE_PASSWORD : undefined;
-        updates.DATABASE_PASSWORD = database.password || storedPassword || 'openwa';
-        updates.DATABASE_NAME = 'openwa';
+        updates.DATABASE_PASSWORD = database.password || storedPassword || 'smartConfirm';
+        updates.DATABASE_NAME = 'smartConfirm';
         // Built-in Postgres is initialized with the default 'public' schema (see
         // scripts/postgres-init-schema.sh). Pin it so a later switch from a custom-schema
         // external DB to built-in doesn't carry a stale POSTGRES_SCHEMA forward.
@@ -403,7 +403,7 @@ export class InfraConfigController {
         profiles.push('postgres');
       } else {
         // External PostgreSQL. Flipping built-in -> external must not carry the bundled
-        // 'openwa' password into the external config: the production boot guard rejects
+        // 'smartConfirm' password into the external config: the production boot guard rejects
         // it, so the next boot would crash-loop. A password in the same payload wins.
         if (database.builtIn === false && existing.POSTGRES_BUILTIN === 'true' && !database.password) {
           staleKeys.add('DATABASE_PASSWORD');
@@ -412,7 +412,7 @@ export class InfraConfigController {
         if (database.port !== undefined) updates.DATABASE_PORT = database.port || '5432';
         if (database.username !== undefined) updates.DATABASE_USERNAME = database.username || 'postgres';
         setSecret(updates, 'DATABASE_PASSWORD', database.password);
-        if (database.database !== undefined) updates.DATABASE_NAME = database.database || 'openwa';
+        if (database.database !== undefined) updates.DATABASE_NAME = database.database || 'smartConfirm';
         if (database.schema !== undefined) updates.POSTGRES_SCHEMA = database.schema || 'public';
       }
       if (database.poolSize !== undefined) {
@@ -501,7 +501,7 @@ export class InfraConfigController {
         updates.S3_ENDPOINT = 'http://minio:9000';
         updates.S3_ACCESS_KEY_ID = 'minioadmin';
         updates.S3_SECRET_ACCESS_KEY = 'minioadmin';
-        updates.S3_BUCKET = 'openwa';
+        updates.S3_BUCKET = 'smartConfirm';
         updates.S3_REGION = 'us-east-1';
         profiles.push('minio');
       } else {
@@ -632,8 +632,8 @@ export class InfraConfigController {
       // Then, start containers for enabled services. Start shares the SAME managed allowlist as
       // teardown above: a non-managed name reaching orchestrateProfiles could, via container-name
       // matching, select an unrelated host container, so constrain start to the managed profiles too
-      // and drop anything else. (DockerService already hard-prefixes openwa-<service> and filters on
-      // the com.openwa.service label, so this is defense-in-depth, not the sole control.)
+      // and drop anything else. (DockerService already hard-prefixes smartConfirm-<service> and filters on
+      // the com.smartConfirm.service label, so this is defense-in-depth, not the sole control.)
       const toStart = profiles.filter(p => MANAGED_DOCKER_PROFILES.includes(p));
       const ignoredStart = profiles.filter(p => !MANAGED_DOCKER_PROFILES.includes(p));
       if (ignoredStart.length > 0) {

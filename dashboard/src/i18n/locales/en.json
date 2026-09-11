@@ -196,7 +196,7 @@
     "connectionError": "Unable to connect to server. Please try again.",
     "help": "Need help?",
     "viewDocs": "View Documentation",
-    "footer": "Made with ❤️ by SmartConfirm Team and the SmartConfirm Community",
+    "footer": "Made by SmartConfirm",
     "version": "v{{version}} · {{date}}"
   },
   "dashboard": {

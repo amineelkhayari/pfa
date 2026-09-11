@@ -11,6 +11,7 @@ import {
   Menu,
   MessageCircle,
   MessageSquareText,
+  Moon,
   Languages,
   PlugZap,
   Send,
@@ -18,6 +19,7 @@ import {
   ShoppingBag,
   Smartphone,
   Store,
+  Sun,
   WalletCards,
   Wrench,
   X,
@@ -26,6 +28,7 @@ import {
 import './Landing.css';
 import { billingApi, type BillingPlan } from '../services/api';
 import { landingCopy, landingLanguage, type LandingLanguage } from './landing-copy';
+import { useTheme } from '../hooks/useTheme';
 
 interface LandingProps {
   onSignIn: () => void;
@@ -36,6 +39,7 @@ const featureIcons = [ShoppingBag, Bot, Send, MessageSquareText, PlugZap, BarCha
 
 export function Landing({ onSignIn, onSignUp }: LandingProps) {
   const { i18n } = useTranslation();
+  const { resolvedTheme, setTheme } = useTheme();
   const language = landingLanguage(i18n.resolvedLanguage || i18n.language);
   const copy = landingCopy[language];
   const [menuOpen, setMenuOpen] = useState(false);
@@ -43,8 +47,9 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
   const [plans, setPlans] = useState<BillingPlan[]>([]);
   useEffect(() => { billingApi.plans().then(setPlans).catch(() => undefined); }, []);
   const selectLanguage = (next: LandingLanguage) => void i18n.changeLanguage(next);
+  const toggleTheme = () => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
   return (
-    <div className="landing" dir={language === 'ar' ? 'rtl' : 'ltr'} lang={language}>
+    <div className="landing" data-theme={resolvedTheme} dir={language === 'ar' ? 'rtl' : 'ltr'} lang={language}>
       <nav className="landing-nav">
         <a className="landing-brand" href="#top">
           <span className="brand-mark">
@@ -59,6 +64,9 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
           {copy.nav.map((label, index) => <a key={label} href={['#features', '#automation', '#integrations', '#pricing', '#faq'][index]}>{label}</a>)}
         </div>
         <div className="landing-actions">
+          <button type="button" className="landing-theme-toggle" onClick={toggleTheme} aria-label={resolvedTheme === 'dark' ? 'Use light theme' : 'Use dark theme'} title={resolvedTheme === 'dark' ? 'Light theme' : 'Dark theme'}>
+            <span className="theme-toggle-track"><Sun size={15}/><Moon size={15}/><i aria-hidden="true"/></span>
+          </button>
           <label className="landing-language" aria-label="Language">
             <Languages size={16} />
             <select value={language} onChange={event => selectLanguage(event.target.value as LandingLanguage)}>

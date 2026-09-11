@@ -28,8 +28,8 @@ export function PaymentSettings() {
   const resetDatabase = useMutation({
     mutationFn: () => adminUsersApi.resetDatabase(resetPassword, resetConfirmation),
     onSuccess: () => {
-      localStorage.removeItem('openwa_access_token');
-      sessionStorage.removeItem('openwa_access_token');
+      localStorage.removeItem('smartConfirm_access_token');
+      sessionStorage.removeItem('smartConfirm_access_token');
       window.alert('Database reset completed. Only the administrator account was preserved. Restart the API, then sign in again.');
       window.location.assign('/login');
     },

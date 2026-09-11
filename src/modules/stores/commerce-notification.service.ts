@@ -35,7 +35,7 @@ const whatsappOrderMarkers = new Set([
   'whatsapp-bot-confirmed',
   'whatsapp confirmed',
   'whatsapp-confirmed',
-  'openwa:whatsapp-confirmed',
+  'smartConfirm:whatsapp-confirmed',
 ]);
 
 export function isWhatsAppCreatedOrder(tags: string[] | null | undefined): boolean {

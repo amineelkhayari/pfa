@@ -10,11 +10,11 @@
 
 services:
   # API Backend
-  openwa:
+  smartConfirm:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: openwa-api
+    container_name: smartConfirm-api
     # Container hardening — same posture as production (same Dockerfile/entrypoint).
     security_opt:
       - 'no-new-privileges:true'
@@ -30,8 +30,8 @@ services:
     tmpfs:
       - /tmp
     # Baileys does not launch a browser, so a moderate PID ceiling is sufficient.
-    pids_limit: ${OPENWA_PIDS_LIMIT:-512}
-    mem_limit: ${OPENWA_MEM_LIMIT:-2g}
+    pids_limit: ${smartConfirm_PIDS_LIMIT:-512}
+    mem_limit: ${smartConfirm_MEM_LIMIT:-2g}
     ports:
       # Bind to localhost by default; set BIND_HOST=0.0.0.0 in .env to reach it from another host.
       - '${BIND_HOST:-127.0.0.1}:2785:2785'
@@ -95,4 +95,4 @@ services:
 
 networks:
   default:
-    name: openwa-network
+    name: smartConfirm-network

@@ -207,11 +207,11 @@ import type { SearchQuery, SearchResults, SearchHit } from '../../modules/search
 ```
 
 (Add the SmartConfirm repo as a devDependency or reference the types via a `paths` mapping. A standalone
-`@openwa/plugin-types` package is planned.)
+`@smartConfirm/plugin-types` package is planned.)
 
 The worker context a sandboxed plugin receives exposes: `pluginId`, `config` (per-session-resolved),
 `logger`, the capability bridge (`messages`, `engine`, `storage`, `net`, …), `registerHook`,
-`registerWebhook`, and `registerSearchProvider`. (A formal `@openwa/plugin-types` package with the full
+`registerWebhook`, and `registerSearchProvider`. (A formal `@smartConfirm/plugin-types` package with the full
 ctx interface is planned; for now the search contract types above are the stable surface.)
 
 ## 27.7 Gotchas

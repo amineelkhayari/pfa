@@ -96,4 +96,4 @@ VITE_WS_URL=http://localhost:2785
 
 ## 📄 License
 
-MIT License - Part of the [SmartConfirm](https://github.com/your-organization/smartconfirm) project.
+MIT License - Part of the [SmartConfirm](https://github.com/amineelkhayari/pfa) project.

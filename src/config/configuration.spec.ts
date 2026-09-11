@@ -11,9 +11,9 @@ describe('configuration — Postgres database name', () => {
     else process.env.DATABASE_NAME = orig;
   });
 
-  it('resolves dataDatabase.name from DATABASE_NAME (matches the migration CLI), default openwa', () => {
+  it('resolves dataDatabase.name from DATABASE_NAME (matches the migration CLI), default smartConfirm', () => {
     delete process.env.DATABASE_NAME;
-    expect(configuration().dataDatabase.name).toBe('openwa');
+    expect(configuration().dataDatabase.name).toBe('smartConfirm');
     process.env.DATABASE_NAME = 'prod_db';
     expect(configuration().dataDatabase.name).toBe('prod_db');
   });
@@ -73,9 +73,9 @@ describe('configuration — plugins directory default', () => {
   });
 
   it('lets an explicit PLUGINS_DIR win, and drops the legacy fallback with it', () => {
-    process.env.PLUGINS_DIR = '/srv/openwa-plugins';
+    process.env.PLUGINS_DIR = '/srv/smartConfirm-plugins';
     const cfg = configuration();
-    expect(cfg.plugins.dir).toBe('/srv/openwa-plugins');
+    expect(cfg.plugins.dir).toBe('/srv/smartConfirm-plugins');
     // An operator who named the directory has said where plugins live; nothing may second-guess it.
     expect(cfg.plugins.legacyDir).toBeNull();
   });

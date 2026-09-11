@@ -12,7 +12,7 @@ import type { Request, Response, NextFunction } from 'express';
 /**
  * Two throwaway dashboard builds, evaluated before the module decorators (forRoot reads rootPath
  * eagerly). The second deliberately sits under a DOT-SEGMENT directory, which is not exotic:
- * `~/.openwa`, a CI checkout under `~/.cache`, and a `TMPDIR` inside a dotdir all produce it.
+ * `~/.smartConfirm`, a CI checkout under `~/.cache`, and a `TMPDIR` inside a dotdir all produce it.
  * `ServeStaticModule`'s own SPA fallback silently 404s every client-side route on such a path
  * (it sends the index by absolute path, and Express's `send` refuses dot-segments), so the shape
  * has to be covered explicitly or a real deployment class goes untested.
@@ -32,8 +32,8 @@ const osTmp = realpathSync(tmpdir());
 // dot-free, and using it blindly would make BOTH cases dotted - which is exactly how this gap
 // stayed hidden. node_modules is gitignored, so nothing strays into the working tree.
 const dotFreeBase = hasDotSegment(osTmp) ? join(__dirname, '..', 'node_modules') : osTmp;
-const plainDist = makeBuild(join(mkdtempSync(join(dotFreeBase, 'openwa-dash-plain-')), 'dashboard', 'dist'));
-const dottedDist = makeBuild(join(mkdtempSync(join(osTmp, 'openwa-dash-')), '.dotted', 'dashboard', 'dist'));
+const plainDist = makeBuild(join(mkdtempSync(join(dotFreeBase, 'smartConfirm-dash-plain-')), 'dashboard', 'dist'));
+const dottedDist = makeBuild(join(mkdtempSync(join(osTmp, 'smartConfirm-dash-')), '.dotted', 'dashboard', 'dist'));
 
 @Controller()
 class PingController {
@@ -47,7 +47,7 @@ const EXCLUDE = ['/api/{*splat}', '/socket.io/{*splat}'];
 // Mirrors app.module.ts: the module's own catch-all fallback is off, main.ts's document
 // handler owns SPA routes. Without this the module answers every unmatched GET with the
 // shell, which is the behaviour the missing-asset test below exists to prevent.
-const RENDER_DISABLED = '/__openwa_spa_fallback_owned_by_main_ts__';
+const RENDER_DISABLED = '/__smartConfirm_spa_fallback_owned_by_main_ts__';
 
 @Module({
   imports: [ServeStaticModule.forRoot({ rootPath: plainDist, exclude: EXCLUDE, renderPath: RENDER_DISABLED })],

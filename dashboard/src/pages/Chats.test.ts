@@ -177,7 +177,7 @@ before(async () => {
   installFetchStub();
   // RoleProvider initializes from localStorage; 'admin' makes canWrite true so the composer
   // controls render enabled.
-  window.localStorage.setItem('openwa_user_role', 'admin');
+  window.localStorage.setItem('smartConfirm_user_role', 'admin');
   // Side-effect import: initializes the real i18n instance with all locales (JSON modules are
   // handled by the registered loader hooks).
   await import('../i18n/index.ts');

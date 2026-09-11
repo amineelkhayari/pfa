@@ -11,7 +11,7 @@ describe('loadEnvironment', () => {
   // and point process.cwd() at it. The loader reads `.env` / `data/.env.generated` from process.cwd(),
   // so this drives it without touching the real project tree.
   const makeTempCwd = (files: Record<string, string>): string => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openwa-loadenv-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'smartConfirm-loadenv-'));
     tempDirs.push(dir);
     for (const [rel, content] of Object.entries(files)) {
       const full = path.join(dir, rel);
@@ -76,7 +76,7 @@ describe('loadEnvironment', () => {
     process.env.DATABASE_PORT = '5432';
     process.env.DATABASE_USERNAME = 'app_user';
     process.env.DATABASE_PASSWORD = 'secret # with spaces';
-    process.env.DATABASE_NAME = 'openwa_prod';
+    process.env.DATABASE_NAME = 'smartConfirm_prod';
     const dir = makeTempCwd({});
 
     runLoader();
@@ -86,7 +86,7 @@ describe('loadEnvironment', () => {
     expect(generated).toContain('DATABASE_HOST="db.example.com"');
     expect(generated).toContain('DATABASE_USERNAME="app_user"');
     expect(generated).toContain('DATABASE_PASSWORD="secret # with spaces"');
-    expect(generated).toContain('DATABASE_NAME="openwa_prod"');
+    expect(generated).toContain('DATABASE_NAME="smartConfirm_prod"');
     expect(generated).toContain('DATABASE_SYNCHRONIZE=false');
     expect(generated).toContain('ENGINE_TYPE=baileys');
   });

@@ -80,9 +80,9 @@ DATABASE_TYPE=postgres
 POSTGRES_BUILTIN=${process.env.POSTGRES_BUILTIN === 'true' ? 'true' : 'false'}
 DATABASE_HOST=${envValue('DATABASE_HOST', 'localhost')}
 DATABASE_PORT=${envValue('DATABASE_PORT', '5432')}
-DATABASE_USERNAME=${envValue('DATABASE_USERNAME', 'openwa')}
+DATABASE_USERNAME=${envValue('DATABASE_USERNAME', 'smartConfirm')}
 DATABASE_PASSWORD=${envValue('DATABASE_PASSWORD')}
-DATABASE_NAME=${envValue('DATABASE_NAME', 'openwa')}
+DATABASE_NAME=${envValue('DATABASE_NAME', 'smartConfirm')}
 POSTGRES_SCHEMA=${envValue('POSTGRES_SCHEMA', 'public')}
 DATABASE_SSL=${process.env.DATABASE_SSL === 'true' ? 'true' : 'false'}
 DATABASE_SSL_REJECT_UNAUTHORIZED=${process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'false' ? 'false' : 'true'}

@@ -1179,7 +1179,7 @@ curl -X PUT "$BASE/api/infra/config" \
   -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "database": { "type": "postgres", "host": "db.example.com", "port": "5432", "username": "openwa", "password": "s3cret", "database": "openwa", "poolSize": 10, "sslEnabled": true, "sslRejectUnauthorized": false },
+    "database": { "type": "postgres", "host": "db.example.com", "port": "5432", "username": "smartConfirm", "password": "s3cret", "database": "smartConfirm", "poolSize": 10, "sslEnabled": true, "sslRejectUnauthorized": false },
     "redis": { "enabled": true, "builtIn": true },
     "queue": { "enabled": true },
     "storage": { "type": "s3", "s3Bucket": "my-bucket", "s3Region": "ap-southeast-1", "s3AccessKey": "AKIA...", "s3SecretKey": "...", "s3Endpoint": "https://s3.example.com" },
@@ -1316,7 +1316,7 @@ Install a plugin by downloading its .zip from a URL (SSRF-guarded).
 curl -X POST "$BASE/api/plugins/install-url" \
   -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{ "url": "https://github.com/openwa-plugins/chat-flow/releases/download/v1.0.0/chat-flow.zip" }'
+  -d '{ "url": "https://github.com/smartConfirm-plugins/chat-flow/releases/download/v1.0.0/chat-flow.zip" }'
 ```
 
 #### POST /api/plugins/:id/enable
@@ -1399,7 +1399,7 @@ MCP JSON-RPC 2.0 transport (no `/api` prefix; gated by `MCP_ENABLED=true`). The 
 curl -X POST "$BASE/mcp" \
   -H "X-Api-Key: $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "openwa-collection", "version": "1.0.0" } } }'
+  -d '{ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "smartConfirm-collection", "version": "1.0.0" } } }'
 
 # List available tools
 curl -X POST "$BASE/mcp" \

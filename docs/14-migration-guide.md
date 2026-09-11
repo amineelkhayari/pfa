@@ -446,8 +446,8 @@ function getSqliteTables(db: sqlite3.Database): Promise<string[]> {
 
 // CLI Entry point
 const config: MigrationConfig = {
-  sqlitePath: process.env.SQLITE_PATH || './data/openwa.sqlite',
-  postgresUrl: process.env.DATABASE_URL || 'postgresql://user:pass@localhost:5432/openwa',
+  sqlitePath: process.env.SQLITE_PATH || './data/smartConfirm.sqlite',
+  postgresUrl: process.env.DATABASE_URL || 'postgresql://user:pass@localhost:5432/smartConfirm',
   batchSize: parseInt(process.env.BATCH_SIZE || '1000'),
 };
 
@@ -486,7 +486,7 @@ npx ts-node migrate-sqlite-to-postgres.ts
 export DATABASE_TYPE=postgres
 export DATABASE_HOST=localhost
 export DATABASE_PORT=5432
-export DATABASE_NAME=openwa
+export DATABASE_NAME=smartConfirm
 export DATABASE_USERNAME=user
 export DATABASE_PASSWORD=pass
 
@@ -565,32 +565,32 @@ Method 2. Copying rows between SQLite files by hand is not supported: the `sessi
 columns the copy would have to reproduce exactly, and a mismatch corrupts the row.
 
 Under the shipped compose the data directory lives in a named Docker volume
-(`openwa-data:/app/data`), not a host bind mount, so the profile is copied through the container
+(`smartConfirm-data:/app/data`), not a host bind mount, so the profile is copied through the container
 with `docker compose cp` rather than straight off the host filesystem. `APP_DIR` is the directory
 holding `docker-compose.yml` on each server; `SESSION_NAME` is the session `name` (resolve it via
 `GET /api/sessions/{id}` — the on-disk directory is keyed by name, not by the REST id).
 
 ```bash
-APP_DIR=/srv/openwa            # docker compose project directory on both hosts
+APP_DIR=/srv/smartConfirm            # docker compose project directory on both hosts
 SESSION_NAME=my-session
 
 # 1. Stop the app on both hosts. Use `stop`, not `down`: a running engine holds the profile open,
 #    but `down` removes the container that step 2 copies through.
-ssh old-server "cd $APP_DIR && docker compose stop openwa-api"
-ssh new-server "cd $APP_DIR && docker compose stop openwa-api"
+ssh old-server "cd $APP_DIR && docker compose stop smartConfirm-api"
+ssh new-server "cd $APP_DIR && docker compose stop smartConfirm-api"
 
 # 2. Copy the auth profile out of the source container, to the target host, and back in.
 #    whatsapp-web.js: /app/data/sessions/session-<name>.
 #    Baileys:         /app/data/baileys/<name> (no "session-" prefix).
 ssh old-server "cd $APP_DIR && docker compose cp \
-    openwa-api:/app/data/sessions/session-$SESSION_NAME ./session-$SESSION_NAME"
+    smartConfirm-api:/app/data/sessions/session-$SESSION_NAME ./session-$SESSION_NAME"
 rsync -avz --progress "old-server:$APP_DIR/session-$SESSION_NAME/" \
     "new-server:$APP_DIR/session-$SESSION_NAME/"
 ssh new-server "cd $APP_DIR && docker compose cp \
-    ./session-$SESSION_NAME openwa-api:/app/data/sessions/session-$SESSION_NAME"
+    ./session-$SESSION_NAME smartConfirm-api:/app/data/sessions/session-$SESSION_NAME"
 
 # 3. Start the target back up.
-ssh new-server "cd $APP_DIR && docker compose start openwa-api"
+ssh new-server "cd $APP_DIR && docker compose start smartConfirm-api"
 ```
 
 Delete the staging copies (`$APP_DIR/session-$SESSION_NAME` on both hosts) afterwards — they hold
@@ -616,7 +616,7 @@ curl -X POST 'http://new-server:2785/api/infra/import-data' \
 # 2. Move the engine auth state with both instances stopped (Method 1), keyed by session NAME.
 #    OLD_DIR/NEW_DIR are each host's SmartConfirm working directory; SESSION_DATA_PATH defaults to
 #    ./data/sessions and BAILEYS_AUTH_DIR to ./data/baileys, relative to it. The production
-#    docker-compose.yml keeps /app/data in the named volume `openwa_openwa-data` rather than on the
+#    docker-compose.yml keeps /app/data in the named volume `smartConfirm_smartConfirm-data` rather than on the
 #    host, so on that layout copy through the container (`docker cp`) instead of a host path.
 rsync -avz "old-server:${OLD_DIR}/data/sessions/" "${NEW_DIR}/data/sessions/"
 rsync -avz "old-server:${OLD_DIR}/data/baileys/" "${NEW_DIR}/data/baileys/"   # Baileys sessions only
@@ -666,7 +666,7 @@ docker compose down
 # 3. Move to the new version
 #    The repo's compose file BUILDS the API image from source:
 git pull && docker compose up -d --build
-#    Deployments pinned to a published image instead (ghcr.io/rmyndharis/openwa:<version>)
+#    Deployments pinned to a published image instead (ghcr.io/rmyndharis/smartConfirm:<version>)
 #    bump the tag in their compose file, then: docker compose pull && docker compose up -d
 
 # 4. Wait for health — every route lives under the /api prefix
@@ -694,7 +694,7 @@ Migrations can also be run explicitly against a stopped app — useful when a lo
 outlast an orchestrator's liveness grace:
 
 ```bash
-docker compose run --rm openwa-api npm run migration:run:prod
+docker compose run --rm smartConfirm-api npm run migration:run:prod
 ```
 
 > [!WARNING]
@@ -743,7 +743,7 @@ if [ -f "$BACKUP_DIR/database.sql" ]; then
     psql -h "$DATABASE_HOST" -U "$DATABASE_USERNAME" -d "$DATABASE_NAME" < "$BACKUP_DIR/database.sql"
 else
     # SQLite
-    cp "$BACKUP_DIR/openwa.sqlite" ./data/
+    cp "$BACKUP_DIR/smartConfirm.sqlite" ./data/
 fi
 
 # 3. Restore auth sessions (SESSION_DATA_PATH + BAILEYS_AUTH_DIR)
@@ -817,7 +817,7 @@ migration:
       command: |
         # Schema migrations run at boot, so a removed store is recreated from scratch
         docker compose down
-        rm -f ./data/openwa.sqlite
+        rm -f ./data/smartConfirm.sqlite
         docker compose up -d
 
     - name: Import into staging
@@ -832,7 +832,7 @@ migration:
         curl -X POST 'http://staging-host:2785/api/sessions/{sessionId}/webhooks' \
           -H "X-API-Key: $STAGING_API_KEY" \
           -H 'Content-Type: application/json' \
-          -d '{"url":"https://staging-webhook.example.com/openwa","events":["message.received"]}'
+          -d '{"url":"https://staging-webhook.example.com/smartConfirm","events":["message.received"]}'
 
     - name: Set staging rate limits
       note: |
@@ -1070,7 +1070,7 @@ async function fullImport(options: ImportOptions): Promise<void> {
 ```bash
 docker compose down
 DATABASE_TYPE=postgres DATABASE_HOST=... DATABASE_USERNAME=... \
-  DATABASE_PASSWORD=... DATABASE_NAME=openwa npm run migration:run
+  DATABASE_PASSWORD=... DATABASE_NAME=smartConfirm npm run migration:run
 docker compose up -d
 ```
 
@@ -1082,14 +1082,14 @@ docker compose up -d
 
 ```bash
 # Check database integrity
-sqlite3 ./data/openwa.sqlite "PRAGMA integrity_check;"
+sqlite3 ./data/smartConfirm.sqlite "PRAGMA integrity_check;"
 
 # Verify auth session files (directories are named after the session NAME)
 ls -la ./data/sessions/session-*/
 ls -la ./data/baileys/          # Baileys engine
 
 # Check file permissions
-stat ./data/openwa.sqlite
+stat ./data/smartConfirm.sqlite
 stat ./data/sessions
 
 # Verify PostgreSQL connection

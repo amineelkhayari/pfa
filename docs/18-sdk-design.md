@@ -6,13 +6,13 @@ SmartConfirm ships five official, hand-written client libraries for the REST API
 
 | Language | Package | Install | Notes |
 | --- | --- | --- | --- |
-| JavaScript / TypeScript | [`@rmyndharis/openwa`](https://www.npmjs.com/package/@rmyndharis/openwa) | `npm install @rmyndharis/openwa` | Dual ESM + CJS, bundled `.d.ts` types, Node 18+ |
-| Python | [`rmyndharis-openwa`](https://pypi.org/project/rmyndharis-openwa/) | `pip install rmyndharis-openwa` | Synchronous (httpx), PEP 561 typed, Python 3.9+ |
-| PHP | [`rmyndharis/openwa`](https://packagist.org/packages/rmyndharis/openwa) | `composer require rmyndharis/openwa` | Synchronous (Guzzle 7), PSR-4, PHP 8.1+ |
-| Java | [`com.rmyndharis:openwa`](https://central.sonatype.com/artifact/com.rmyndharis/openwa) | Maven Central | Sync, `java.net.http`. See [`sdk/java/README.md`](../sdk/java/README.md). |
+| JavaScript / TypeScript | [`@rmyndharis/smartConfirm`](https://www.npmjs.com/package/@rmyndharis/smartConfirm) | `npm install @rmyndharis/smartConfirm` | Dual ESM + CJS, bundled `.d.ts` types, Node 18+ |
+| Python | [`rmyndharis-smartConfirm`](https://pypi.org/project/rmyndharis-smartConfirm/) | `pip install rmyndharis-smartConfirm` | Synchronous (httpx), PEP 561 typed, Python 3.9+ |
+| PHP | [`rmyndharis/smartConfirm`](https://packagist.org/packages/rmyndharis/smartConfirm) | `composer require rmyndharis/smartConfirm` | Synchronous (Guzzle 7), PSR-4, PHP 8.1+ |
+| Java | [`com.rmyndharis:smartConfirm`](https://central.sonatype.com/artifact/com.rmyndharis/smartConfirm) | Maven Central | Sync, `java.net.http`. See [`sdk/java/README.md`](../sdk/java/README.md). |
 | Go | [`github.com/your-organization/smartconfirm/sdk/go`](../sdk/go) | `go get` | Stdlib-only, no third-party deps. See [`sdk/go/README.md`](../sdk/go/README.md). |
 
-> The import names differ from the dist names where the ecosystem requires it. Python installs `rmyndharis-openwa` but imports `openwa`; the client class is `SmartConfirmClient` in JS/Python and `SmartConfirm\Client` in PHP.
+> The import names differ from the dist names where the ecosystem requires it. Python installs `rmyndharis-smartConfirm` but imports `smartConfirm`; the client class is `SmartConfirmClient` in JS/Python and `SmartConfirm\Client` in PHP.
 
 ### Design Principles
 
@@ -48,18 +48,18 @@ All five SDKs expose the same fluent surface:
 
 ## 18.2 TypeScript / JavaScript SDK
 
-The official JavaScript/TypeScript SDK is published as **`@rmyndharis/openwa`**. It is a pure promise-based HTTP client: a single `SmartConfirmClient` exposes every API resource as a typed property. There is no event model — the SDK does not open WebSockets, emit events, or expose `client.on(...)`. To receive inbound messages and acks, configure a webhook (see the `webhooks` resource) and host your own HTTP receiver.
+The official JavaScript/TypeScript SDK is published as **`@rmyndharis/smartConfirm`**. It is a pure promise-based HTTP client: a single `SmartConfirmClient` exposes every API resource as a typed property. There is no event model — the SDK does not open WebSockets, emit events, or expose `client.on(...)`. To receive inbound messages and acks, configure a webhook (see the `webhooks` resource) and host your own HTTP receiver.
 
 The package ships **dual CJS + ESM** with bundled `.d.ts` types, so it is consumable from both `require()` and `import`.
 
 ### Installation
 
 ```bash
-npm install @rmyndharis/openwa
+npm install @rmyndharis/smartConfirm
 # or
-yarn add @rmyndharis/openwa
+yarn add @rmyndharis/smartConfirm
 # or
-pnpm add @rmyndharis/openwa
+pnpm add @rmyndharis/smartConfirm
 ```
 
 > **Node 18+ required.** The transport uses the global `fetch` (and `AbortController`), both built into Node 18 and later. To run on an older runtime, pass your own `fetch` implementation via the client constructor (see [Client Configuration](#client-configuration)).
@@ -67,7 +67,7 @@ pnpm add @rmyndharis/openwa
 ### Quick Start
 
 ```typescript
-import { SmartConfirmClient } from '@rmyndharis/openwa';
+import { SmartConfirmClient } from '@rmyndharis/smartConfirm';
 
 const client = new SmartConfirmClient({
   baseUrl: 'http://localhost:2785',
@@ -95,7 +95,7 @@ main();
 CommonJS consumers use the same API via `require`:
 
 ```javascript
-const { SmartConfirmClient } = require('@rmyndharis/openwa');
+const { SmartConfirmClient } = require('@rmyndharis/smartConfirm');
 ```
 
 ### Client Configuration
@@ -324,7 +324,7 @@ import {
   SmartConfirmRateLimitError,
   SmartConfirmTimeoutError,
   SmartConfirmApiError,
-} from '@rmyndharis/openwa';
+} from '@rmyndharis/smartConfirm';
 
 try {
   await client.messages.sendText('my-session', {
@@ -367,24 +367,24 @@ The Python SDK is a **synchronous** client built on [`httpx`](https://www.python
 The PyPI distribution name and the import package differ:
 
 ```bash
-pip install rmyndharis-openwa
+pip install rmyndharis-smartConfirm
 ```
 
 ```python
-from openwa import SmartConfirmClient
+from smartConfirm import SmartConfirmClient
 ```
 
-- **Distribution (PyPI):** `rmyndharis-openwa`
-- **Import package:** `openwa`
+- **Distribution (PyPI):** `rmyndharis-smartConfirm`
+- **Import package:** `smartConfirm`
 - **Client class:** `SmartConfirmClient`
 - **Python:** `>=3.9` (per `pyproject.toml`)
 - **Runtime dependency:** `httpx>=0.25.0,<1.0`
-- **Typed:** ships `py.typed` markers for `openwa` and `openwa.resources` (PEP 561)
+- **Typed:** ships `py.typed` markers for `smartConfirm` and `smartConfirm.resources` (PEP 561)
 
 ### Quick Start
 
 ```python
-from openwa import SmartConfirmClient
+from smartConfirm import SmartConfirmClient
 
 client = SmartConfirmClient(
     base_url="http://localhost:2785",
@@ -639,7 +639,7 @@ Every error inherits from `SmartConfirmError`. A non-2xx response raises an `Sma
 | `SmartConfirmTimeoutError` | request exceeded `timeout` (has a `.timeout` attribute) |
 
 ```python
-from openwa import (
+from smartConfirm import (
     SmartConfirmClient,
     SmartConfirmConflictError,
     SmartConfirmNotFoundError,
@@ -685,7 +685,7 @@ The PHP SDK is a hand-written, synchronous client built on Guzzle 7. It mirrors 
 ### Installation
 
 ```bash
-composer require rmyndharis/openwa
+composer require rmyndharis/smartConfirm
 ```
 
 Requirements:
@@ -972,7 +972,7 @@ try {
 - **No automatic retries.** A failed request throws immediately; wrap calls in your own backoff if you need retries (notably for `429`). The injectable `httpClient` is the extension point for retry/observability middleware.
 - **Empty/204 responses return `null`.** A `204` or empty body decodes to `null`; resource methods that promise an `array` coalesce this to `[]` (or to the resource object for single-item gets).
 - **Testing without the network.** Inject a Guzzle client built on a `GuzzleHttp\Handler\MockHandler` via the `httpClient` config key — no global state, no live calls. The shipped test suite asserts on the exact path, method, and body.
-- **PSR-4 autoloading.** Everything lives under the `SmartConfirm\` namespace mapped to `src/`; `composer require rmyndharis/openwa` wires up the autoloader.
+- **PSR-4 autoloading.** Everything lives under the `SmartConfirm\` namespace mapped to `src/`; `composer require rmyndharis/smartConfirm` wires up the autoloader.
 
 ## 18.5 n8n Community Node
 
@@ -991,10 +991,10 @@ The five SDKs are versioned **independently of the gateway** and of each other, 
 
 | SDK | Registry | Package |
 | --- | --- | --- |
-| JavaScript/TypeScript | npm | `@rmyndharis/openwa` |
-| Python | PyPI | `rmyndharis-openwa` |
-| PHP | Packagist | `rmyndharis/openwa` |
-| Java | Maven Central | `com.rmyndharis:openwa` |
+| JavaScript/TypeScript | npm | `@rmyndharis/smartConfirm` |
+| Python | PyPI | `rmyndharis-smartConfirm` |
+| PHP | Packagist | `rmyndharis/smartConfirm` |
+| Java | Maven Central | `com.rmyndharis:smartConfirm` |
 | Go | (none — module path) | `github.com/your-organization/smartconfirm/sdk/go` |
 
 ### Contract-drift protection

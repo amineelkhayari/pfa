@@ -275,7 +275,7 @@ flowchart TB
 
 ```
 v0.0.1 Release Package:
-├── Docker image (ghcr.io/rmyndharis/openwa:0.0.1)
+├── Docker image (ghcr.io/rmyndharis/smartConfirm:0.0.1)
 ├── docker-compose.yml
 ├── Basic API documentation (Swagger)
 ├── README with quick start
@@ -385,7 +385,7 @@ gantt
 
 ```
 v0.0.2 Release Package:
-├── Docker image (ghcr.io/rmyndharis/openwa:0.0.2)
+├── Docker image (ghcr.io/rmyndharis/smartConfirm:0.0.2)
 ├── docker-compose.yml (with PostgreSQL & Redis)
 ├── Web Dashboard
 ├── API authentication (API keys)
@@ -490,7 +490,7 @@ gantt
 
 ```
 v0.1.0 Release Package:
-├── Docker image (ghcr.io/rmyndharis/openwa:0.1.0)
+├── Docker image (ghcr.io/rmyndharis/smartConfirm:0.1.0)
 ├── docker-compose.yml (production ready)
 ├── Full-featured Web Dashboard
 ├── Complete API documentation (Swagger)
@@ -572,10 +572,10 @@ in `0.2.2` and the five client SDKs across `0.7.3`–`0.8.19`; the rest remain o
 
 | Feature                | Priority | Status | Description                     |
 | ---------------------- | -------- | ------ | ------------------------------- |
-| JavaScript/Node.js SDK | P1       | ✅ Shipped (`@rmyndharis/openwa`) | Official client library |
-| Python SDK             | P2       | ✅ Shipped (`rmyndharis-openwa`) | Python client library |
-| PHP SDK                | P2       | ✅ Shipped (`rmyndharis/openwa`) | PHP client library |
-| Java SDK               | P2       | ✅ Shipped (`com.rmyndharis:openwa`) | Java client library |
+| JavaScript/Node.js SDK | P1       | ✅ Shipped (`@rmyndharis/smartConfirm`) | Official client library |
+| Python SDK             | P2       | ✅ Shipped (`rmyndharis-smartConfirm`) | Python client library |
+| PHP SDK                | P2       | ✅ Shipped (`rmyndharis/smartConfirm`) | PHP client library |
+| Java SDK               | P2       | ✅ Shipped (`com.rmyndharis:smartConfirm`) | Java client library |
 | Go SDK                 | P2       | ✅ Shipped (`github.com/your-organization/smartconfirm/sdk/go`) | Go client library |
 | Postman Collection     | P1       | ◐ cURL collection (doc 07); Postman export TBD | Ready-to-use API collection |
 | Docs Site              | P1       | ☐ Open | Documentation website |
@@ -586,7 +586,7 @@ in `0.2.2` and the five client SDKs across `0.7.3`–`0.8.19`; the rest remain o
 
 | Feature                | Priority | Status | Description                      |
 | ---------------------- | -------- | ------ | -------------------------------- |
-| Prometheus Metrics     | P1       | ✅ Shipped (`GET /api/metrics`, `openwa_*`) | /metrics endpoint for monitoring |
+| Prometheus Metrics     | P1       | ✅ Shipped (`GET /api/metrics`, `smartConfirm_*`) | /metrics endpoint for monitoring |
 | Grafana Dashboard      | P2       | ☐ Open | Pre-built monitoring dashboard   |
 | OpenTelemetry Tracing  | P2       | ☐ Open | Distributed tracing support      |
 | Performance Benchmarks | P1       | ☐ Open | Documented performance metrics   |
@@ -622,7 +622,7 @@ architecture and design rationale):
 > `supabase-otp-hook`, the second official ingress plugin — a different vehicle than the chatbot flow
 > builder this row originally named, but it is what proved the substrate generalizes to an independent
 > consumer. Adapters ship from the
-> [SmartConfirm-plugins](https://github.com/your-organization/smartconfirm-plugins) catalog, so consult that repository for
+> [SmartConfirm-plugins](https://github.com/amineelkhayari/pfa-plugins) catalog, so consult that repository for
 > each plugin's declared capabilities. P4 remains open: the published SDK reference, a compatibility test
 > suite, and multi-node routing.
 
@@ -752,8 +752,8 @@ the change being released:
 ```bash
 gh run list --workflow=release.yml --limit 1
 gh release view v<version>
-docker buildx imagetools inspect ghcr.io/rmyndharis/openwa:<version>
-docker buildx imagetools inspect docker.io/rmyndharis/openwa:latest
+docker buildx imagetools inspect ghcr.io/rmyndharis/smartConfirm:<version>
+docker buildx imagetools inspect docker.io/rmyndharis/smartConfirm:latest
 ```
 
 Do the registry checks logged **out**. A promotion can look green while the tags are unreachable to

@@ -227,7 +227,7 @@ export class WooCommerceService {
             ...(input.variationId ? { variation_id: Number(input.variationId) } : {}),
           },
         ],
-        meta_data: [{ key: '_openwa_source', value: 'whatsapp-confirmed' }],
+        meta_data: [{ key: '_smartConfirm_source', value: 'whatsapp-confirmed' }],
       }),
     });
     if (!payload?.id) throw new BadGatewayException('WooCommerce did not return the created order.');
@@ -280,7 +280,7 @@ export class WooCommerceService {
     const metadata = Array.isArray(order.meta_data) ? order.meta_data : [];
     const createdByWhatsApp = metadata.some(
       (entry: any) =>
-        String(entry?.key ?? '').toLowerCase() === '_openwa_source' &&
+        String(entry?.key ?? '').toLowerCase() === '_smartConfirm_source' &&
         String(entry?.value ?? '').toLowerCase() === 'whatsapp-confirmed',
     );
     return {
@@ -297,7 +297,7 @@ export class WooCommerceService {
       lineItems: order.line_items ?? [],
       shippingAddress: shipping,
       customer: { id: order.customer_id, ...billing },
-      tags: ['woocommerce', ...(createdByWhatsApp ? ['openwa:whatsapp-confirmed'] : [])],
+      tags: ['woocommerce', ...(createdByWhatsApp ? ['smartConfirm:whatsapp-confirmed'] : [])],
       status: createdByWhatsApp ? 'confirmed' : order.status === 'cancelled' ? 'cancelled' : 'open',
       ...(createdByWhatsApp ? { confirmationStatus: 'confirmed' } : {}),
       externalCreatedAt: order.date_created_gmt ? new Date(`${order.date_created_gmt}Z`) : new Date(),

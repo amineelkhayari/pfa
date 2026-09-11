@@ -65,7 +65,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app user for security
-RUN groupadd -r openwa && useradd -r -g openwa openwa
+RUN groupadd -r smartConfirm && useradd -r -g smartConfirm smartConfirm
 
 WORKDIR /app
 
@@ -79,7 +79,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 # Replace the npm the base image bundles. npm is not on the request path — the entrypoint runs
 # `node dist/main` — but it stays in the image because the operator runbooks drive it
-# (`docker exec openwa npm run cli …`, `npm run export`), and its own bundled dependency tree is
+# (`docker exec smartConfirm npm run cli …`, `npm run export`), and its own bundled dependency tree is
 # what the release image scan reports. node:22-slim currently ships npm 10.9.8, whose bundle
 # carries a critical node-tar advisory plus sigstore/picomatch ones; npm 12 fixes all three.
 # Deliberately AFTER `npm ci`, so the application tree is still resolved by the npm the lockfile
@@ -95,11 +95,11 @@ COPY --from=builder /app/dashboard/dist ./dashboard/dist
 
 # Create data directories with correct ownership
 RUN mkdir -p ./data/baileys ./data/media ./data/plugins && \
-    chown -R openwa:openwa /app
+    chown -R smartConfirm:smartConfirm /app
 
 ENV HOME=/app/data
 
-# Copy entrypoint: runs as root to fix named-volume ownership, then drops to openwa via gosu
+# Copy entrypoint: runs as root to fix named-volume ownership, then drops to smartConfirm via gosu
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
@@ -112,12 +112,12 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 
 # dumb-init is PID 1 and handles signal forwarding.
 # It execs docker-entrypoint.sh (as root), which fixes volume ownership and
-# then drops to the openwa user via gosu before starting the node process.
+# then drops to the smartConfirm user via gosu before starting the node process.
 #
-# NOTE — no `USER openwa` directive on purpose (Trivy DS-0002 will flag it, ignore).
+# NOTE — no `USER smartConfirm` directive on purpose (Trivy DS-0002 will flag it, ignore).
 # The Node process does NOT run as root: docker-entrypoint.sh:30 is
-# `exec gosu openwa "$@"` after the chowns on lines 7 and 25. Adding `USER openwa`
-# here would run the entrypoint as openwa and break the chown-before-drop pattern
+# `exec gosu smartConfirm "$@"` after the chowns on lines 7 and 25. Adding `USER smartConfirm`
+# here would run the entrypoint as smartConfirm and break the chown-before-drop pattern
 # that makes named-volume mounts work on first boot (#254, #259).
 ENTRYPOINT ["dumb-init", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "dist/main"]

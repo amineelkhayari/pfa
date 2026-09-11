@@ -85,7 +85,7 @@ export function createSwaggerConfig(): Omit<OpenAPIObject, 'paths'> {
         METRICS_BEARER_SCHEME,
       )
       .addSecurityRequirements(ACCOUNT_JWT_SECURITY_SCHEME)
-      .setContact('SmartConfirm', 'https://github.com/your-organization/smartconfirm', 'support@smartconfirm.example')
+      .setContact('SmartConfirm', 'https://github.com/amineelkhayari/pfa', 'support@smartconfirm.example')
       .addTag('sessions', 'WhatsApp session management')
       .addTag('messages', 'Send and manage messages')
       .addTag('webhooks', 'Webhook configuration')

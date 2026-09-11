@@ -252,7 +252,7 @@ export class YouCanService {
         selected_shipping_estimation_id: input.shippingEstimationId,
         shipping_address: address,
         payment_address: address,
-        tags: ['openwa', 'whatsapp-confirmed'],
+        tags: ['smartConfirm', 'whatsapp-confirmed'],
       }),
     });
     if (!order?.id) throw new BadGatewayException('YouCan did not return the created order.');
@@ -348,7 +348,7 @@ export class YouCanService {
       lineItems: items,
       shippingAddress: shipping.address ?? shipping,
       customer,
-      tags: ['youcan', ...providerTags, ...(createdByWhatsApp ? ['openwa:whatsapp-confirmed'] : [])],
+      tags: ['youcan', ...providerTags, ...(createdByWhatsApp ? ['smartConfirm:whatsapp-confirmed'] : [])],
       status: createdByWhatsApp ? 'confirmed' : status.includes('cancel') ? 'cancelled' : status,
       ...(createdByWhatsApp ? { confirmationStatus: 'confirmed' } : {}),
       externalCreatedAt: o.created_at ? new Date(o.created_at) : new Date(),

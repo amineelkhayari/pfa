@@ -106,8 +106,8 @@ Each node "claims" sessions on startup and releases them on shutdown. **(Not imp
 version: '3.8'
 
 services:
-  openwa:
-    image: ghcr.io/rmyndharis/openwa:latest
+  smartConfirm:
+    image: ghcr.io/rmyndharis/smartConfirm:latest
     deploy:
       replicas: 1 # MUST stay 1 until session-claim is implemented — multiple replicas on one session volume corrupt WhatsApp auth
       update_config:
@@ -125,8 +125,8 @@ services:
       - NODE_ENV=production
       - DATABASE_TYPE=postgres
       - DATABASE_HOST=postgres
-      - DATABASE_NAME=openwa
-      - DATABASE_USERNAME=openwa
+      - DATABASE_NAME=smartConfirm
+      - DATABASE_USERNAME=smartConfirm
       - DATABASE_PASSWORD=${DB_PASSWORD}
       - REDIS_HOST=redis
       - QUEUE_ENABLED=true
@@ -136,7 +136,7 @@ services:
     volumes:
       - sessions:/app/data/sessions
     networks:
-      - openwa-net
+      - smartConfirm-net
     depends_on:
       - postgres
       - redis
@@ -149,13 +149,13 @@ services:
         constraints:
           - node.role == manager
     environment:
-      - POSTGRES_DB=openwa
-      - POSTGRES_USER=openwa
+      - POSTGRES_DB=smartConfirm
+      - POSTGRES_USER=smartConfirm
       - POSTGRES_PASSWORD=${DB_PASSWORD}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks:
-      - openwa-net
+      - smartConfirm-net
 
   redis:
     image: redis:7-alpine
@@ -165,11 +165,11 @@ services:
     volumes:
       - redis-data:/data
     networks:
-      - openwa-net
+      - smartConfirm-net
 
   # NOTE (v0.4.0): SmartConfirm no longer ships a bundled Traefik container.
   # For TLS / public exposure, bring your own reverse proxy (Traefik, nginx,
-  # Caddy, a cloud load balancer, etc.) and point it at openwa:2785.
+  # Caddy, a cloud load balancer, etc.) and point it at smartConfirm:2785.
   # See section 13.5 for Traefik / nginx config examples.
 
 volumes:
@@ -178,7 +178,7 @@ volumes:
   sessions:
 
 networks:
-  openwa-net:
+  smartConfirm-net:
     driver: overlay
 ```
 
@@ -189,14 +189,14 @@ networks:
 docker swarm init
 
 # Deploy stack
-docker stack deploy -c docker-compose.swarm.yml openwa
+docker stack deploy -c docker-compose.swarm.yml smartConfirm
 
 # Check status
 docker service ls
-docker service ps openwa_openwa
+docker service ps smartConfirm_smartConfirm
 ```
 
-> **Do not scale the `openwa` service** (`docker service scale openwa_openwa=N`). The `sessions`
+> **Do not scale the `smartConfirm` service** (`docker service scale smartConfirm_smartConfirm=N`). The `sessions`
 > volume above is declared with the default local driver (not `external`), so Swarm creates one per
 > node: replicas co-located on a single node share that directory and corrupt the WhatsApp auth
 > state, while replicas placed on other nodes each get a fresh empty volume and start an
@@ -211,7 +211,7 @@ docker service ps openwa_openwa
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: openwa
+  name: smartConfirm
 ```
 
 ### k8s/configmap.yaml
@@ -220,14 +220,14 @@ metadata:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: openwa-config
-  namespace: openwa
+  name: smartConfirm-config
+  namespace: smartConfirm
 data:
   NODE_ENV: 'production'
   DATABASE_TYPE: 'postgres'
   DATABASE_HOST: 'postgres-service'
   DATABASE_PORT: '5432'
-  DATABASE_NAME: 'openwa'
+  DATABASE_NAME: 'smartConfirm'
   REDIS_HOST: 'redis-service'
   REDIS_PORT: '6379'
   QUEUE_ENABLED: 'true'
@@ -240,11 +240,11 @@ data:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: openwa-secrets
-  namespace: openwa
+  name: smartConfirm-secrets
+  namespace: smartConfirm
 type: Opaque
 stringData:
-  DATABASE_USERNAME: openwa
+  DATABASE_USERNAME: smartConfirm
   DATABASE_PASSWORD: your-secure-password
 ```
 
@@ -254,18 +254,18 @@ stringData:
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: openwa
-  namespace: openwa
+  name: smartConfirm
+  namespace: smartConfirm
 spec:
-  serviceName: openwa-headless # must match the headless Service declared in k8s/service.yaml
+  serviceName: smartConfirm-headless # must match the headless Service declared in k8s/service.yaml
   replicas: 1 # MUST stay 1 until session-claim is implemented — see the warning at the top of this guide
   selector:
     matchLabels:
-      app: openwa
+      app: smartConfirm
   template:
     metadata:
       labels:
-        app: openwa
+        app: smartConfirm
     spec:
       # OS-level containment is the second half of the plugin sandbox boundary (see docs/23-plugin-
       # sandboxing.md). Without it a worker_thread plugin that abuses Node built-ins (fs, net) runs with
@@ -276,16 +276,16 @@ spec:
         runAsNonRoot: true
         fsGroup: 1000
       containers:
-        - name: openwa
-          image: ghcr.io/rmyndharis/openwa:latest
+        - name: smartConfirm
+          image: ghcr.io/rmyndharis/smartConfirm:latest
           ports:
             - containerPort: 2785
               name: http
           envFrom:
             - configMapRef:
-                name: openwa-config
+                name: smartConfirm-config
             - secretRef:
-                name: openwa-secrets
+                name: smartConfirm-secrets
           env:
             # Operator-facing metadata only — the application does not read NODE_ID (no consumer
             # exists in src/); it is retained for the future node-affinity design in 13.2.
@@ -309,7 +309,7 @@ spec:
               memory: '2Gi'
               cpu: '1000m'
           volumeMounts:
-            - name: openwa-data
+            - name: smartConfirm-data
               mountPath: /app/data
             - name: tmp
               mountPath: /tmp
@@ -330,7 +330,7 @@ spec:
           emptyDir: {}
   volumeClaimTemplates:
     - metadata:
-        name: openwa-data
+        name: smartConfirm-data
       spec:
         accessModes: ['ReadWriteOnce']
         resources:
@@ -344,12 +344,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: openwa-service
-  namespace: openwa
+  name: smartConfirm-service
+  namespace: smartConfirm
 spec:
   type: ClusterIP
   selector:
-    app: openwa
+    app: smartConfirm
   ports:
     - port: 80
       targetPort: 2785
@@ -358,12 +358,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: openwa-headless
-  namespace: openwa
+  name: smartConfirm-headless
+  namespace: smartConfirm
 spec:
   clusterIP: None
   selector:
-    app: openwa
+    app: smartConfirm
   ports:
     - port: 2785
       name: http
@@ -375,29 +375,29 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: openwa-ingress
-  namespace: openwa
+  name: smartConfirm-ingress
+  namespace: smartConfirm
   annotations:
     nginx.ingress.kubernetes.io/affinity: 'cookie'
-    nginx.ingress.kubernetes.io/session-cookie-name: 'openwa-session'
+    nginx.ingress.kubernetes.io/session-cookie-name: 'smartConfirm-session'
     nginx.ingress.kubernetes.io/session-cookie-max-age: '172800'
 spec:
   ingressClassName: nginx
   rules:
-    - host: openwa.example.com
+    - host: smartConfirm.example.com
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: openwa-service
+                name: smartConfirm-service
                 port:
                   number: 80
   tls:
     - hosts:
-        - openwa.example.com
-      secretName: openwa-tls
+        - smartConfirm.example.com
+      secretName: smartConfirm-tls
 ```
 
 ### Deploy to Kubernetes
@@ -407,13 +407,13 @@ spec:
 kubectl apply -f k8s/
 
 # Check pods
-kubectl get pods -n openwa
+kubectl get pods -n smartConfirm
 
 # Check logs
-kubectl logs -f statefulset/openwa -n openwa
+kubectl logs -f statefulset/smartConfirm -n smartConfirm
 ```
 
-> **Do not raise `replicas` above 1** (`kubectl scale statefulset openwa --replicas=N`). Each pod
+> **Do not raise `replicas` above 1** (`kubectl scale statefulset smartConfirm --replicas=N`). Each pod
 > gets its own PVC, so extra replicas do not share a session directory — they each start their own
 > unauthenticated engine, and with `AUTO_START_SESSIONS=true` every pod tries to drive the same
 > configured sessions from the shared database. See the warning at the top of this guide.
@@ -426,9 +426,9 @@ kubectl logs -f statefulset/openwa -n openwa
 # traefik/dynamic-scaling.yml
 http:
   routers:
-    openwa:
-      rule: 'Host(`openwa.example.com`)'
-      service: openwa
+    smartConfirm:
+      rule: 'Host(`smartConfirm.example.com`)'
+      service: smartConfirm
       middlewares:
         - sticky-session
 
@@ -439,17 +439,17 @@ http:
           X-SmartConfirm-Node: '{{.Node}}'
 
   services:
-    openwa:
+    smartConfirm:
       loadBalancer:
         sticky:
           cookie:
-            name: openwa_node
+            name: smartConfirm_node
             secure: true
             httpOnly: true
         servers:
-          - url: 'http://openwa-1:2785'
-          - url: 'http://openwa-2:2785'
-          - url: 'http://openwa-3:2785'
+          - url: 'http://smartConfirm-1:2785'
+          - url: 'http://smartConfirm-2:2785'
+          - url: 'http://smartConfirm-3:2785'
         healthCheck:
           path: /api/health
           interval: 10s
@@ -459,20 +459,20 @@ http:
 ### Nginx Upstream Config
 
 ```nginx
-upstream openwa {
+upstream smartConfirm {
     ip_hash;  # Sticky sessions based on client IP
 
-    server openwa-1:2785 weight=1 max_fails=3 fail_timeout=30s;
-    server openwa-2:2785 weight=1 max_fails=3 fail_timeout=30s;
-    server openwa-3:2785 weight=1 max_fails=3 fail_timeout=30s;
+    server smartConfirm-1:2785 weight=1 max_fails=3 fail_timeout=30s;
+    server smartConfirm-2:2785 weight=1 max_fails=3 fail_timeout=30s;
+    server smartConfirm-3:2785 weight=1 max_fails=3 fail_timeout=30s;
 }
 
 server {
     listen 80;
-    server_name openwa.example.com;
+    server_name smartConfirm.example.com;
 
     location / {
-        proxy_pass http://openwa;
+        proxy_pass http://smartConfirm;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -485,7 +485,7 @@ server {
     }
 
     location /api/health {
-        proxy_pass http://openwa;
+        proxy_pass http://smartConfirm;
         proxy_connect_timeout 5s;
         proxy_read_timeout 5s;
     }
@@ -533,18 +533,18 @@ the warning at the top of this guide), so the 3- and 5-node rows could not have 
 
 ### Prometheus Metrics
 
-SmartConfirm exports Prometheus text exposition at `GET /api/metrics` (`openwa_*` gauges and counters).
+SmartConfirm exports Prometheus text exposition at `GET /api/metrics` (`smartConfirm_*` gauges and counters).
 The endpoint returns `404` until `METRICS_TOKEN` is set, and then requires that token as a Bearer:
 
 ```yaml
 # prometheus/prometheus.yml
 scrape_configs:
-  - job_name: 'openwa'
+  - job_name: 'smartConfirm'
     static_configs:
-      # Swarm service name (13.3). On Kubernetes there is no Service called `openwa` — scrape the
+      # Swarm service name (13.3). On Kubernetes there is no Service called `smartConfirm` — scrape the
       # pod through the headless Service instead, e.g.
-      # openwa-0.openwa-headless.openwa.svc.cluster.local:2785
-      - targets: ['openwa:2785']
+      # smartConfirm-0.smartConfirm-headless.smartConfirm.svc.cluster.local:2785
+      - targets: ['smartConfirm:2785']
     metrics_path: '/api/metrics'
     authorization:
       type: Bearer
@@ -552,12 +552,12 @@ scrape_configs:
 ```
 
 ```yaml
-# prometheus/openwa-rules.yaml
+# prometheus/smartConfirm-rules.yaml
 groups:
-  - name: openwa
+  - name: smartConfirm
     rules:
       - alert: HighMemoryUsage
-        expr: container_memory_usage_bytes{container="openwa"} > 1.8e9
+        expr: container_memory_usage_bytes{container="smartConfirm"} > 1.8e9
         for: 5m
         labels:
           severity: warning
@@ -565,7 +565,7 @@ groups:
           summary: 'SmartConfirm node high memory usage'
 
       - alert: NodeDown
-        expr: up{job="openwa"} == 0
+        expr: up{job="smartConfirm"} == 0
         for: 1m
         labels:
           severity: critical

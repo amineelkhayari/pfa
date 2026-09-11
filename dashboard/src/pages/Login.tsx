@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Eye, EyeOff, Languages } from 'lucide-react';
-import { GithubIcon } from '../components/GithubIcon';
 import { CustomSelect } from '../components/CustomSelect';
 import { languageOptions, resolveSupportedLanguage, type SupportedLanguage } from '../i18n';
 import { API_BASE_URL } from '../services/api';
@@ -82,14 +81,7 @@ export function Login({ onLogin, initialMode = 'signin', onBack, onModeChange }:
       <div className="login-card">
         <div className="login-logo">
           <img src="/smartconfirm_logo.webp" alt="SmartConfirm" className="logo-icon" />
-          <span className="version-info">
-            {t('login.version', {
-              version: __APP_VERSION__,
-              // ISO date (YYYYMMDD) so the format is stable across locales/regions instead of the
-              // locale-dependent toLocaleDateString() which renders differently per browser region.
-              date: new Date(__BUILD_TIME__).toISOString().slice(0, 10).replace(/-/g, ''),
-            })}
-          </span>
+         
         </div>
 
         <div className="login-language">
@@ -162,26 +154,9 @@ export function Login({ onLogin, initialMode = 'signin', onBack, onModeChange }:
           </button>
         </form>
 
-        <p className="login-help">
-          {t('login.help')}{' '}
-          <a href="https://docs.open-wa.org" target="_blank" rel="noopener noreferrer">
-            {t('login.viewDocs')}
-          </a>
-        </p>
+        
       </div>
 
-      <footer className="login-footer">
-        <span>{t('login.footer')}</span>
-        <a
-          href="https://github.com/your-organization/smartconfirm"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="github-link"
-          aria-label="GitHub"
-        >
-          <GithubIcon size={18} />
-        </a>
-      </footer>
     </div>
   );
 }

@@ -23,10 +23,10 @@ describe('validateEnv', () => {
     // unset / 'public' (default) and ordinary identifiers are fine
     expect(() => validateEnv({ ...pg })).not.toThrow();
     expect(() => validateEnv({ ...pg, POSTGRES_SCHEMA: 'public' })).not.toThrow();
-    expect(() => validateEnv({ ...pg, POSTGRES_SCHEMA: 'openwa' })).not.toThrow();
+    expect(() => validateEnv({ ...pg, POSTGRES_SCHEMA: 'smartConfirm' })).not.toThrow();
     expect(() => validateEnv({ ...pg, POSTGRES_SCHEMA: 'my_app_2' })).not.toThrow();
     // invalid identifier characters (would reach CREATE TABLE "<schema>"."..." or a search_path SET)
-    expect(() => validateEnv({ ...pg, POSTGRES_SCHEMA: 'openwa; DROP' })).toThrow(/POSTGRES_SCHEMA/);
+    expect(() => validateEnv({ ...pg, POSTGRES_SCHEMA: 'smartConfirm; DROP' })).toThrow(/POSTGRES_SCHEMA/);
     expect(() => validateEnv({ ...pg, POSTGRES_SCHEMA: '1bad' })).toThrow(/POSTGRES_SCHEMA/);
     expect(() => validateEnv({ ...pg, POSTGRES_SCHEMA: 'has space' })).toThrow(/POSTGRES_SCHEMA/);
     expect(() => validateEnv({ ...pg, POSTGRES_SCHEMA: 'a.b' })).toThrow(/POSTGRES_SCHEMA/);
@@ -207,17 +207,17 @@ describe('validateEnv', () => {
   });
 
   it('rejects a bare SQLite DATABASE_NAME (PG-name leak) that has no path separator or file extension', () => {
-    // Regression for #677: .env.example shipped `DATABASE_NAME=openwa` (a PostgreSQL db name).
-    // In a SQLite run that bare name becomes the file PATH → SQLite opens a file named 'openwa'
+    // Regression for #677: .env.example shipped `DATABASE_NAME=smartConfirm` (a PostgreSQL db name).
+    // In a SQLite run that bare name becomes the file PATH → SQLite opens a file named 'smartConfirm'
     // under the read-only app rootfs → SQLITE_CANTOPEN boot-loop. The guard catches the leak at boot.
-    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: 'openwa' })).toThrow(/file path/);
+    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: 'smartConfirm' })).toThrow(/file path/);
     expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: 'prod_db' })).toThrow(/file path/);
     // A bare name WITH a .sqlite/.db suffix is a legitimate file in the cwd — let it pass.
-    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: 'openwa.sqlite' })).not.toThrow();
+    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: 'smartConfirm.sqlite' })).not.toThrow();
     expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: 'cache.db' })).not.toThrow();
     // A path (with a separator) is always honored, explicit host paths included.
-    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: '/app/data/openwa.sqlite' })).not.toThrow();
-    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: './data/openwa.sqlite' })).not.toThrow();
+    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: '/app/data/smartConfirm.sqlite' })).not.toThrow();
+    expect(() => validateEnv({ DATABASE_TYPE: 'sqlite', DATABASE_NAME: './data/smartConfirm.sqlite' })).not.toThrow();
     // Unset falls through to the default path (configuration.ts) — the boot-loop fix.
     expect(() => validateEnv({ DATABASE_TYPE: 'sqlite' })).not.toThrow();
   });

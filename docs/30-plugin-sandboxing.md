@@ -62,7 +62,7 @@ the *confidentiality* of the host filesystem against deliberate Node-builtin abu
 
 For genuinely untrusted, third-party plugins, combine the sandbox with **OS-level containment**:
 
-- **Run SmartConfirm in a container.** The image's entrypoint already drops to the non-root `openwa` user
+- **Run SmartConfirm in a container.** The image's entrypoint already drops to the non-root `smartConfirm` user
   (via `gosu`, after fixing volume ownership). The rest of the confinement comes from the bundled
   `docker-compose.yml`, not from the image: `read_only: true` rootfs with a tmpfs `/tmp`,
   `no-new-privileges`, and `cap_drop: ALL` with a minimal re-add

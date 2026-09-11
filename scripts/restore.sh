@@ -13,12 +13,12 @@
 #                     plain-copied (possibly torn) database snapshots; without it the restore
 #                     continues after a loud warning
 # Environment:
-#   DATABASE_NAME       restore target for the SQLite database (default: ./data/openwa.sqlite)
+#   DATABASE_NAME       restore target for the SQLite database (default: ./data/smartConfirm.sqlite)
 #                       It resolves EXACTLY like the app (src/config/configuration.ts): the
 #                       explicit env path wins, otherwise the fixed ./data default. They are NOT
-#                       derived from OPENWA_DATA_DIR — restoring there would write databases the
+#                       derived from smartConfirm_DATA_DIR — restoring there would write databases the
 #                       app never reads (fresh-empty boot + new master key).
-#   OPENWA_DATA_DIR   data directory to restore non-DB state into (default: ./data)
+#   smartConfirm_DATA_DIR   data directory to restore non-DB state into (default: ./data)
 #   BAILEYS_AUTH_DIR, STORAGE_LOCAL_PATH, PLUGINS_DIR
 #                     override the corresponding state directories
 #
@@ -56,20 +56,20 @@ for arg in "$@"; do
   esac
 done
 
-DATA_DIR="${OPENWA_DATA_DIR:-./data}"
+DATA_DIR="${smartConfirm_DATA_DIR:-./data}"
 # shellcheck source=scripts/lib-env.sh
 . "$(dirname "$0")/lib-env.sh"
 # Database targets resolve exactly like the app: an explicit environment value, then ./.env, then the
 # dashboard's <data dir>/.env.generated, else the fixed ./data defaults. They may legitimately live
-# outside OPENWA_DATA_DIR. This reads the config of the install being restored INTO, which is why it
+# outside smartConfirm_DATA_DIR. This reads the config of the install being restored INTO, which is why it
 # happens here rather than after the archive's own .env.generated is written over it further down.
-DATA_DB="$(openwa_resolve DATABASE_NAME ./data/openwa.sqlite)"
-BAILEYS_DIR="$(openwa_resolve BAILEYS_AUTH_DIR "$DATA_DIR/baileys")"
-MEDIA_DIR="$(openwa_resolve STORAGE_LOCAL_PATH "$DATA_DIR/media")"
+DATA_DB="$(smartConfirm_resolve DATABASE_NAME ./data/smartConfirm.sqlite)"
+BAILEYS_DIR="$(smartConfirm_resolve BAILEYS_AUTH_DIR "$DATA_DIR/baileys")"
+MEDIA_DIR="$(smartConfirm_resolve STORAGE_LOCAL_PATH "$DATA_DIR/media")"
 # Installed plugin code. The app defaults this to <dataDir>/plugins — the same tree as the
 # registry and each plugin's ctx.storage below — so an unset PLUGINS_DIR must resolve there
 # too, or the archive silently omits the plugin packages.
-PLUGIN_PACKAGES_DIR="$(openwa_resolve PLUGINS_DIR "$DATA_DIR/plugins")"
+PLUGIN_PACKAGES_DIR="$(smartConfirm_resolve PLUGINS_DIR "$DATA_DIR/plugins")"
 PLUGIN_STATE_DIR="$DATA_DIR/plugins"
 RESTORE_TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 RESOLVED_CWD="$(pwd -P)"
@@ -95,24 +95,24 @@ resolve_path() {
 }
 
 RESOLVED_DATA_DIR="$(resolve_path "$DATA_DIR")"
-RESOLVED_USER_HOME="$(resolve_path "${HOME:-/nonexistent-openwa-home}")"
+RESOLVED_USER_HOME="$(resolve_path "${HOME:-/nonexistent-smartConfirm-home}")"
 
 log() { echo "[restore] $*"; }
 
 case "$DATA_DIR" in
   '' | / | . | ./ | .. | ../)
-    log "ERROR: refusing unsafe OPENWA_DATA_DIR target: ${DATA_DIR:-<empty>}"
+    log "ERROR: refusing unsafe smartConfirm_DATA_DIR target: ${DATA_DIR:-<empty>}"
     exit 1
     ;;
 esac
 case "$RESOLVED_CWD/" in
   "$RESOLVED_DATA_DIR"/*)
-    log "ERROR: OPENWA_DATA_DIR must not be the workspace or one of its parent directories: $DATA_DIR"
+    log "ERROR: smartConfirm_DATA_DIR must not be the workspace or one of its parent directories: $DATA_DIR"
     exit 1
     ;;
 esac
 if [ "$RESOLVED_DATA_DIR" = "$RESOLVED_USER_HOME" ]; then
-  log "ERROR: OPENWA_DATA_DIR must not be the user home directory: $DATA_DIR"
+  log "ERROR: smartConfirm_DATA_DIR must not be the user home directory: $DATA_DIR"
   exit 1
 fi
 
@@ -222,11 +222,11 @@ fi
 
 mkdir -p "$DATA_DIR"
 
-if [ -f "$STAGE/openwa.sqlite" ]; then
+if [ -f "$STAGE/smartConfirm.sqlite" ]; then
   log "Restoring data store -> $DATA_DB"
   snapshot_external_db "$DATA_DB"
   mkdir -p "$(dirname "$DATA_DB")"
-  cp "$STAGE/openwa.sqlite" "$DATA_DB"
+  cp "$STAGE/smartConfirm.sqlite" "$DATA_DB"
 fi
 
 if [ -d "$STAGE/baileys" ]; then

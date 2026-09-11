@@ -52,25 +52,25 @@ describe('MetricsService', () => {
       const svc = makeService('s3cret');
       const out = await svc.render();
 
-      expect(out).toContain('openwa_up 1');
-      expect(out).toContain('openwa_sessions_active 2');
-      expect(out).toContain('openwa_sessions_total 3');
-      expect(out).toContain('openwa_sessions{status="ready"} 2');
-      expect(out).toContain('openwa_sessions{status="failed"} 1');
-      expect(out).toContain('openwa_messages_total{direction="outgoing"} 100');
-      expect(out).toContain('openwa_messages_total{direction="incoming"} 50');
-      expect(out).toContain('openwa_messages_failed_total 3');
+      expect(out).toContain('smartConfirm_up 1');
+      expect(out).toContain('smartConfirm_sessions_active 2');
+      expect(out).toContain('smartConfirm_sessions_total 3');
+      expect(out).toContain('smartConfirm_sessions{status="ready"} 2');
+      expect(out).toContain('smartConfirm_sessions{status="failed"} 1');
+      expect(out).toContain('smartConfirm_messages_total{direction="outgoing"} 100');
+      expect(out).toContain('smartConfirm_messages_total{direction="incoming"} 50');
+      expect(out).toContain('smartConfirm_messages_failed_total 3');
       // Every metric must declare HELP/TYPE before its sample.
-      expect(out).toContain('# TYPE openwa_messages_total gauge');
-      expect(out).toContain('# TYPE openwa_messages_failed_total gauge');
+      expect(out).toContain('# TYPE smartConfirm_messages_total gauge');
+      expect(out).toContain('# TYPE smartConfirm_messages_failed_total gauge');
       // Webhook terminal-failure counter is emitted with correct counter typing + current total.
-      expect(out).toContain('# TYPE openwa_webhook_delivery_failures_total counter');
-      expect(out).toContain(`openwa_webhook_delivery_failures_total ${getWebhookDeliveryFailuresTotal()}`);
+      expect(out).toContain('# TYPE smartConfirm_webhook_delivery_failures_total counter');
+      expect(out).toContain(`smartConfirm_webhook_delivery_failures_total ${getWebhookDeliveryFailuresTotal()}`);
       // Reconnect observability counters are emitted with correct counter typing + current totals.
-      expect(out).toContain('# TYPE openwa_session_reconnect_attempts_total counter');
-      expect(out).toContain(`openwa_session_reconnect_attempts_total ${getSessionReconnectAttemptsTotal()}`);
-      expect(out).toContain('# TYPE openwa_session_reconnect_loop_alerts_total counter');
-      expect(out).toContain(`openwa_session_reconnect_loop_alerts_total ${getSessionReconnectLoopAlertsTotal()}`);
+      expect(out).toContain('# TYPE smartConfirm_session_reconnect_attempts_total counter');
+      expect(out).toContain(`smartConfirm_session_reconnect_attempts_total ${getSessionReconnectAttemptsTotal()}`);
+      expect(out).toContain('# TYPE smartConfirm_session_reconnect_loop_alerts_total counter');
+      expect(out).toContain(`smartConfirm_session_reconnect_loop_alerts_total ${getSessionReconnectLoopAlertsTotal()}`);
       expect(out.endsWith('\n')).toBe(true);
     });
 

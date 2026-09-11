@@ -21,7 +21,7 @@ lines receive no backports — please upgrade older deployments.
 Report it privately through either channel:
 
 - **GitHub Security Advisories** (preferred) — open a private report at
-  <https://github.com/your-organization/smartconfirm/security/advisories/new>
+  <https://github.com/amineelkhayari/pfa/security/advisories/new>
 - **Email** — support@smartconfirm.example
 
 Please include, where possible:
@@ -69,7 +69,7 @@ it as one:
   A compromised API container could therefore create a container with a host
   bind-mount, which is host-root-equivalent.
 
-Mitigations in place: the proxy is unreachable except from `openwa-api` (dedicated
+Mitigations in place: the proxy is unreachable except from `smartConfirm-api` (dedicated
 `internal: true` network), the orchestration endpoints require an ADMIN-role API key,
 both teardown and start are constrained to the three managed profiles (`postgres`,
 `redis`, `minio`) — non-managed names are dropped before reaching `DockerService` —

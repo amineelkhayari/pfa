@@ -1,5 +1,5 @@
 #!/bin/sh
-# Smoke test: verify the built image runs its process as the openwa user (not root).
+# Smoke test: verify the built image runs its process as the smartConfirm user (not root).
 # Usage: ./scripts/smoke-test-non-root.sh
 # Requires Docker to be running locally.
 set -e
@@ -8,14 +8,14 @@ set -e
 # so the build requires BuildKit. It's the modern default, but force it on in case the host disabled it.
 export DOCKER_BUILDKIT=1
 
-IMAGE_TAG="openwa-test-non-root:smoke"
+IMAGE_TAG="smartConfirm-test-non-root:smoke"
 
 echo "==> Building test image..."
 docker build -t "$IMAGE_TAG" .
 
 echo ""
 echo "==> Checking process user inside container..."
-# Override CMD with 'id' so docker-entrypoint.sh runs: exec gosu openwa id
+# Override CMD with 'id' so docker-entrypoint.sh runs: exec gosu smartConfirm id
 USER_OUTPUT=$(docker run --rm "$IMAGE_TAG" id)
 echo "    $USER_OUTPUT"
 
@@ -25,10 +25,10 @@ if echo "$USER_OUTPUT" | grep -q "uid=0(root)"; then
   exit 1
 fi
 
-if echo "$USER_OUTPUT" | grep -q "openwa"; then
-  echo "PASS: process runs as openwa (non-root)"
+if echo "$USER_OUTPUT" | grep -q "smartConfirm"; then
+  echo "PASS: process runs as smartConfirm (non-root)"
 else
-  echo "FAIL: process is not running as the openwa user" >&2
+  echo "FAIL: process is not running as the smartConfirm user" >&2
   docker rmi "$IMAGE_TAG" > /dev/null 2>&1 || true
   exit 1
 fi

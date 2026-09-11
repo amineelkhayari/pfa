@@ -1369,7 +1369,7 @@ if (dbType === 'postgres') {
     port: configService.get('dataDatabase.port'),
     username: configService.get('dataDatabase.username'),
     password: configService.get('dataDatabase.password'),
-    database: configService.get('dataDatabase.name', 'openwa'),
+    database: configService.get('dataDatabase.name', 'smartConfirm'),
     synchronize: configService.get('dataDatabase.synchronize', false), // migrations in prod
     migrationsRun: true,
     extra: { max: configService.get('dataDatabase.poolSize', 10) },
@@ -1380,7 +1380,7 @@ if (dbType === 'postgres') {
 const synchronize = configService.get<boolean>('dataDatabase.synchronize', false);
 return {
   ...baseConfig, name: 'data', type: 'better-sqlite3' as const, // DATABASE_TYPE=sqlite -> this driver
-  database: configService.get('dataDatabase.database', './data/openwa.sqlite'),
+  database: configService.get('dataDatabase.database', './data/smartConfirm.sqlite'),
   synchronize,
   migrationsRun: !synchronize,
 };
@@ -1509,7 +1509,7 @@ flowchart LR
 ```bash
 # Database
 DATABASE_TYPE=sqlite
-DATABASE_NAME=./data/openwa.sqlite
+DATABASE_NAME=./data/smartConfirm.sqlite
 
 # Storage
 STORAGE_TYPE=local
@@ -1526,8 +1526,8 @@ REDIS_ENABLED=false
 DATABASE_TYPE=postgres
 DATABASE_HOST=localhost
 DATABASE_PORT=5432
-DATABASE_NAME=openwa
-DATABASE_USERNAME=openwa
+DATABASE_NAME=smartConfirm
+DATABASE_USERNAME=smartConfirm
 DATABASE_PASSWORD=password
 
 # Storage
@@ -1547,14 +1547,14 @@ REDIS_PORT=6379
 DATABASE_TYPE=postgres
 DATABASE_HOST=db-cluster
 DATABASE_PORT=5432
-DATABASE_NAME=openwa
-DATABASE_USERNAME=openwa
+DATABASE_NAME=smartConfirm
+DATABASE_USERNAME=smartConfirm
 DATABASE_PASSWORD=password
 DATABASE_POOL_SIZE=50
 
 # Storage (S3 or any S3-compatible endpoint; MinIO uses the same vars)
 STORAGE_TYPE=s3
-S3_BUCKET=openwa-media
+S3_BUCKET=smartConfirm-media
 S3_REGION=ap-southeast-1
 S3_ACCESS_KEY_ID=xxx
 S3_SECRET_ACCESS_KEY=xxx

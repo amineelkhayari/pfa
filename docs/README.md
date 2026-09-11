@@ -78,7 +78,7 @@
 
 ```bash
 # Clone repository
-git clone https://github.com/your-organization/smartconfirm.git
+git clone https://github.com/amineelkhayari/pfa.git
 cd SmartConfirm
 
 # Install the locked dependencies & configure
@@ -102,7 +102,7 @@ Access:
 
 ```bash
 # Clone repository
-git clone https://github.com/your-organization/smartconfirm.git
+git clone https://github.com/amineelkhayari/pfa.git
 cd SmartConfirm
 
 # Start services

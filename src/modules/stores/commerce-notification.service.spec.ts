@@ -2,7 +2,7 @@ import { CommerceNotificationService, isWhatsAppCreatedOrder } from './commerce-
 
 describe('CommerceNotificationService WhatsApp-created orders', () => {
   it('recognizes provider origin markers', () => {
-    expect(isWhatsAppCreatedOrder(['woocommerce', 'openwa:whatsapp-confirmed'])).toBe(true);
+    expect(isWhatsAppCreatedOrder(['woocommerce', 'smartConfirm:whatsapp-confirmed'])).toBe(true);
     expect(isWhatsAppCreatedOrder(['youcan', 'whatsapp-confirmed'])).toBe(true);
     expect(isWhatsAppCreatedOrder(['whatsapp-bot-confirmed'])).toBe(true);
     expect(isWhatsAppCreatedOrder(['shopify'])).toBe(false);
@@ -13,7 +13,7 @@ describe('CommerceNotificationService WhatsApp-created orders', () => {
     const orders = { save: jest.fn(async (value: unknown) => value) };
     const service = new CommerceNotificationService(messages as any, orders as any, {} as any);
     const order = {
-      tags: ['openwa:whatsapp-confirmed'],
+      tags: ['smartConfirm:whatsapp-confirmed'],
       status: 'open',
       confirmationStatus: 'not_sent',
       confirmationSentAt: null,

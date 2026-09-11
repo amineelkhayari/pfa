@@ -127,11 +127,11 @@ export default () => ({
   dataDatabase: {
     type: process.env.DATABASE_TYPE || 'sqlite',
     // SQLite path (used when type is sqlite)
-    database: process.env.DATABASE_NAME || './data/openwa.sqlite',
+    database: process.env.DATABASE_NAME || './data/smartConfirm.sqlite',
     // Postgres database NAME (used when type is postgres). Resolved from the same
     // DATABASE_NAME env as the migration CLI (data-source.ts) so the runtime factory and
     // migrations never target different databases. Distinct sqlite-vs-pg defaults.
-    name: process.env.DATABASE_NAME || 'openwa',
+    name: process.env.DATABASE_NAME || 'smartConfirm',
     // PostgreSQL schema (used when type is postgres). Default 'public' preserves the historical
     // behavior; set POSTGRES_SCHEMA to place SmartConfirm's tables + the TypeORM migration ledger in a
     // dedicated schema (e.g. a managed-Postgres project schema, or to isolate SmartConfirm from other

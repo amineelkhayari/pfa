@@ -4,8 +4,8 @@
 
 SmartConfirm provides official n8n community nodes for integrating WhatsApp automation into n8n workflows. This enables users to build powerful automations combining WhatsApp messaging with hundreds of other services available in n8n.
 
-**Repository:** https://github.com/your-organization/smartconfirm-n8n
-**npm Package:** `@rmyndharis/n8n-nodes-openwa`
+**Repository:** https://github.com/amineelkhayari/pfa-n8n
+**npm Package:** `@rmyndharis/n8n-nodes-smartConfirm`
 
 ## Architecture
 
@@ -28,7 +28,7 @@ SmartConfirm provides official n8n community nodes for integrating WhatsApp auto
 
 1. Go to **Settings > Community Nodes**
 2. Select **Install**
-3. Enter `@rmyndharis/n8n-nodes-openwa`
+3. Enter `@rmyndharis/n8n-nodes-smartConfirm`
 4. Agree to the risks and install
 5. Restart n8n
 
@@ -36,7 +36,7 @@ SmartConfirm provides official n8n community nodes for integrating WhatsApp auto
 
 ```bash
 cd ~/.n8n/nodes
-npm install @rmyndharis/n8n-nodes-openwa
+npm install @rmyndharis/n8n-nodes-smartConfirm
 ```
 
 ## Nodes
@@ -275,7 +275,7 @@ Always use the correct format for chat IDs:
 ### Building from Source
 
 ```bash
-git clone https://github.com/your-organization/smartconfirm-n8n.git
+git clone https://github.com/amineelkhayari/pfa-n8n.git
 cd SmartConfirm-n8n
 npm install
 npm run build

@@ -50,7 +50,7 @@ export class UserAuthService implements OnModuleInit {
     await this.users.save(
       this.users.create({
         name: 'Administrator',
-        email: process.env.ADMIN_EMAIL || 'admin@openwa.local',
+        email: process.env.ADMIN_EMAIL || 'admin@smartConfirm.local',
         username,
         passwordHash: await this.hashPassword(password),
         role: ApiKeyRole.ADMIN,
@@ -181,8 +181,8 @@ export class UserAuthService implements OnModuleInit {
         algorithm: 'HS256',
         subject: user.id,
         jwtid: jti,
-        issuer: 'openwa',
-        audience: 'openwa-dashboard',
+        issuer: 'smartConfirm',
+        audience: 'smartConfirm-dashboard',
         expiresIn: expiresInSeconds,
       },
     );
@@ -198,8 +198,8 @@ export class UserAuthService implements OnModuleInit {
     try {
       const payload = verify(rawToken, this.jwtSecret(), {
         algorithms: ['HS256'],
-        issuer: 'openwa',
-        audience: 'openwa-dashboard',
+        issuer: 'smartConfirm',
+        audience: 'smartConfirm-dashboard',
         ignoreExpiration,
       });
       if (typeof payload === 'string' || !payload.sub || !payload.jti) throw new Error('Missing JWT claims');
@@ -215,7 +215,7 @@ export class UserAuthService implements OnModuleInit {
     // Stable compatibility fallback for existing installations. Production deployments should set
     // a dedicated JWT_SECRET (at least 32 random bytes) so account tokens are independent of DB/API secrets.
     const seed = `${process.env.API_KEY_PEPPER || ''}:${process.env.DATABASE_PASSWORD || ''}:${process.env.ADMIN_PASSWORD || 'admin'}`;
-    return createHash('sha256').update(`openwa-jwt:${seed}`).digest('hex');
+    return createHash('sha256').update(`smartConfirm-jwt:${seed}`).digest('hex');
   }
 
   private jwtLifetimeSeconds(): number {

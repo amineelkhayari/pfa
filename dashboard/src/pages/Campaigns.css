@@ -258,6 +258,10 @@
   background: #fee2e2;
   color: #b91c1c;
 }
+[data-theme='dark'] .campaigns-page .pill.completed { background: rgba(34,197,94,.16); color: #86efac; }
+[data-theme='dark'] .campaigns-page .pill.running { background: rgba(59,130,246,.16); color: #93c5fd; }
+[data-theme='dark'] .campaigns-page .pill.failed,
+[data-theme='dark'] .campaigns-page .pill.cancelled { background: rgba(239,68,68,.16); color: #fca5a5; }
 .campaign-row button {
   border: 1px solid var(--border);
   background: transparent;
