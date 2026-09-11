@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post, Query, Req, UnauthorizedException } from '@nestjs/common';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsInt, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import type { Request } from 'express';
 import { Public } from '../auth/decorators/auth.decorators';
 import { UserAccount } from '../auth/entities/user-account.entity';
@@ -10,6 +10,7 @@ class CancelSubscriptionDto {
   @IsOptional() @IsString() @MaxLength(128) reason?: string;
 }
 class CheckoutPlanDto { @IsOptional() @IsString() plan?: string; }
+class ChangePlanDto { @IsString() @MinLength(1) plan: string; @IsOptional() @IsInt() prorationDate?: number; }
 
 @Controller('billing')
 export class BillingController {
@@ -35,6 +36,26 @@ export class BillingController {
   @Post('subscriptions/:id/reactivate')
   reactivate(@Req() req: Request & { user?: UserAccount }, @Param('id', ParseUUIDPipe) id: string) {
     return this.billing.reactivateSubscription(id, this.user(req).id);
+  }
+
+  @Post('subscriptions/:id/change-preview')
+  changePreview(@Req() req: Request & { user?: UserAccount }, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ChangePlanDto) {
+    return this.billing.previewPlanChange(id, this.user(req).id, dto.plan);
+  }
+
+  @Post('subscriptions/:id/change-plan')
+  changePlan(@Req() req: Request & { user?: UserAccount }, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ChangePlanDto) {
+    return this.billing.changePlan(id, this.user(req).id, dto.plan, dto.prorationDate);
+  }
+
+  @Post('subscriptions/:id/cancel-plan-change')
+  cancelPlanChange(@Req() req: Request & { user?: UserAccount }, @Param('id', ParseUUIDPipe) id: string) {
+    return this.billing.cancelPlanChange(id, this.user(req).id);
+  }
+
+  @Post('subscriptions/:id/reconcile')
+  reconcile(@Req() req: Request & { user?: UserAccount }, @Param('id', ParseUUIDPipe) id: string) {
+    return this.billing.reconcileSubscription(id, this.user(req).id);
   }
 
   @Post('stripe/checkout')

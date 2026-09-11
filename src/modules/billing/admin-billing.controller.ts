@@ -56,6 +56,8 @@ export class AdminBillingController {
   @Get('subscriptions') subscriptions(@Query() query: Record<string, string>) { return this.billing.listSubscriptions(query as any); }
   @Post('subscriptions/:id/cancel') cancelSubscription(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AdminCancelSubscriptionDto) { return this.billing.cancelSubscription(id, undefined, dto.immediate, dto.reason); }
   @Post('subscriptions/:id/reactivate') reactivateSubscription(@Param('id', ParseUUIDPipe) id: string) { return this.billing.reactivateSubscription(id); }
+  @Post('subscriptions/:id/cancel-plan-change') cancelPlanChange(@Param('id', ParseUUIDPipe) id: string) { return this.billing.cancelPlanChange(id); }
+  @Post('subscriptions/:id/reconcile') reconcileSubscription(@Param('id', ParseUUIDPipe) id: string) { return this.billing.reconcileSubscription(id); }
   @Post('payments/:id/refund') refund(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RefundPaymentDto) { return this.billing.refundPayment(id, dto.amount, dto.reason); }
   @Get('plans') listPlans() { return this.plans.list(true); }
   @Post('plans') createPlan(@Body() dto: SavePlanDto) { return this.plans.create(dto as any); }

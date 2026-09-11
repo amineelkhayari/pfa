@@ -1,9 +1,9 @@
-import { BadGatewayException, BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHmac, timingSafeEqual } from 'crypto';
-import { Brackets, In, Repository } from 'typeorm';
+import { Brackets, In, LessThan, Repository } from 'typeorm';
 import { UserAccount, UserPlan } from '../auth/entities/user-account.entity';
-import { BillingProvider, BillingSubscription } from './entities/subscription.entity';
+import { BillingProvider, BillingSubscription, PlanChangeStatus } from './entities/subscription.entity';
 import { BillingConfigService } from './billing-config.service';
 import { PaymentStatus, PaymentTransaction } from './entities/payment-transaction.entity';
 import { PlanCatalogService } from './plan-catalog.service';
@@ -11,8 +11,9 @@ import { PlanCatalogService } from './plan-catalog.service';
 type Json = Record<string, any>;
 
 @Injectable()
-export class BillingService {
+export class BillingService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BillingService.name);
+  private reconciliationTimer?: NodeJS.Timeout;
   constructor(
     @InjectRepository(BillingSubscription, 'data') private readonly subscriptions: Repository<BillingSubscription>,
     @InjectRepository(PaymentTransaction, 'data') private readonly transactions: Repository<PaymentTransaction>,
@@ -20,6 +21,18 @@ export class BillingService {
     private readonly config: BillingConfigService,
     private readonly plans: PlanCatalogService,
   ) {}
+
+  onModuleInit() {
+    const configured = Number.parseInt(process.env.BILLING_RECONCILIATION_INTERVAL_MINUTES || '15', 10);
+    const minutes = Number.isFinite(configured) ? configured : 15;
+    if (minutes <= 0) return;
+    this.reconciliationTimer = setInterval(() => void this.reconcileStaleSubscriptions(), minutes * 60_000);
+    this.reconciliationTimer.unref();
+  }
+
+  onModuleDestroy() {
+    if (this.reconciliationTimer) clearInterval(this.reconciliationTimer);
+  }
 
   status(userId: string) {
     return this.subscriptions.find({ where: { userId }, order: { updatedAt: 'DESC' } });
@@ -38,8 +51,221 @@ export class BillingService {
     return rows.map(row => ({ ...row, user: lookup.get(row.userId) ?? null }));
   }
 
+  async previewPlanChange(subscriptionId: string, userId: string, targetPlanSlug: string) {
+    const subscription = await this.subscriptionForAction(subscriptionId, userId);
+    const { current, target, direction } = this.validatePlanChange(subscription, targetPlanSlug);
+    const effectiveAt = direction === 'downgrade' || subscription.provider === BillingProvider.PAYPAL
+      ? subscription.currentPeriodEnd
+      : new Date();
+    let amountDue: number | null = direction === 'downgrade' || subscription.provider === BillingProvider.PAYPAL ? 0 : null;
+    let prorationDate: number | null = null;
+    let currency = target.currency;
+
+    if (subscription.provider === BillingProvider.STRIPE && direction === 'upgrade') {
+      const provider = await this.getStripeSubscription(String(subscription.providerSubscriptionId));
+      const item = provider.items?.data?.[0];
+      if (!item?.id) throw new BadGatewayException('Stripe subscription has no billable item');
+      prorationDate = Math.floor(Date.now() / 1000);
+      const body = new URLSearchParams({
+        subscription: String(subscription.providerSubscriptionId),
+        'subscription_details[items][0][id]': String(item.id),
+        'subscription_details[items][0][price]': this.stripePrice(target),
+        'subscription_details[items][0][quantity]': '1',
+        'subscription_details[proration_behavior]': 'always_invoice',
+        'subscription_details[proration_date]': String(prorationDate),
+      });
+      const response = await fetch('https://api.stripe.com/v1/invoices/create_preview', { method: 'POST', headers: this.stripeHeaders(), body });
+      const preview = await this.json(response);
+      if (!response.ok) throw new BadGatewayException(preview.error?.message ?? 'Stripe could not preview this plan change');
+      const lines = Array.isArray(preview.lines?.data) ? preview.lines.data : [];
+      const prorations = lines.filter((line: Json) => line.proration === true || line.parent?.subscription_item_details?.proration === true);
+      amountDue = Math.max(0, prorations.reduce((sum: number, line: Json) => sum + Number(line.amount ?? 0), 0));
+      currency = String(preview.currency ?? target.currency).toUpperCase();
+    }
+
+    return {
+      subscriptionId: subscription.id,
+      provider: subscription.provider,
+      currentPlan: current.slug,
+      targetPlan: target.slug,
+      direction,
+      amountDue,
+      prorationDate,
+      currency,
+      effectiveAt,
+      nextRenewalAt: subscription.currentPeriodEnd,
+      approvalRequired: subscription.provider === BillingProvider.PAYPAL,
+      note: subscription.provider === BillingProvider.PAYPAL
+        ? 'PayPal applies the new price on the next billing cycle and may require account approval.'
+        : direction === 'upgrade' ? 'Stripe will invoice the prorated difference now.' : 'Your current limits remain active until renewal.',
+    };
+  }
+
+  async changePlan(subscriptionId: string, userId: string, targetPlanSlug: string, requestedProrationDate?: number) {
+    const subscription = await this.subscriptionForAction(subscriptionId, userId);
+    const { target, direction } = this.validatePlanChange(subscription, targetPlanSlug);
+    if (!subscription.providerSubscriptionId) throw new BadRequestException('Subscription is not connected to a payment provider');
+
+    const initialChangeStatus = subscription.provider === BillingProvider.PAYPAL ? PlanChangeStatus.PENDING_APPROVAL : PlanChangeStatus.PENDING_PAYMENT;
+    const requestedAt = new Date();
+    const effectiveAt = direction === 'downgrade' || subscription.provider === BillingProvider.PAYPAL ? subscription.currentPeriodEnd : requestedAt;
+    const claim = await this.subscriptions.createQueryBuilder().update(BillingSubscription).set({
+      pendingPlanSlug: target.slug, planChangeRequestedAt: requestedAt, planChangeEffectiveAt: effectiveAt,
+      planChangeStatus: initialChangeStatus, planChangeError: null,
+    }).where('id = :id', { id: subscription.id }).andWhere('"planChangeStatus" NOT IN (:...busy)', { busy: [PlanChangeStatus.PENDING_PAYMENT, PlanChangeStatus.PENDING_APPROVAL, PlanChangeStatus.SCHEDULED] }).execute();
+    if (claim.affected !== 1) throw new BadRequestException('A plan change is already being processed');
+    Object.assign(subscription, { pendingPlanSlug: target.slug, planChangeRequestedAt: requestedAt, planChangeEffectiveAt: effectiveAt, planChangeStatus: initialChangeStatus, planChangeError: null });
+
+    try {
+      if (subscription.provider === BillingProvider.PAYPAL) {
+        const token = await this.payPalToken();
+        const response = await fetch(`${this.payPalBase()}/v1/billing/subscriptions/${encodeURIComponent(subscription.providerSubscriptionId)}/revise`, {
+          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+          body: JSON.stringify({ plan_id: this.payPalPlan(target), application_context: { return_url: `${this.appUrl()}/account?billing=change-approved`, cancel_url: `${this.appUrl()}/account?billing=change-cancelled`, user_action: 'SUBSCRIBE_NOW' } }),
+        });
+        const data = await this.json(response);
+        if (!response.ok) throw new BadGatewayException(data.message ?? 'PayPal plan change failed');
+        const approvalUrl = Array.isArray(data.links) ? data.links.find((link: Json) => link.rel === 'approve')?.href ?? null : null;
+        if (!approvalUrl) subscription.planChangeStatus = PlanChangeStatus.SCHEDULED;
+        await this.subscriptions.save(subscription);
+        return { subscription, approvalUrl };
+      }
+
+      const provider = await this.getStripeSubscription(subscription.providerSubscriptionId);
+      const item = provider.items?.data?.[0];
+      if (!item?.id) throw new BadGatewayException('Stripe subscription has no billable item');
+      if (direction === 'upgrade') {
+        const now = Math.floor(Date.now() / 1000);
+        const prorationDate = requestedProrationDate && Math.abs(requestedProrationDate - now) <= 600 ? requestedProrationDate : now;
+        const response = await this.stripeUpdateSubscription(subscription.providerSubscriptionId, {
+          'items[0][id]': String(item.id), 'items[0][price]': this.stripePrice(target), 'items[0][quantity]': '1',
+          proration_behavior: 'always_invoice', proration_date: String(prorationDate), payment_behavior: 'pending_if_incomplete',
+          'metadata[userId]': subscription.userId, 'metadata[planSlug]': target.slug,
+        });
+        const data = await this.json(response);
+        if (!response.ok) throw new BadGatewayException(data.error?.message ?? 'Stripe plan upgrade failed');
+        return { subscription: await this.subscriptions.findOneByOrFail({ id: subscription.id }), approvalUrl: null, providerStatus: data.status };
+      }
+
+      const scheduleId = this.stripeId(provider.schedule) ?? await this.createStripeSchedule(subscription.providerSubscriptionId);
+      const currentPrice = this.stripeId(item.price);
+      if (!currentPrice) throw new BadGatewayException('Stripe subscription price is unavailable');
+      const response = await fetch(`https://api.stripe.com/v1/subscription_schedules/${encodeURIComponent(scheduleId)}`, {
+        method: 'POST', headers: this.stripeHeaders(), body: new URLSearchParams({
+          end_behavior: 'release',
+          'phases[0][start_date]': String(provider.current_period_start), 'phases[0][end_date]': String(provider.current_period_end),
+          'phases[0][items][0][price]': currentPrice, 'phases[0][items][0][quantity]': String(item.quantity ?? 1),
+          'phases[1][start_date]': String(provider.current_period_end), 'phases[1][items][0][price]': this.stripePrice(target), 'phases[1][items][0][quantity]': '1',
+        }),
+      });
+      const data = await this.json(response);
+      if (!response.ok) throw new BadGatewayException(data.error?.message ?? 'Stripe could not schedule this downgrade');
+      subscription.planChangeStatus = PlanChangeStatus.SCHEDULED;
+      subscription.providerScheduleId = scheduleId;
+      await this.subscriptions.save(subscription);
+      return { subscription, approvalUrl: null };
+    } catch (error) {
+      subscription.planChangeStatus = PlanChangeStatus.FAILED;
+      subscription.planChangeError = error instanceof Error ? error.message.slice(0, 500) : 'Plan change failed';
+      await this.subscriptions.save(subscription);
+      throw error;
+    }
+  }
+
+  async cancelPlanChange(subscriptionId: string, userId?: string) {
+    const row = await this.subscriptionForAction(subscriptionId, userId);
+    if (![PlanChangeStatus.PENDING_PAYMENT, PlanChangeStatus.PENDING_APPROVAL, PlanChangeStatus.SCHEDULED, PlanChangeStatus.FAILED].includes(row.planChangeStatus)) throw new BadRequestException('This subscription has no plan change to cancel');
+
+    if (row.provider === BillingProvider.STRIPE && row.planChangeStatus === PlanChangeStatus.SCHEDULED && row.providerScheduleId) {
+      const response = await fetch(`https://api.stripe.com/v1/subscription_schedules/${encodeURIComponent(row.providerScheduleId)}/release`, { method: 'POST', headers: this.stripeHeaders() });
+      const data = await this.json(response);
+      if (!response.ok) throw new BadGatewayException(data.error?.message ?? 'Stripe could not cancel the scheduled plan change');
+    } else if (row.provider === BillingProvider.STRIPE && row.planChangeStatus === PlanChangeStatus.PENDING_PAYMENT) {
+      throw new BadRequestException('Stripe is still processing the upgrade invoice. Reconcile the subscription after payment finishes.');
+    } else if (row.provider === BillingProvider.PAYPAL && row.planChangeStatus === PlanChangeStatus.SCHEDULED) {
+      throw new BadRequestException('This PayPal change is already approved. Start a new revision back to the current plan if you need to reverse it.');
+    }
+
+    const approvalWarning = row.provider === BillingProvider.PAYPAL && row.planChangeStatus === PlanChangeStatus.PENDING_APPROVAL
+      ? 'The abandoned PayPal approval link must not be used after cancelling this request.'
+      : null;
+    row.planChangeStatus = PlanChangeStatus.NONE;
+    row.pendingPlanSlug = null;
+    row.planChangeEffectiveAt = null;
+    row.planChangeRequestedAt = null;
+    row.providerScheduleId = null;
+    row.planChangeError = null;
+    await this.subscriptions.save(row);
+    return { subscription: row, warning: approvalWarning };
+  }
+
+  async reconcileSubscription(subscriptionId: string, userId?: string) {
+    const row = await this.subscriptionForAction(subscriptionId, userId);
+    if (!row.providerSubscriptionId) throw new BadRequestException('Subscription is not connected to a payment provider');
+    const warnings: string[] = [];
+
+    if (row.provider === BillingProvider.STRIPE) {
+      const provider = await this.getStripeSubscription(row.providerSubscriptionId, true);
+      const providerPlan = this.planSlugForProviderPrice(BillingProvider.STRIPE, this.stripeId(provider.items?.data?.[0]?.price));
+      row.status = String(provider.status ?? row.status).toLowerCase();
+      row.cancelAtPeriodEnd = Boolean(provider.cancel_at_period_end);
+      const periodEnd = Number(provider.current_period_end ?? provider.items?.data?.[0]?.current_period_end);
+      if (Number.isFinite(periodEnd) && periodEnd > 0) row.currentPeriodEnd = new Date(periodEnd * 1000);
+
+      if (row.planChangeStatus === PlanChangeStatus.PENDING_PAYMENT && row.pendingPlanSlug) {
+        const invoicePaid = provider.latest_invoice?.status === 'paid';
+        if (providerPlan === row.pendingPlanSlug && invoicePaid && !provider.pending_update) this.applyCompletedPlanChange(row, row.pendingPlanSlug);
+        else if (!provider.pending_update && providerPlan !== row.pendingPlanSlug) {
+          row.planChangeStatus = PlanChangeStatus.FAILED;
+          row.planChangeError = 'Stripe did not apply the requested plan after payment processing.';
+        }
+      } else if (row.planChangeStatus === PlanChangeStatus.SCHEDULED && row.pendingPlanSlug) {
+        if (providerPlan === row.pendingPlanSlug) this.applyCompletedPlanChange(row, row.pendingPlanSlug);
+      } else if (providerPlan && providerPlan !== row.planSlug) {
+        warnings.push(`Local plan ${row.planSlug} was corrected to Stripe plan ${providerPlan}.`);
+        row.planSlug = providerPlan;
+      }
+      row.providerScheduleId = this.stripeId(provider.schedule) ?? row.providerScheduleId;
+    } else {
+      const token = await this.payPalToken();
+      const response = await fetch(`${this.payPalBase()}/v1/billing/subscriptions/${encodeURIComponent(row.providerSubscriptionId)}`, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } });
+      const provider = await this.json(response);
+      if (!response.ok) throw new BadGatewayException(provider.message ?? 'Unable to read PayPal subscription');
+      const providerPlan = this.planSlugForProviderPrice(BillingProvider.PAYPAL, String(provider.plan_id ?? ''));
+      row.status = String(provider.status ?? row.status).toLowerCase();
+      const nextBilling = provider.billing_info?.next_billing_time ? new Date(provider.billing_info.next_billing_time) : null;
+      if (nextBilling && !Number.isNaN(nextBilling.getTime())) row.currentPeriodEnd = nextBilling;
+      if (row.planChangeStatus === PlanChangeStatus.PENDING_APPROVAL && providerPlan === row.pendingPlanSlug) row.planChangeStatus = PlanChangeStatus.SCHEDULED;
+      else if (![PlanChangeStatus.PENDING_APPROVAL, PlanChangeStatus.SCHEDULED].includes(row.planChangeStatus) && providerPlan && providerPlan !== row.planSlug) {
+        warnings.push(`Local plan ${row.planSlug} was corrected to PayPal plan ${providerPlan}.`);
+        row.planSlug = providerPlan;
+      }
+    }
+
+    await this.subscriptions.save(row);
+    await this.refreshUserPlan(row.userId);
+    return { subscription: await this.subscriptions.findOneByOrFail({ id: row.id }), reconciledAt: new Date(), warnings };
+  }
+
+  private async reconcileStaleSubscriptions() {
+    const staleAt = new Date(Date.now() - 24 * 60 * 60_000);
+    const rows = await this.subscriptions.find({
+      where: [
+        { planChangeStatus: In([PlanChangeStatus.PENDING_PAYMENT, PlanChangeStatus.PENDING_APPROVAL, PlanChangeStatus.SCHEDULED]) },
+        { status: In(['active', 'trialing', 'past_due']), updatedAt: LessThan(staleAt) },
+      ],
+      order: { updatedAt: 'ASC' },
+      take: 100,
+    });
+    for (const row of rows) {
+      try { await this.reconcileSubscription(row.id); }
+      catch (error) { this.logger.warn(`Subscription reconciliation failed subscriptionId=${row.id} provider=${row.provider} error=${error instanceof Error ? error.message : String(error)}`); }
+    }
+  }
+
   async cancelSubscription(subscriptionId: string, userId?: string, immediate = false, reason = 'Requested by account owner') {
     const row = await this.subscriptionForAction(subscriptionId, userId);
+    if ([PlanChangeStatus.PENDING_PAYMENT, PlanChangeStatus.PENDING_APPROVAL, PlanChangeStatus.SCHEDULED].includes(row.planChangeStatus)) throw new BadRequestException('Cancel the pending plan change before cancelling this subscription');
     if (!row.providerSubscriptionId) throw new BadRequestException('Subscription is not connected to a payment provider');
     if (row.provider === BillingProvider.STRIPE) {
       const response = immediate
@@ -82,7 +308,12 @@ export class BillingService {
     if (refundAmount <= 0 || refundAmount > remaining) throw new BadRequestException(`Refund amount must be between 1 and ${remaining} minor currency units`);
     let providerRefundId: string; let providerStatus = 'pending';
     if (payment.provider === BillingProvider.STRIPE) {
-      const body = new URLSearchParams({ payment_intent: payment.providerPaymentId, amount: String(refundAmount), reason: 'requested_by_customer', 'metadata[reason]': reason.slice(0, 500) });
+      const reference = await this.resolveStripeRefundReference(payment.providerPaymentId);
+      if (payment.providerPaymentId !== reference.id) {
+        payment.providerPaymentId = reference.id;
+        await this.transactions.save(payment);
+      }
+      const body = new URLSearchParams({ [reference.field]: reference.id, amount: String(refundAmount), reason: 'requested_by_customer', 'metadata[reason]': reason.slice(0, 500) });
       const response = await fetch('https://api.stripe.com/v1/refunds', { method: 'POST', headers: { Authorization: `Bearer ${this.config.required('stripeSecretKey', 'STRIPE_SECRET_KEY')}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body });
       const data = await this.json(response); if (!response.ok || !data.id) throw new BadGatewayException(data.error?.message ?? 'Stripe refund failed');
       providerRefundId = data.id; providerStatus = data.status === 'succeeded' ? 'succeeded' : String(data.status ?? 'pending');
@@ -127,6 +358,7 @@ export class BillingService {
     const secret = this.config.required('stripeSecretKey', 'STRIPE_SECRET_KEY');
     const plan = this.plans.require(planSlug);
     if (plan.priceMonthly <= 0) throw new BadRequestException('Free plans do not require checkout');
+    await this.assertCanCreateSubscription(user.id);
     const price = plan.stripePriceId || this.config.required('stripePriceId', 'STRIPE_PRO_PRICE_ID');
     const appUrl = this.appUrl();
     const body = new URLSearchParams({
@@ -195,15 +427,27 @@ export class BillingService {
       if (!userId) { this.logger.warn(`Stripe subscription webhook could not be linked eventId=${String(event.id ?? 'unknown')} subscriptionId=${String(object.id ?? '')}`); return; }
       const status = event.type === 'customer.subscription.deleted' ? 'cancelled' : String(object.status ?? 'pending');
       const periodEnd = object.current_period_end ?? object.items?.data?.[0]?.current_period_end;
-      await this.upsert(userId, BillingProvider.STRIPE, object.id, this.stripeId(object.customer), status, periodEnd, Boolean(object.cancel_at_period_end), String(object.metadata?.planSlug ?? existing?.planSlug ?? 'pro'));
+      const providerPrice = this.stripeId(object.items?.data?.[0]?.price);
+      const detectedPlan = this.planSlugForProviderPrice(BillingProvider.STRIPE, providerPrice);
+      const requestedPlan = String(object.metadata?.planSlug ?? detectedPlan ?? existing?.planSlug ?? 'pro');
+      const holdUpgrade = existing?.planChangeStatus === PlanChangeStatus.PENDING_PAYMENT && existing.pendingPlanSlug === requestedPlan;
+      await this.upsert(userId, BillingProvider.STRIPE, object.id, this.stripeId(object.customer), status, periodEnd, Boolean(object.cancel_at_period_end), holdUpgrade ? existing.planSlug : requestedPlan);
+      if (existing?.planChangeStatus === PlanChangeStatus.SCHEDULED && existing.pendingPlanSlug && detectedPlan === existing.pendingPlanSlug) {
+        await this.completePlanChange(existing.id, detectedPlan);
+      }
       return;
     }
-    if (['invoice.paid', 'invoice.payment_succeeded', 'invoice.payment_failed', 'charge.refunded'].includes(String(event.type))) await this.recordStripePayment(event, object);
+    if (['invoice.paid', 'invoice.payment_succeeded', 'invoice.payment_failed', 'charge.refunded'].includes(String(event.type))) {
+      await this.recordStripePayment(event, object);
+      if (['invoice.paid', 'invoice.payment_succeeded'].includes(String(event.type))) await this.finalizePaidStripeChange(object);
+      if (event.type === 'invoice.payment_failed') await this.failStripeChange(object, 'Stripe could not collect the prorated plan-change invoice.');
+    }
   }
 
   async createPayPalSubscription(user: UserAccount, planSlug = 'pro'): Promise<{ id: string; url: string }> {
     const plan = this.plans.require(planSlug);
     if (plan.priceMonthly <= 0) throw new BadRequestException('Free plans do not require checkout');
+    await this.assertCanCreateSubscription(user.id);
     const token = await this.payPalToken();
     const response = await fetch(`${this.payPalBase()}/v1/billing/subscriptions`, {
       method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
@@ -238,7 +482,15 @@ export class BillingService {
       'BILLING.SUBSCRIPTION.PAYMENT.FAILED': 'past_due',
     };
     const subscriptionId = resourceSubscriptionId;
-    if (eventType.startsWith('BILLING.SUBSCRIPTION.')) await this.upsert(userId, BillingProvider.PAYPAL, subscriptionId, resource.subscriber?.payer_id ?? null, statusByEvent[eventType] ?? String(resource.status ?? 'pending').toLowerCase(), undefined, undefined, planSlug);
+    if (eventType.startsWith('BILLING.SUBSCRIPTION.')) {
+      const detectedPlan = this.planSlugForProviderPrice(BillingProvider.PAYPAL, String(resource.plan_id ?? ''));
+      const changing = existing?.pendingPlanSlug && detectedPlan === existing.pendingPlanSlug;
+      await this.upsert(userId, BillingProvider.PAYPAL, subscriptionId, resource.subscriber?.payer_id ?? null, statusByEvent[eventType] ?? String(resource.status ?? 'pending').toLowerCase(), resource.billing_info?.next_billing_time, undefined, changing ? existing.planSlug : planSlug);
+      if (changing && ['BILLING.SUBSCRIPTION.ACTIVATED', 'BILLING.SUBSCRIPTION.UPDATED'].includes(eventType)) {
+        existing.planChangeStatus = PlanChangeStatus.SCHEDULED;
+        await this.subscriptions.save(existing);
+      }
+    }
     if (['PAYMENT.SALE.COMPLETED', 'PAYMENT.SALE.DENIED', 'PAYMENT.SALE.REFUNDED', 'PAYMENT.SALE.REVERSED', 'BILLING.SUBSCRIPTION.PAYMENT.FAILED'].includes(eventType)) {
       const amount = resource.amount ?? resource.amount_with_breakdown?.gross_amount ?? {};
       const originalPaymentId = resource.sale_id ?? resource.id;
@@ -250,13 +502,18 @@ export class BillingService {
         amount: this.decimalToMinor(amount.total ?? amount.value), currency: String(amount.currency ?? amount.currency_code ?? 'USD').toUpperCase(),
         description: resource.note ?? 'Pro monthly subscription', paidAt: new Date(event.create_time ?? Date.now()),
       });
+      if (eventType === 'PAYMENT.SALE.COMPLETED' && existing?.planChangeStatus === PlanChangeStatus.SCHEDULED && existing.pendingPlanSlug && (!existing.planChangeEffectiveAt || existing.planChangeEffectiveAt <= new Date())) await this.completePlanChange(existing.id, existing.pendingPlanSlug);
     }
   }
 
   private async recordStripePayment(event: Json, object: Json) {
     const subscriptionId = this.stripeInvoiceSubscriptionId(object);
     const customerId = this.stripeId(object.customer);
-    const paymentId = this.stripeInvoicePaymentId(object);
+    let paymentId = this.stripeInvoicePaymentId(object);
+    if (!paymentId && String(object.id ?? '').startsWith('in_') && ['invoice.paid', 'invoice.payment_succeeded'].includes(String(event.type))) {
+      try { paymentId = (await this.stripePaymentForInvoice(String(object.id))).id; }
+      catch (error) { this.logger.warn(`Stripe invoice payment reference could not be resolved invoiceId=${String(object.id)} error=${error instanceof Error ? error.message : String(error)}`); }
+    }
     const existing = subscriptionId
       ? await this.subscriptions.findOneBy({ provider: BillingProvider.STRIPE, providerSubscriptionId: subscriptionId })
       : customerId ? await this.subscriptions.findOne({ where: { provider: BillingProvider.STRIPE, providerCustomerId: customerId }, order: { updatedAt: 'DESC' } }) : null;
@@ -275,7 +532,7 @@ export class BillingService {
       if (amount <= 0) return;
     }
     await this.recordTransaction({
-      userId, provider: BillingProvider.STRIPE, providerEventId: String(event.id), providerPaymentId: paymentId ?? object.id ?? null,
+      userId, provider: BillingProvider.STRIPE, providerEventId: String(event.id), providerPaymentId: paymentId,
       providerSubscriptionId: subscriptionId ?? null, parentTransactionId,
       status: refunded ? PaymentStatus.REFUNDED : ['invoice.paid', 'invoice.payment_succeeded'].includes(String(event.type)) ? PaymentStatus.SUCCEEDED : PaymentStatus.FAILED,
       amount,
@@ -348,12 +605,41 @@ export class BillingService {
     return null;
   }
 
-  private async upsert(userId: string, provider: BillingProvider, subscriptionId: string, customerId: string | null, status: string, periodEnd?: number, cancelAtPeriodEnd?: boolean, planSlug = 'pro') {
+  private async resolveStripeRefundReference(id: string): Promise<{ field: 'payment_intent' | 'charge'; id: string }> {
+    if (id.startsWith('pi_')) return { field: 'payment_intent', id };
+    if (id.startsWith('ch_')) return { field: 'charge', id };
+    if (id.startsWith('in_')) return this.stripePaymentForInvoice(id);
+    if (id.startsWith('cs_')) {
+      const response = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(id)}?expand[]=payment_intent`, { headers: { Authorization: `Bearer ${this.config.required('stripeSecretKey', 'STRIPE_SECRET_KEY')}` } });
+      const data = await this.json(response);
+      if (!response.ok) throw new BadGatewayException(data.error?.message ?? 'Unable to resolve Stripe checkout payment');
+      const paymentIntent = this.stripeId(data.payment_intent);
+      if (paymentIntent) return { field: 'payment_intent', id: paymentIntent };
+    }
+    throw new BadRequestException(`Stripe payment reference ${id} is not refundable because no PaymentIntent or Charge was collected`);
+  }
+
+  private async stripePaymentForInvoice(invoiceId: string): Promise<{ field: 'payment_intent' | 'charge'; id: string }> {
+    const params = new URLSearchParams({ invoice: invoiceId, limit: '10' });
+    const response = await fetch(`https://api.stripe.com/v1/invoice_payments?${params}`, { headers: { Authorization: `Bearer ${this.config.required('stripeSecretKey', 'STRIPE_SECRET_KEY')}` } });
+    const data = await this.json(response);
+    if (!response.ok) throw new BadGatewayException(data.error?.message ?? 'Unable to resolve Stripe invoice payment');
+    const rows = Array.isArray(data.data) ? data.data : [];
+    const paid = rows.find((row: Json) => row.status === 'paid') ?? rows[0];
+    const paymentIntent = this.stripeId(paid?.payment?.payment_intent);
+    if (paymentIntent) return { field: 'payment_intent', id: paymentIntent };
+    const charge = this.stripeId(paid?.payment?.charge);
+    if (charge) return { field: 'charge', id: charge };
+    throw new BadRequestException(`Stripe invoice ${invoiceId} has no refundable PaymentIntent or Charge`);
+  }
+
+  private async upsert(userId: string, provider: BillingProvider, subscriptionId: string, customerId: string | null, status: string, periodEnd?: number | string, cancelAtPeriodEnd?: boolean, planSlug = 'pro') {
     const user = await this.users.findOneBy({ id: userId });
     if (!user) return;
     let row = await this.subscriptions.findOne({ where: [{ provider, providerSubscriptionId: subscriptionId }, { provider, userId }] });
     row ??= this.subscriptions.create({ userId, provider });
-    Object.assign(row, { providerSubscriptionId: subscriptionId, providerCustomerId: customerId, status, planSlug, currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000) : row.currentPeriodEnd, ...(cancelAtPeriodEnd === undefined ? {} : { cancelAtPeriodEnd }) });
+    const parsedPeriodEnd = periodEnd ? new Date(typeof periodEnd === 'number' ? periodEnd * 1000 : periodEnd) : row.currentPeriodEnd;
+    Object.assign(row, { providerSubscriptionId: subscriptionId, providerCustomerId: customerId, status, planSlug, currentPeriodEnd: parsedPeriodEnd && !Number.isNaN(parsedPeriodEnd.getTime()) ? parsedPeriodEnd : row.currentPeriodEnd, ...(cancelAtPeriodEnd === undefined ? {} : { cancelAtPeriodEnd }) });
     await this.subscriptions.save(row);
     await this.refreshUserPlan(userId);
   }
@@ -363,11 +649,99 @@ export class BillingService {
     const all = await this.subscriptions.find({ where: { userId } }); const now = Date.now();
     const active = all.filter(subscription => ['active', 'trialing'].includes(subscription.status.toLowerCase()) && (!subscription.currentPeriodEnd || subscription.currentPeriodEnd.getTime() > now)).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
     const nextPlan = active?.planSlug ?? UserPlan.FREE;
-    if (user.plan !== nextPlan && nextPlan !== UserPlan.FREE) {
+    // A first paid activation starts a fresh paid usage cycle. Paid-to-paid plan changes keep the
+    // counters already consumed in the current cycle so an upgrade cannot be used as a quota reset.
+    if (user.plan !== nextPlan && nextPlan !== UserPlan.FREE && (!user.plan || user.plan === UserPlan.FREE)) {
       user.sentMessages = 0; user.receivedMessages = 0; user.aiTokensUsed = 0; user.usagePeriodStart = new Date();
     }
     user.plan = nextPlan;
     await this.users.save(user);
+  }
+
+  private validatePlanChange(subscription: BillingSubscription, targetPlanSlug: string) {
+    if (!['active', 'trialing'].includes(subscription.status.toLowerCase())) throw new BadRequestException('Only an active subscription can change plans');
+    if ([PlanChangeStatus.PENDING_PAYMENT, PlanChangeStatus.PENDING_APPROVAL, PlanChangeStatus.SCHEDULED].includes(subscription.planChangeStatus)) throw new BadRequestException('A plan change is already pending for this subscription');
+    const current = this.plans.require(subscription.planSlug);
+    const target = this.plans.require(targetPlanSlug);
+    if (target.priceMonthly <= 0) throw new BadRequestException('Use subscription cancellation to return to the free plan');
+    if (current.slug === target.slug) throw new BadRequestException('This subscription already uses the selected plan');
+    if (current.currency !== target.currency) throw new BadRequestException('Plans with different currencies cannot be switched in place');
+    return { current, target, direction: target.priceMonthly > current.priceMonthly ? 'upgrade' as const : 'downgrade' as const };
+  }
+
+  private async assertCanCreateSubscription(userId: string) {
+    const rows = await this.subscriptions.find({ where: { userId } });
+    const existing = rows.find(row => ['active', 'trialing', 'pending', 'approval_pending', 'approved'].includes(row.status.toLowerCase()) || [PlanChangeStatus.PENDING_PAYMENT, PlanChangeStatus.PENDING_APPROVAL, PlanChangeStatus.SCHEDULED].includes(row.planChangeStatus));
+    if (existing) throw new BadRequestException('An active or pending subscription already exists. Change the existing subscription instead of creating another one.');
+  }
+
+  private stripePrice(plan: { stripePriceId: string | null; slug: string }) {
+    return plan.stripePriceId || (plan.slug === 'pro' ? this.config.required('stripePriceId', 'STRIPE_PRO_PRICE_ID') : (() => { throw new BadRequestException(`Stripe Price ID is missing for plan ${plan.slug}`); })());
+  }
+
+  private payPalPlan(plan: { paypalPlanId: string | null; slug: string }) {
+    return plan.paypalPlanId || (plan.slug === 'pro' ? this.config.required('paypalPlanId', 'PAYPAL_PRO_PLAN_ID') : (() => { throw new BadRequestException(`PayPal Plan ID is missing for plan ${plan.slug}`); })());
+  }
+
+  private planSlugForProviderPrice(provider: BillingProvider, providerPlanId: string | null): string | null {
+    if (!providerPlanId) return null;
+    const plan = this.plans.list(true).find(item => provider === BillingProvider.STRIPE ? item.stripePriceId === providerPlanId : item.paypalPlanId === providerPlanId);
+    return plan?.slug ?? null;
+  }
+
+  private stripeHeaders() { return { Authorization: `Bearer ${this.config.required('stripeSecretKey', 'STRIPE_SECRET_KEY')}`, 'Content-Type': 'application/x-www-form-urlencoded' }; }
+
+  private async getStripeSubscription(id: string, expandInvoice = false): Promise<Json> {
+    const suffix = expandInvoice ? '?expand[]=latest_invoice' : '';
+    const response = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(id)}${suffix}`, { headers: { Authorization: `Bearer ${this.config.required('stripeSecretKey', 'STRIPE_SECRET_KEY')}` } });
+    const data = await this.json(response);
+    if (!response.ok) throw new BadGatewayException(data.error?.message ?? 'Unable to read Stripe subscription');
+    return data;
+  }
+
+  private async createStripeSchedule(subscriptionId: string): Promise<string> {
+    const response = await fetch('https://api.stripe.com/v1/subscription_schedules', { method: 'POST', headers: this.stripeHeaders(), body: new URLSearchParams({ from_subscription: subscriptionId }) });
+    const data = await this.json(response);
+    if (!response.ok || !data.id) throw new BadGatewayException(data.error?.message ?? 'Unable to create Stripe subscription schedule');
+    return String(data.id);
+  }
+
+  private async completePlanChange(subscriptionId: string, planSlug: string) {
+    const row = await this.subscriptions.findOneBy({ id: subscriptionId });
+    if (!row || row.pendingPlanSlug !== planSlug) return;
+    this.applyCompletedPlanChange(row, planSlug);
+    await this.subscriptions.save(row);
+    await this.refreshUserPlan(row.userId);
+  }
+
+  private applyCompletedPlanChange(row: BillingSubscription, planSlug: string) {
+    row.planSlug = planSlug;
+    row.planChangeStatus = PlanChangeStatus.COMPLETED;
+    row.pendingPlanSlug = null;
+    row.planChangeEffectiveAt = null;
+    row.planChangeError = null;
+  }
+
+  private async finalizePaidStripeChange(invoice: Json) {
+    const subscriptionId = this.stripeInvoiceSubscriptionId(invoice);
+    if (!subscriptionId) return;
+    const row = await this.subscriptions.findOneBy({ provider: BillingProvider.STRIPE, providerSubscriptionId: subscriptionId });
+    if (!row || row.planChangeStatus !== PlanChangeStatus.PENDING_PAYMENT || !row.pendingPlanSlug) return;
+    const target = this.plans.get(row.pendingPlanSlug);
+    const targetPrice = target?.stripePriceId || (target?.slug === 'pro' ? this.config.value('stripePriceId', 'STRIPE_PRO_PRICE_ID') : null);
+    const lines = Array.isArray(invoice.lines?.data) ? invoice.lines.data : [];
+    const containsTarget = !targetPrice || lines.some((line: Json) => this.stripeId(line.pricing?.price_details?.price ?? line.price) === targetPrice);
+    if (containsTarget) await this.completePlanChange(row.id, row.pendingPlanSlug);
+  }
+
+  private async failStripeChange(invoice: Json, message: string) {
+    const subscriptionId = this.stripeInvoiceSubscriptionId(invoice);
+    if (!subscriptionId) return;
+    const row = await this.subscriptions.findOneBy({ provider: BillingProvider.STRIPE, providerSubscriptionId: subscriptionId });
+    if (!row || row.planChangeStatus !== PlanChangeStatus.PENDING_PAYMENT) return;
+    row.planChangeStatus = PlanChangeStatus.FAILED;
+    row.planChangeError = message;
+    await this.subscriptions.save(row);
   }
 
   private async subscriptionForAction(id: string, userId?: string) {
@@ -377,7 +751,7 @@ export class BillingService {
   }
 
   private stripeUpdateSubscription(id: string, values: Record<string, string>) {
-    return fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(id)}`, { method: 'POST', headers: { Authorization: `Bearer ${this.config.required('stripeSecretKey', 'STRIPE_SECRET_KEY')}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(values) });
+    return fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(id)}`, { method: 'POST', headers: this.stripeHeaders(), body: new URLSearchParams(values) });
   }
 
   private verifyStripe(raw: Buffer, header?: string) {

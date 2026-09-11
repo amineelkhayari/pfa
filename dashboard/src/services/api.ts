@@ -1748,6 +1748,26 @@ export interface BillingSubscription {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   planSlug: string;
+  planChangeStatus: 'none' | 'pending_payment' | 'pending_approval' | 'scheduled' | 'completed' | 'failed';
+  pendingPlanSlug: string | null;
+  planChangeEffectiveAt: string | null;
+  planChangeRequestedAt: string | null;
+  providerScheduleId: string | null;
+  planChangeError: string | null;
+}
+export interface PlanChangePreview {
+  subscriptionId: string;
+  provider: 'stripe' | 'paypal';
+  currentPlan: string;
+  targetPlan: string;
+  direction: 'upgrade' | 'downgrade';
+  amountDue: number | null;
+  prorationDate: number | null;
+  currency: string;
+  effectiveAt: string | null;
+  nextRenewalAt: string | null;
+  approvalRequired: boolean;
+  note: string;
 }
 export interface BillingPlan {
   id: string;
@@ -1815,6 +1835,14 @@ export const billingApi = {
     }),
   reactivateSubscription: (id: string) =>
     request<BillingSubscription>(`/billing/subscriptions/${id}/reactivate`, { method: 'POST' }),
+  previewPlanChange: (id: string, plan: string) =>
+    request<PlanChangePreview>(`/billing/subscriptions/${id}/change-preview`, { method: 'POST', body: JSON.stringify({ plan }) }),
+  changePlan: (id: string, plan: string, prorationDate?: number | null) =>
+    request<{ subscription: BillingSubscription; approvalUrl: string | null }>(`/billing/subscriptions/${id}/change-plan`, { method: 'POST', body: JSON.stringify({ plan, ...(prorationDate ? { prorationDate } : {}) }) }),
+  cancelPlanChange: (id: string) =>
+    request<{ subscription: BillingSubscription; warning: string | null }>(`/billing/subscriptions/${id}/cancel-plan-change`, { method: 'POST' }),
+  reconcileSubscription: (id: string) =>
+    request<{ subscription: BillingSubscription; reconciledAt: string; warnings: string[] }>(`/billing/subscriptions/${id}/reconcile`, { method: 'POST' }),
 };
 
 export interface AdminPaymentSettings {
@@ -1881,6 +1909,10 @@ export const adminBillingApi = {
     }),
   reactivateSubscription: (id: string) =>
     request<BillingSubscription>(`/admin/billing-settings/subscriptions/${id}/reactivate`, { method: 'POST' }),
+  cancelPlanChange: (id: string) =>
+    request<{ subscription: BillingSubscription; warning: string | null }>(`/admin/billing-settings/subscriptions/${id}/cancel-plan-change`, { method: 'POST' }),
+  reconcileSubscription: (id: string) =>
+    request<{ subscription: BillingSubscription; reconciledAt: string; warnings: string[] }>(`/admin/billing-settings/subscriptions/${id}/reconcile`, { method: 'POST' }),
   refund: (id: string, amount?: number, reason?: string) =>
     request<PaymentTransaction>(`/admin/billing-settings/payments/${id}/refund`, {
       method: 'POST',

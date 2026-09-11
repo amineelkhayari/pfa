@@ -34,6 +34,36 @@ export function Account() {
     mutationFn: ({ id, action }: { id: string; action: 'cancel' | 'reactivate' }) => action === 'cancel' ? billingApi.cancelSubscription(id, 'Cancelled from account settings') : billingApi.reactivateSubscription(id),
     onSuccess: () => { void client.invalidateQueries({ queryKey: ['billing'] }); void client.invalidateQueries({ queryKey: ['account'] }); },
   });
+  const planChange = useMutation({
+    mutationFn: async ({ subscriptionId, plan }: { subscriptionId: string; plan: BillingPlan }) => {
+      const preview = await billingApi.previewPlanChange(subscriptionId, plan.slug);
+      const amount = preview.amountDue == null ? 'calculated by the provider' : new Intl.NumberFormat(undefined, { style: 'currency', currency: preview.currency }).format(preview.amountDue / 100);
+      const timing = preview.effectiveAt ? new Date(preview.effectiveAt).toLocaleString() : 'after provider confirmation';
+      const accepted = window.confirm(`${preview.direction === 'upgrade' ? 'Upgrade' : 'Downgrade'} from ${preview.currentPlan} to ${preview.targetPlan}?\n\nAmount due now: ${amount}\nEffective: ${timing}\n\n${preview.note}`);
+      if (!accepted) return null;
+      return billingApi.changePlan(subscriptionId, plan.slug, preview.prorationDate);
+    },
+    onSuccess: result => {
+      if (!result) return;
+      if (result.approvalUrl) window.location.assign(result.approvalUrl);
+      else { void client.invalidateQueries({ queryKey: ['billing'] }); void client.invalidateQueries({ queryKey: ['account'] }); }
+    },
+  });
+  const planRecovery = useMutation({
+    mutationFn: async ({ id, action }: { id: string; action: 'cancel' | 'reconcile' }) => {
+      if (action === 'cancel') {
+        const result = await billingApi.cancelPlanChange(id);
+        return { subscription: result.subscription, messages: result.warning ? [result.warning] : [] };
+      }
+      const result = await billingApi.reconcileSubscription(id);
+      return { subscription: result.subscription, messages: result.warnings };
+    },
+    onSuccess: result => {
+      if (result.messages.length) window.alert(result.messages.join('\n'));
+      void client.invalidateQueries({ queryKey: ['billing'] });
+      void client.invalidateQueries({ queryKey: ['account'] });
+    },
+  });
   const currentPlan = plans.find(plan => plan.slug === user?.plan);
 
   if (!isUserLogin) return <div className="account-page"><PageHeader title="Account" subtitle="This API-key session has no customer profile." /></div>;
@@ -68,10 +98,14 @@ export function Account() {
             <div>{subscription.cancelAtPeriodEnd ? <button className="subscription-link" disabled={subscriptionAction.isPending} onClick={() => subscriptionAction.mutate({ id: subscription.id, action: 'reactivate' })}>Keep subscription</button> : ['active', 'trialing'].includes(subscription.status.toLowerCase()) && <button className="subscription-link danger" disabled={subscriptionAction.isPending} onClick={() => { const warning = subscription.provider === 'paypal' ? 'PayPal cancellation is immediate and Pro access will end now. Continue?' : 'Automatic renewal will stop, but Pro access remains until the paid period ends. Continue?'; if (window.confirm(warning)) subscriptionAction.mutate({ id: subscription.id, action: 'cancel' }); }}>Cancel subscription</button>}</div>
           </div>;
         })}
+        {subscriptions.some(subscription => ['pending_payment', 'pending_approval', 'scheduled'].includes(subscription.planChangeStatus)) && <div className="plan-change-notice">{subscriptions.filter(subscription => subscription.pendingPlanSlug).map(subscription => <div className="plan-change-row" key={subscription.id}><span><strong>Plan change: {subscription.pendingPlanSlug}</strong><small>{subscription.planChangeStatus.replaceAll('_', ' ')}{subscription.planChangeEffectiveAt ? ` · effective ${formatBillingDate(subscription.planChangeEffectiveAt)}` : ''}</small></span><div><button type="button" className="subscription-link" disabled={planRecovery.isPending} onClick={() => planRecovery.mutate({ id: subscription.id, action: 'reconcile' })}>Sync status</button>{!(subscription.provider === 'stripe' && subscription.planChangeStatus === 'pending_payment') && !(subscription.provider === 'paypal' && subscription.planChangeStatus === 'scheduled') && <button type="button" className="subscription-link danger" disabled={planRecovery.isPending} onClick={() => window.confirm('Cancel this pending plan change?') && planRecovery.mutate({ id: subscription.id, action: 'cancel' })}>Cancel change</button>}</div></div>)}</div>}
+        {subscriptions.some(subscription => subscription.planChangeStatus === 'failed') && <small className="billing-error">{subscriptions.find(subscription => subscription.planChangeStatus === 'failed')?.planChangeError ?? 'The latest plan change failed.'}</small>}
         {subscriptionAction.isError && <small className="billing-error">{subscriptionAction.error.message}</small>}
+        {planRecovery.isError && <small className="billing-error">{planRecovery.error.message}</small>}
       </div>
     </div>
-    <PricingPlans plans={plans} currentPlan={user.plan} busy={checkout.isPending} onSelect={(plan: BillingPlan, provider) => checkout.mutate({ provider, plan: plan.slug })}/>
+    <PricingPlans plans={plans} currentPlan={user.plan} busy={checkout.isPending || planChange.isPending} onSelect={(plan: BillingPlan, provider) => { const active = subscriptions.find(subscription => ['active', 'trialing'].includes(subscription.status.toLowerCase())); if (active) planChange.mutate({ subscriptionId: active.id, plan }); else checkout.mutate({ provider, plan: plan.slug }); }}/>
+    {planChange.isError && <small className="billing-error">{planChange.error.message}</small>}
     <section className="account-card payment-history-card">
       <div className="payment-history-heading"><div><h2>Payment history</h2><p>Your subscription charges and renewal attempts.</p></div><strong>{payments?.total ?? 0} payments</strong></div>
       <div className="payment-table-wrap"><table className="payment-table"><thead><tr><th>Date</th><th>Provider</th><th>Description</th><th>Status</th><th>Amount</th></tr></thead><tbody>
