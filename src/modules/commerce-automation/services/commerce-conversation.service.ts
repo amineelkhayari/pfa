@@ -84,7 +84,7 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
         ![Platform.SHOPIFY, Platform.WOOCOMMERCE, Platform.YOUCAN].includes(audioStore.provider)
       )
         return;
-      reply = await this.voice.transcribeIncoming(sessionId, chatId, message.media, audioStore.language);
+      reply = await this.voice.transcribeIncoming(sessionId, chatId, message.media);
     }
     if (!reply) return;
     if (isAudio && chatId) {

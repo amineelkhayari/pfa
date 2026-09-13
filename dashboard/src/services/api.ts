@@ -1973,6 +1973,7 @@ export interface AdminAiSettings {
     provider: 'omniroute';
     apiKeyConfigured: boolean;
     sttModel: string;
+    sttLanguage: string;
     ttsModel: string;
     voiceId: string;
     outputFormat: string;
@@ -1989,6 +1990,7 @@ export const adminAiApi = {
     maxTurns?: number;
     conversationTimeoutHours?: number;
     audioSttModel?: string;
+    audioSttLanguage?: string;
     audioTtsModel?: string;
     audioVoice?: string;
     audioOutputFormat?: string;
@@ -2004,9 +2006,10 @@ export interface AiTestResult {
 export const aiTestApi = {
   chat: (message: string, history: Array<{ role: 'customer' | 'assistant'; text: string }>, storeId?: string) =>
     request<AiTestResult>('/ai/test-chat', { method: 'POST', body: JSON.stringify({ message, history, storeId }) }),
-  transcribe: (file: File) => {
+  transcribe: (file: File, language?: string) => {
     const body = new FormData();
     body.append('file', file);
+    if (language) body.append('language', language);
     return request<{ text: string; model: string }>('/ai/test-chat/transcribe', { method: 'POST', body });
   },
   speech: (text: string) => requestBlob('/ai/test-chat/speech', { method: 'POST', body: JSON.stringify({ text }) }),

@@ -24,6 +24,7 @@ export function AiTestChat() {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [transcriptionLanguage, setTranscriptionLanguage] = useState('ar-MA');
   const [recording, setRecording] = useState(false);
   const [provider, setProvider] = useState('Configured provider');
   const [model, setModel] = useState('Select a store and start chatting');
@@ -76,7 +77,7 @@ export function AiTestChat() {
     if (!file || sending || transcribing) return;
     setError(''); setTranscribing(true);
     try {
-      const result = await aiTestApi.transcribe(file);
+      const result = await aiTestApi.transcribe(file, transcriptionLanguage);
       await sendText(result.text, true);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Audio transcription failed.');
@@ -138,7 +139,7 @@ export function AiTestChat() {
       {!products.isLoading && !products.data?.length && <span className="agent-muted">Aucun produit importé.</span>}
     </div></aside>
     <main className="agent-main">
-      <div className="agent-config"><label>Boutique</label><select value={storeId} onChange={event => { setStoreId(event.target.value); reset(); }}><option value="">Choisir une boutique</option>{stores.data?.map(store => <option value={store.id} key={store.id}>{store.name} · {store.provider}</option>)}</select><label>Provider</label><span className="agent-chip">{provider}</span><label>Model</label><span className="agent-chip">{model}</span><button className="agent-reset" onClick={reset}><RotateCcw size={15}/> Nouveau test</button></div>
+      <div className="agent-config"><label>Boutique</label><select value={storeId} onChange={event => { setStoreId(event.target.value); reset(); }}><option value="">Choisir une boutique</option>{stores.data?.map(store => <option value={store.id} key={store.id}>{store.name} · {store.provider}</option>)}</select><label>Langue audio</label><select value={transcriptionLanguage} onChange={event => setTranscriptionLanguage(event.target.value)}><option value="ar-MA">Darija (ar-MA)</option><option value="fr">Français</option><option value="multi">Multilingue</option><option value="auto">Auto</option></select><label>Provider</label><span className="agent-chip">{provider}</span><label>Model</label><span className="agent-chip">{model}</span><button className="agent-reset" onClick={reset}><RotateCcw size={15}/> Nouveau test</button></div>
       <header className="agent-header"><h1><span/> Assistant Boutique</h1><p>Test sécurisé avec le catalogue réel. Aucun message WhatsApp et aucune commande réelle ne sont créés.</p></header>
       <section className="agent-messages">{turns.map((turn, index) => <div className="agent-turn-wrap" key={index}>{turn.toolCalls?.map((call, toolIndex) => <div className="agent-tool" key={`${index}-${toolIndex}`}><strong><Wrench size={14}/> Tool appelé : {call.tool}</strong><small>input →</small><pre>{JSON.stringify(call.input, null, 2)}</pre><small>résultat →</small><pre>{JSON.stringify(call.result, null, 2)}</pre></div>)}<div className={`agent-message ${turn.role}`}>{turn.text}{turn.audioUrl && <audio className="agent-reply-audio" controls preload="metadata" src={turn.audioUrl}>Votre navigateur ne prend pas en charge la lecture audio.</audio>}</div></div>)}{transcribing && <div className="agent-typing"><Loader2 className="animate-spin" size={16}/> Transcription de l’audio…</div>}{sending && <div className="agent-typing"><Loader2 className="animate-spin" size={16}/> L’assistant prépare la réponse…</div>}<div ref={endRef}/></section>
       {error && <div className="agent-error">Erreur : {error}</div>}

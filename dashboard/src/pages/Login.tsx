@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Eye, EyeOff, Languages } from 'lucide-react';
+import { Eye, EyeOff, Languages } from 'lucide-react';
 import { CustomSelect } from '../components/CustomSelect';
 import { languageOptions, resolveSupportedLanguage, type SupportedLanguage } from '../i18n';
 import { API_BASE_URL } from '../services/api';
@@ -9,11 +9,10 @@ import './Login.css';
 interface LoginProps {
   onLogin: (apiKey: string) => void;
   initialMode?: 'signin' | 'signup';
-  onBack?: () => void;
   onModeChange?: (mode: 'signin' | 'signup') => void;
 }
 
-export function Login({ onLogin, initialMode = 'signin', onBack, onModeChange }: LoginProps) {
+export function Login({ onLogin, initialMode = 'signin', onModeChange }: LoginProps) {
   const { t, i18n } = useTranslation();
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
   const [name, setName] = useState('');
@@ -73,15 +72,10 @@ export function Login({ onLogin, initialMode = 'signin', onBack, onModeChange }:
 
   return (
     <div className="login-container">
-      {onBack && (
-        <button type="button" className="login-back" onClick={onBack}>
-          <ArrowLeft size={18} /> Back to website
-        </button>
-      )}
       <div className="login-card">
         <div className="login-logo">
           <img src="/smartconfirm_logo.webp" alt="SmartConfirm" className="logo-icon" />
-         
+
         </div>
 
         <div className="login-language">

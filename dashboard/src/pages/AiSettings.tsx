@@ -17,6 +17,7 @@ export function AiSettings() {
     maxTurns: 8,
     conversationTimeoutHours: 24,
     audioSttModel: 'deepgram/nova-3',
+    audioSttLanguage: 'ar-MA',
     audioTtsModel: 'elevenlabs/eleven_multilingual_v2',
     audioVoice: '',
     audioOutputFormat: 'mp3',
@@ -32,6 +33,7 @@ export function AiSettings() {
         maxTurns: data.maxTurns,
         conversationTimeoutHours: data.conversationTimeoutHours,
         audioSttModel: data.audio.sttModel,
+        audioSttLanguage: data.audio.sttLanguage,
         audioTtsModel: data.audio.ttsModel,
         audioVoice: data.audio.voiceId,
         audioOutputFormat: data.audio.outputFormat,
@@ -202,6 +204,18 @@ export function AiSettings() {
                   onChange={event => setForm({ ...form, audioSttModel: event.target.value })}
                 />
                 <small>Use an OmniRoute transcription model ID.</small>
+              </label>
+              <label className="payment-field">
+                <span>Transcription language</span>
+                <select value={form.audioSttLanguage} onChange={event => setForm({ ...form, audioSttLanguage: event.target.value })}>
+                  <option value="ar-MA">Moroccan Arabic / Darija (ar-MA)</option>
+                  <option value="fr">French (fr)</option>
+                  <option value="multi">Multilingual (multi)</option>
+                  <option value="auto">Automatic detection</option>
+                  <option value="ar">General Arabic (ar)</option>
+                  <option value="en">English (en)</option>
+                </select>
+                <small>Use ar-MA for Darija. Avoid automatic detection for short voice notes.</small>
               </label>
               <label className="payment-field">
                 <span>Text-to-speech model</span>

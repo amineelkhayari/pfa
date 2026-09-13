@@ -74,6 +74,7 @@ class UpdateAiSettingsDto {
   @IsOptional() @IsInt() @Min(2) @Max(50) maxTurns?: number;
   @IsOptional() @IsInt() @Min(1) @Max(720) conversationTimeoutHours?: number;
   @IsOptional() @IsString() audioSttModel?: string;
+  @IsOptional() @IsIn(['auto', 'multi', 'ar-MA', 'ar', 'fr', 'en']) audioSttLanguage?: string;
   @IsOptional() @IsString() audioTtsModel?: string;
   @IsOptional() @IsString() audioVoice?: string;
   @IsOptional() @IsString() audioOutputFormat?: string;

@@ -1,10 +1,12 @@
 import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { createLogger } from '../../../common/services/logger.service';
 import { BillingConfigService } from '../../billing/billing-config.service';
 
 const MAX_AUDIO_BYTES = 20 * 1024 * 1024;
 
 @Injectable()
 export class AudioTranscriptionService {
+  private readonly logger = createLogger('AudioTranscriptionService');
   constructor(private readonly config: BillingConfigService) {}
 
   async transcribe(file?: { buffer?: Buffer; mimetype?: string; originalname?: string; size?: number }, language?: string) {
@@ -21,7 +23,8 @@ export class AudioTranscriptionService {
     const form = new FormData();
     form.append('file', new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }), file.originalname || 'voice.ogg');
     form.append('model', model);
-    if (language?.trim()) form.append('language', language.trim().toLowerCase().split(/[-_]/)[0]);
+    const configuredLanguage = (language?.trim() || this.config.audioSttLanguage()).trim();
+    if (configuredLanguage && configuredLanguage.toLowerCase() !== 'auto') form.append('language', this.normalizeLanguage(configuredLanguage));
 
     let response: Response;
     try {
@@ -38,6 +41,10 @@ export class AudioTranscriptionService {
     const payload = await response.json().catch(() => ({})) as { text?: unknown; noSpeechDetected?: unknown; error?: { message?: unknown }; message?: unknown; detail?: unknown };
     if (!response.ok) {
       const detail = this.providerError(payload, response.status);
+      this.logger.error(`OmniRoute transcription rejected status=${response.status} model=${model} detail=${detail}`);
+      if (/does not have access|not (?:enabled|available|allowed)|invalid (?:speech |transcription )?model|model.*(?:access|permission)/i.test(detail)) {
+        throw new BadRequestException(`The OmniRoute project does not have access to transcription model "${model}". Enable this model in OmniRoute or select an accessible Speech-to-text model in Admin > AI settings.`);
+      }
       throw new ServiceUnavailableException(`Audio transcription failed: ${detail}`);
     }
     if (typeof payload.text !== 'string' || !payload.text.trim()) {
@@ -73,6 +80,10 @@ export class AudioTranscriptionService {
     if (!response.ok) {
       const payload = await response.json().catch(() => ({})) as { error?: { message?: unknown }; message?: unknown; detail?: unknown };
       const detail = this.providerError(payload, response.status);
+      this.logger.error(`OmniRoute speech generation rejected status=${response.status} model=${model} voice=${voiceId || 'default'} detail=${detail}`);
+      if (/does not have access|not (?:enabled|available|allowed)|invalid (?:speech )?model|model.*(?:access|permission)/i.test(detail)) {
+        throw new BadRequestException(`The OmniRoute project does not have access to speech model "${model}". Enable this model in OmniRoute or select an accessible Text-to-speech model in Admin > AI settings.`);
+      }
       throw new ServiceUnavailableException(`Speech generation failed: ${detail}`);
     }
     const data = Buffer.from(await response.arrayBuffer());
@@ -100,6 +111,12 @@ export class AudioTranscriptionService {
     if (typeof payload.detail === 'string') return payload.detail;
     if (payload.detail) return JSON.stringify(payload.detail);
     return `HTTP ${status}`;
+  }
+
+  private normalizeLanguage(language: string): string {
+    const normalized = language.replace('_', '-').trim();
+    if (/^ar-ma$/i.test(normalized)) return 'ar-MA';
+    return normalized.toLowerCase();
   }
 
 }

@@ -147,7 +147,6 @@ function AppContent() {
               <Login
                 onLogin={handleLogin}
                 initialMode="signin"
-                onBack={() => navigate('/')}
                 onModeChange={mode => navigate(mode === 'signin' ? '/login' : '/signup')}
               />
             }
@@ -158,7 +157,6 @@ function AppContent() {
               <Login
                 onLogin={handleLogin}
                 initialMode="signup"
-                onBack={() => navigate('/')}
                 onModeChange={mode => navigate(mode === 'signin' ? '/login' : '/signup')}
               />
             }

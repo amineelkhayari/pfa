@@ -11,7 +11,7 @@ export interface PaymentSettings {
   aiOrderConfirmationEnabled?: boolean; openAiApiKey?: string; openAiOrderModel?: string;
   aiOrderMaxTurns?: number; aiOrderConversationTimeoutHours?: number;
   aiProvider?: 'openai' | 'openrouter' | 'gemini' | 'custom'; aiBaseUrl?: string;
-  audioSttModel?: string; audioTtsModel?: string; audioVoice?: string; audioOutputFormat?: string;
+  audioSttModel?: string; audioSttLanguage?: string; audioTtsModel?: string; audioVoice?: string; audioOutputFormat?: string;
   freeTrialDays?: number; freeSessionLimit?: number; freeStoreLimit?: number;
   freeSentMessageLimit?: number; freeReceivedMessageLimit?: number; freeAiTokenLimit?: number;
   proAiTokenLimit?: number;
@@ -44,13 +44,14 @@ export class BillingConfigService implements OnModuleInit {
         provider: 'omniroute',
         apiKeyConfigured: Boolean(this.value('openAiApiKey', 'OPENAI_API_KEY')),
         sttModel: String(this.value('audioSttModel', 'AI_TRANSCRIPTION_MODEL') ?? 'deepgram/nova-3'),
+        sttLanguage: String(this.value('audioSttLanguage', 'AI_TRANSCRIPTION_LANGUAGE') ?? 'ar-MA'),
         ttsModel: String(this.value('audioTtsModel', 'AI_SPEECH_MODEL') ?? 'elevenlabs/eleven_multilingual_v2'),
         voiceId: String(this.value('audioVoice', 'AI_SPEECH_VOICE') ?? ''),
         outputFormat: String(this.value('audioOutputFormat', 'AI_SPEECH_FORMAT') ?? 'mp3'),
       },
     };
   }
-  async updateAi(patch: { enabled?: boolean; provider?: 'openai' | 'openrouter' | 'gemini' | 'custom'; baseUrl?: string; apiKey?: string; model?: string; maxTurns?: number; conversationTimeoutHours?: number; audioSttModel?: string; audioTtsModel?: string; audioVoice?: string; audioOutputFormat?: string }) {
+  async updateAi(patch: { enabled?: boolean; provider?: 'openai' | 'openrouter' | 'gemini' | 'custom'; baseUrl?: string; apiKey?: string; model?: string; maxTurns?: number; conversationTimeoutHours?: number; audioSttModel?: string; audioSttLanguage?: string; audioTtsModel?: string; audioVoice?: string; audioOutputFormat?: string }) {
     if (patch.baseUrl === '') this.current.aiBaseUrl = '';
     return this.update({
       aiOrderConfirmationEnabled: patch.enabled,
@@ -61,6 +62,7 @@ export class BillingConfigService implements OnModuleInit {
       aiOrderMaxTurns: patch.maxTurns,
       aiOrderConversationTimeoutHours: patch.conversationTimeoutHours,
       audioSttModel: patch.audioSttModel,
+      audioSttLanguage: patch.audioSttLanguage,
       audioTtsModel: patch.audioTtsModel,
       audioVoice: patch.audioVoice,
       audioOutputFormat: patch.audioOutputFormat,
@@ -75,6 +77,7 @@ export class BillingConfigService implements OnModuleInit {
   aiProvider() { return (this.current.aiProvider ?? 'openai') as 'openai' | 'openrouter' | 'gemini' | 'custom'; }
   aiBaseUrl() { return String(this.current.aiBaseUrl ?? ''); }
   audioSttModel() { return String(this.value('audioSttModel', 'AI_TRANSCRIPTION_MODEL') ?? 'deepgram/nova-3'); }
+  audioSttLanguage() { return String(this.value('audioSttLanguage', 'AI_TRANSCRIPTION_LANGUAGE') ?? 'ar-MA'); }
   audioTtsModel() { return String(this.value('audioTtsModel', 'AI_SPEECH_MODEL') ?? 'elevenlabs/eleven_multilingual_v2'); }
   audioVoice() { return String(this.value('audioVoice', 'AI_SPEECH_VOICE') ?? ''); }
   audioOutputFormat() { return String(this.value('audioOutputFormat', 'AI_SPEECH_FORMAT') ?? 'mp3'); }

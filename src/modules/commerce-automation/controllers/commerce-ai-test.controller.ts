@@ -58,8 +58,8 @@ export class UserAiTestController {
   @Post('test-chat/transcribe')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024, files: 1 } }))
-  transcribe(@UploadedFile() file?: { buffer?: Buffer; mimetype?: string; originalname?: string; size?: number }) {
-    return this.audio.transcribe(file);
+  transcribe(@UploadedFile() file?: { buffer?: Buffer; mimetype?: string; originalname?: string; size?: number }, @Body('language') language?: string) {
+    return this.audio.transcribe(file, language);
   }
 
   @Post('test-chat/speech')
