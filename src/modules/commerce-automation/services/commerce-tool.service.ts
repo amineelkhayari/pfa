@@ -31,6 +31,18 @@ export class CommerceToolService {
         type: 'object', additionalProperties: false,
         properties: { order_number: { type: 'string' } }, required: ['order_number'],
       }),
+      this.tool('send_order_history_pdf', 'Generate and send a PDF containing all real orders for this customer. Use when the customer asks for an order report, invoice-style history, PDF, or combined order totals.', {
+        type: 'object', additionalProperties: false, properties: {},
+      }),
+      this.tool('send_product_image', 'Send the real catalogue image for one product to the customer on WhatsApp. Use when the customer asks to see a product or its photo.', {
+        type: 'object', additionalProperties: false,
+        properties: { product_id: { type: 'string' } }, required: ['product_id'],
+      }),
+      this.tool('add_product_review', 'Publish and save a verified review for an item in a delivered customer order, even if that product is no longer in the current catalogue. product_id may be the catalogue ID, provider product ID, or exact purchased item name. Ask for a 1-5 rating and optional comment before calling.', {
+        type: 'object', additionalProperties: false,
+        properties: { order_number: { type: 'string' }, product_id: { type: 'string' }, rating: { type: 'integer', minimum: 1, maximum: 5 }, comment: { type: 'string', maxLength: 1000 } },
+        required: ['order_number', 'product_id', 'rating'],
+      }),
       this.tool('start_new_order', 'Start a persisted checkout cart for a verified catalogue product. This does not create a Shopify/WooCommerce order. After the result, ask only for result.next_required.', {
         type: 'object', additionalProperties: false,
         properties: {

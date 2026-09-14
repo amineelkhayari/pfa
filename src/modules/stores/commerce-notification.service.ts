@@ -6,8 +6,9 @@ import { Store } from './entities/store.entity';
 import { Order } from './entities/order.entity';
 import { OrderAiConversation } from './entities/order-ai-conversation.entity';
 import { phoneToChatId } from '../../common/utils/phone.util';
+import { PlanUsageService } from '../auth/plan-usage.service';
 
-export type CommerceOrderEvent = 'paid' | 'partiallyFulfilled' | 'shipped' | 'cancelled';
+export type CommerceOrderEvent = 'paid' | 'partiallyFulfilled' | 'shipped' | 'delivered' | 'cancelled';
 export type NewOrderNotificationResult =
   'sent' | 'skipped_automation_disabled' | 'skipped_no_phone' | 'skipped_whatsapp_created' | 'duplicate';
 type EventSetting = { enabled?: boolean; template?: string };
@@ -28,6 +29,10 @@ const defaults: Record<CommerceOrderEvent, EventSetting> = {
     template:
       'Bonjour {{customerName}} 👋\nVotre commande {{orderNumber}} a été expédiée 📦\n\n{{items}}\n\nSuivi : {{trackingNumber}}',
   },
+  delivered: {
+    enabled: true,
+    template: 'Bonjour {{customerName}} 👋\nVotre commande {{orderNumber}} a été livrée ✅\n\n{{items}}\n\nMerci pour votre confiance. Vous pouvez maintenant partager votre avis avec nous.',
+  },
   cancelled: { enabled: false, template: 'Bonjour {{customerName}},\nVotre commande {{orderNumber}} a été annulée.' },
 };
 
@@ -35,7 +40,7 @@ const whatsappOrderMarkers = new Set([
   'whatsapp-bot-confirmed',
   'whatsapp confirmed',
   'whatsapp-confirmed',
-  'smartConfirm:whatsapp-confirmed',
+  'smartconfirm:whatsapp-confirmed',
 ]);
 
 export function isWhatsAppCreatedOrder(tags: string[] | null | undefined): boolean {
@@ -48,6 +53,7 @@ export class CommerceNotificationService {
     private readonly messages: MessageService,
     @InjectRepository(Order, 'data') private readonly orders: Repository<Order>,
     @InjectRepository(OrderAiConversation, 'data') private readonly conversations: Repository<OrderAiConversation>,
+    private readonly planUsage: PlanUsageService,
   ) {}
 
   defaultSettings() {
@@ -106,6 +112,7 @@ export class CommerceNotificationService {
 
   async notify(store: Store, order: Order, event: CommerceOrderEvent, settings: Record<string, any>): Promise<boolean> {
     if (settings.automaticMessagesEnabled === false) return false;
+    if (['partiallyFulfilled', 'shipped', 'delivered'].includes(event) && !(await this.planUsage.hasSessionCapability(store.sessionId, 'deliveryNotifications'))) return false;
     const configured = (settings.orderNotifications?.[event] ?? {}) as EventSetting;
     const definition = { ...defaults[event], ...configured };
     if (!definition.enabled || !order.phone || !definition.template?.trim()) return false;

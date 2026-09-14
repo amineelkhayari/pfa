@@ -204,7 +204,10 @@ export class ShopifyService {
           completeResult.userErrors?.map((item: any) => item.message).join('; ') ||
             'Shopify did not complete the draft order',
         );
-      return { orderId: completeResult.draftOrder.order.id, orderName: completeResult.draftOrder.order.name ?? null };
+      return {
+        orderId: String(completeResult.draftOrder.order.id).split('/').pop()!,
+        orderName: completeResult.draftOrder.order.name ?? null,
+      };
     } catch (error) {
       throw new BadRequestException(this.errorDetails(error, 'Unable to create the Shopify order.'));
     }

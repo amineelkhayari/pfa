@@ -112,7 +112,17 @@ export class WooCommerceService {
       status: product.status === 'publish' ? 'active' : product.status,
       tags: Array.isArray(product.tags) ? product.tags.map((tag: any) => String(tag.name)).filter(Boolean) : null,
       imageUrl: product.images?.[0]?.src ?? null,
-      variants: product.variations?.map((id: unknown) => ({ id, title: `Variation ${id}` })) ?? [],
+      variants: Array.isArray(product.variations) && product.variations.length
+        ? product.variations.map((id: unknown) => ({ id, title: `Variation ${id}` }))
+        : [{
+            id: product.id,
+            title: 'Default',
+            price: product.price ?? product.regular_price ?? null,
+            stock_quantity: product.stock_quantity ?? null,
+            stock_status: product.stock_status ?? null,
+            manage_stock: product.manage_stock ?? null,
+            sku: product.sku ?? null,
+          }],
       price: Number.parseFloat(product.price ?? product.regular_price ?? '0') || 0,
       externalCreatedAt: product.date_created_gmt ? new Date(`${product.date_created_gmt}Z`) : new Date(),
       externalUpdatedAt: product.date_modified_gmt ? new Date(`${product.date_modified_gmt}Z`) : new Date(),
@@ -234,6 +244,22 @@ export class WooCommerceService {
     return { orderId: String(payload.id), orderName: payload.number ? `#${payload.number}` : String(payload.id) };
   }
 
+  async createProductReview(credentials: WooCredentials, input: { reviewId?: string | null; productId: string; rating: number; comment: string; reviewerName: string; reviewerEmail: string }) {
+    const review = await this.request(credentials, input.reviewId ? `products/reviews/${input.reviewId}` : 'products/reviews', {
+      method: input.reviewId ? 'PUT' : 'POST',
+      body: JSON.stringify({
+        product_id: Number(input.productId),
+        review: input.comment,
+        reviewer: input.reviewerName,
+        reviewer_email: input.reviewerEmail,
+        rating: input.rating,
+        status: 'approved',
+      }),
+    });
+    if (!review?.id) throw new BadGatewayException('WooCommerce did not return the created product review.');
+    return { reviewId: String(review.id) };
+  }
+
   verifyWebhook(rawBody: Buffer, signature: string | undefined, secret: string): boolean {
     if (!signature) return false;
     const expected = createHmac('sha256', secret).update(rawBody).digest('base64');
@@ -298,7 +324,7 @@ export class WooCommerceService {
       shippingAddress: shipping,
       customer: { id: order.customer_id, ...billing },
       tags: ['woocommerce', ...(createdByWhatsApp ? ['smartConfirm:whatsapp-confirmed'] : [])],
-      status: createdByWhatsApp ? 'confirmed' : order.status === 'cancelled' ? 'cancelled' : 'open',
+      status: order.status === 'completed' ? 'completed' : order.status === 'cancelled' ? 'cancelled' : createdByWhatsApp ? 'confirmed' : 'open',
       ...(createdByWhatsApp ? { confirmationStatus: 'confirmed' } : {}),
       externalCreatedAt: order.date_created_gmt ? new Date(`${order.date_created_gmt}Z`) : new Date(),
     };

@@ -39,7 +39,7 @@ class RefundPaymentDto {
 
 class SavePlanDto {
   @IsString() slug: string; @IsString() name: string; @IsOptional() @IsString() description?: string;
-  @IsInt() @Min(0) priceMonthly: number; @IsString() currency: string; @IsObject() limits: Record<string, number>;
+  @IsInt() @Min(0) priceMonthly: number; @IsString() currency: string; @IsObject() limits: Record<string, number>; @IsObject() capabilities: Record<string, boolean>;
   @IsArray() @IsString({ each: true }) features: string[]; @IsInt() @Min(0) @Max(365) trialDays: number;
   @IsBoolean() active: boolean; @IsBoolean() highlighted: boolean; @IsInt() sortOrder: number;
   @IsOptional() @IsString() stripePriceId?: string; @IsOptional() @IsString() paypalPlanId?: string;

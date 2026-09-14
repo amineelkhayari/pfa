@@ -2,9 +2,9 @@ import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
-import { BillingPlan, BillingPlanLimits } from './entities/billing-plan.entity';
+import { BillingPlan, BillingPlanCapabilities, BillingPlanLimits } from './entities/billing-plan.entity';
 
-export type PlanInput = Pick<BillingPlan, 'slug' | 'name' | 'description' | 'priceMonthly' | 'currency' | 'limits' | 'features' | 'trialDays' | 'active' | 'highlighted' | 'sortOrder'> & Partial<Pick<BillingPlan, 'stripePriceId' | 'paypalPlanId'>>;
+export type PlanInput = Pick<BillingPlan, 'slug' | 'name' | 'description' | 'priceMonthly' | 'currency' | 'limits' | 'features' | 'capabilities' | 'trialDays' | 'active' | 'highlighted' | 'sortOrder'> & Partial<Pick<BillingPlan, 'stripePriceId' | 'paypalPlanId'>>;
 
 @Injectable()
 export class PlanCatalogService implements OnModuleInit {
@@ -38,12 +38,15 @@ export class PlanCatalogService implements OnModuleInit {
   private async reload() { this.plans = new Map((await this.repo.find()).map(plan => [plan.slug, plan])); }
   private normalize<T extends PlanInput>(input: T): T {
     const integer = (value: number) => Math.max(0, Math.round(Number(value) || 0));
-    return { ...input, priceMonthly: integer(input.priceMonthly), trialDays: integer(input.trialDays), sortOrder: Math.round(Number(input.sortOrder) || 0), limits: { sessions: integer(input.limits.sessions), stores: integer(input.limits.stores), sentMessages: integer(input.limits.sentMessages), receivedMessages: integer(input.limits.receivedMessages), aiTokens: integer(input.limits.aiTokens), audioTranscriptions: integer(input.limits.audioTranscriptions), audioReplies: integer(input.limits.audioReplies) } };
+    const capabilities = input.capabilities ?? {} as BillingPlanCapabilities;
+    return { ...input, priceMonthly: integer(input.priceMonthly), trialDays: integer(input.trialDays), sortOrder: Math.round(Number(input.sortOrder) || 0), limits: { sessions: integer(input.limits.sessions), stores: integer(input.limits.stores), sentMessages: integer(input.limits.sentMessages), receivedMessages: integer(input.limits.receivedMessages), aiTokens: integer(input.limits.aiTokens), audioTranscriptions: integer(input.limits.audioTranscriptions), audioReplies: integer(input.limits.audioReplies) }, capabilities: { orderPdf: capabilities.orderPdf === true, productImages: capabilities.productImages === true, productReviews: capabilities.productReviews === true, deliveryNotifications: capabilities.deliveryNotifications === true } };
   }
   private slug(value: string) { const slug = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); if (!slug) throw new BadRequestException('Plan slug is required'); return slug; }
   private async seed() {
     const limits = (sessions: number, stores: number, sentMessages: number, receivedMessages: number, aiTokens: number, audioTranscriptions: number, audioReplies: number): BillingPlanLimits => ({ sessions, stores, sentMessages, receivedMessages, aiTokens, audioTranscriptions, audioReplies });
-    if (!await this.repo.findOneBy({ slug: 'free' })) await this.repo.save(this.repo.create({ id: randomUUID(), slug: 'free', name: 'Free', description: 'Try the essential WhatsApp commerce tools.', priceMonthly: 0, currency: 'USD', limits: limits(1, 1, 20, 20, 5000, 0, 0), features: ['1 WhatsApp session', '1 connected store', 'AI order assistant', 'Basic customer messaging'], trialDays: 1, active: true, highlighted: false, sortOrder: 0 }));
-    if (!await this.repo.findOneBy({ slug: 'pro' })) await this.repo.save(this.repo.create({ id: randomUUID(), slug: 'pro', name: 'Pro', description: 'More capacity for growing commerce teams.', priceMonthly: 500, currency: 'USD', limits: limits(5, 5, 1250, 1250, 100000, 200, 200), features: ['5 WhatsApp sessions', '5 connected stores', 'AI commerce agent', 'Voice transcription and replies', 'Campaigns and automation', 'Priority usage limits'], trialDays: 0, active: true, highlighted: true, sortOrder: 10 }));
+    const noCommerceMedia: BillingPlanCapabilities = { orderPdf: false, productImages: false, productReviews: false, deliveryNotifications: false };
+    const commerceMedia: BillingPlanCapabilities = { orderPdf: true, productImages: true, productReviews: true, deliveryNotifications: true };
+    if (!await this.repo.findOneBy({ slug: 'free' })) await this.repo.save(this.repo.create({ id: randomUUID(), slug: 'free', name: 'Free', description: 'Try the essential WhatsApp commerce tools.', priceMonthly: 0, currency: 'USD', limits: limits(1, 1, 20, 20, 5000, 0, 0), capabilities: noCommerceMedia, features: ['1 WhatsApp session', '1 connected store', 'AI order assistant', 'Basic customer messaging'], trialDays: 1, active: true, highlighted: false, sortOrder: 0 }));
+    if (!await this.repo.findOneBy({ slug: 'pro' })) await this.repo.save(this.repo.create({ id: randomUUID(), slug: 'pro', name: 'Pro', description: 'More capacity for growing commerce teams.', priceMonthly: 500, currency: 'USD', limits: limits(5, 5, 1250, 1250, 100000, 200, 200), capabilities: commerceMedia, features: ['5 WhatsApp sessions', '5 connected stores', 'AI commerce agent', 'Voice transcription and replies', 'Order PDFs, product images and reviews', 'Delivery notifications', 'Campaigns and automation', 'Priority usage limits'], trialDays: 0, active: true, highlighted: true, sortOrder: 10 }));
   }
 }

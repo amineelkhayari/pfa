@@ -16,6 +16,7 @@ import { CommerceNotificationService } from './commerce-notification.service';
 import { CommerceCoreModule } from '../../commerce/commerce-core.module';
 import { StoreIntegrationService } from './store-integration.service';
 import { CommerceWebhookService } from './commerce-webhook.service';
+import { ProductReview } from './entities/product-review.entity';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { CommerceWebhookService } from './commerce-webhook.service';
         Store,
         Product,
         Order,
+        ProductReview,
         Session,
         OrderAiConversation,
         Message,

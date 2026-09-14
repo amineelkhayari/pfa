@@ -27,8 +27,16 @@ export interface ProviderCreatedOrder {
   orderId: string;
   orderName: string | null;
 }
+export interface ProviderCreateReviewInput {
+  reviewId?: string | null;
+  productId: string;
+  rating: number;
+  comment: string;
+  reviewerName: string;
+  reviewerEmail: string;
+}
 export type IntegrationCapability =
-  'storeKnowledge' | 'sync' | 'webhooks' | 'confirmOrder' | 'cancelOrder' | 'updateShippingAddress' | 'createOrder';
+  'storeKnowledge' | 'sync' | 'webhooks' | 'confirmOrder' | 'cancelOrder' | 'updateShippingAddress' | 'createOrder' | 'createProductReview';
 export type IntegrationCapabilities = Readonly<Record<IntegrationCapability, boolean>>;
 export interface ProviderStoreProfile {
   externalId?: string | null;
@@ -55,6 +63,7 @@ export interface IntegrationProvider {
   cancelOrder(connection: ProviderConnection, order: Order): Promise<void>;
   updateShippingAddress(connection: ProviderConnection, order: Order, address: ProviderShippingAddress): Promise<void>;
   createOrder(connection: ProviderConnection, input: ProviderCreateOrderInput): Promise<ProviderCreatedOrder>;
+  createProductReview?(connection: ProviderConnection, input: ProviderCreateReviewInput): Promise<{ reviewId: string }>;
 }
 
 export function providerSupports(provider: IntegrationProvider, capability: IntegrationCapability): boolean {

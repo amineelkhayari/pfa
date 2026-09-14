@@ -11,6 +11,7 @@ import {
   Plus,
   RefreshCw,
   ShoppingBag,
+  Star,
   Store as StoreIcon,
   Trash2,
   X,
@@ -44,6 +45,7 @@ import {
   type OrderAiConversation,
   type StorePayload,
   type StoreProduct,
+  type StoreProductReview,
 } from '../services/api';
 import './Stores.css';
 
@@ -65,6 +67,30 @@ const emptyForm: StorePayload = {
   },
 };
 
+const inventoryKeys = ['inventory_quantity', 'inventoryQuantity', 'stock_quantity', 'stockQuantity', 'quantity', 'available_quantity'] as const;
+
+function variantInventory(variant: Record<string, unknown>): number | null {
+  for (const key of inventoryKeys) {
+    const value = variant[key];
+    if (value !== null && value !== undefined && value !== '') {
+      const quantity = Number(value);
+      if (Number.isFinite(quantity)) return quantity;
+    }
+  }
+  return null;
+}
+
+function productInventory(product: StoreProduct) {
+  const variants = product.variants ?? [];
+  const quantities = variants.map(variantInventory).filter((value): value is number => value !== null);
+  const quantity = quantities.length ? quantities.reduce((total, value) => total + value, 0) : null;
+  const stockStatuses = variants.map(variant => String(variant.stock_status ?? variant.stockStatus ?? '').toLowerCase()).filter(Boolean);
+  if (quantity !== null) return { quantity, label: quantity === 0 ? 'Out of stock' : `${quantity} in stock`, tone: quantity === 0 ? 'out' : quantity <= 5 ? 'low' : 'available' };
+  if (stockStatuses.includes('outofstock')) return { quantity: 0, label: 'Out of stock', tone: 'out' };
+  if (stockStatuses.includes('instock')) return { quantity: null, label: 'In stock · quantity not tracked', tone: 'available' };
+  return { quantity: null, label: 'Stock not provided', tone: 'unknown' };
+}
+
 export function Stores() {
   const storeLimit = usePlanLimit('stores');
   const trialGate = usePlanLimit();
@@ -84,9 +110,10 @@ export function Stores() {
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [reconnectingId, setReconnectingId] = useState<string | null>(null);
   const [detailStore, setDetailStore] = useState<Store | null>(null);
-  const [detailTab, setDetailTab] = useState<'products' | 'orders'>('products');
+  const [detailTab, setDetailTab] = useState<'products' | 'orders' | 'reviews'>('products');
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [orders, setOrders] = useState<StoreOrder[]>([]);
+  const [reviews, setReviews] = useState<StoreProductReview[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [remindingOrderId, setRemindingOrderId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Record<string, OrderAiConversation | null>>({});
@@ -269,17 +296,19 @@ export function Stores() {
     }
   };
 
-  const openDetails = async (store: Store, tab: 'products' | 'orders') => {
+  const openDetails = async (store: Store, tab: 'products' | 'orders' | 'reviews') => {
     setDetailStore(store);
     setDetailTab(tab);
     setLoadingDetails(true);
     try {
-      const [storeProducts, storeOrders] = await Promise.all([
+      const [storeProducts, storeOrders, storeReviews] = await Promise.all([
         storesApi.products(store.id),
         storesApi.orders(store.id),
+        storesApi.reviews(store.id),
       ]);
       setProducts(storeProducts);
       setOrders(storeOrders);
+      setReviews(storeReviews);
       setConversations(await storesApi.orderConversations(store.id));
     } catch (error) {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'Unable to load imported data.' });
@@ -605,7 +634,7 @@ export function Stores() {
                     settings: {
                       ...current.settings,
                       ...(provider === 'youcan' ? {
-                        scopes: 'read-orders edit-orders delete-orders read-products read-products-review read-categories read-coupons read-customers edit-customers read-pages read-menus read-rest-hooks edit-rest-hooks read-payments read-shipping-zones view-store-info view-store-profits read-upsells',
+                        scopes: 'read-orders edit-orders delete-orders read-products read-products-review edit-products-review read-categories read-coupons read-customers edit-customers read-pages read-menus read-rest-hooks edit-rest-hooks read-payments read-shipping-zones view-store-info view-store-profits read-upsells',
                         redirectUri: `${window.location.origin}/api/youcan/oauth/callback`,
                         webhookBaseUrl: window.location.origin,
                       } : provider === 'shopify' ? {
@@ -845,6 +874,9 @@ export function Stores() {
             <button className={detailTab === 'orders' ? 'active' : ''} onClick={() => setDetailTab('orders')}>
               <ShoppingBag size={15} /> Orders ({orders.length})
             </button>
+            <button className={detailTab === 'reviews' ? 'active' : ''} onClick={() => setDetailTab('reviews')}>
+              <Star size={15} /> Reviews ({reviews.length})
+            </button>
           </div>
         }
       >
@@ -857,8 +889,9 @@ export function Stores() {
             {products.length === 0 ? (
               <p>No imported products.</p>
             ) : (
-              products.map(product => (
-                <details key={product.id} className="store-data-item">
+              products.map(product => {
+                const inventory = productInventory(product);
+                return <details key={product.id} className="store-data-item">
                   <summary>
                     {product.imageUrl ? <img src={product.imageUrl} alt="" /> : <Database size={30} />}
                     <span>
@@ -866,27 +899,31 @@ export function Stores() {
                       <small>
                         {product.vendor ?? 'No vendor'} · {product.price} {detailStore?.currency}
                       </small>
+                      <small className={`product-stock ${inventory.tone}`}>{inventory.label}</small>
                     </span>
                     <span className={`status-badge ${product.status}`}>{product.status}</span>
                   </summary>
                   <div className="store-data-detail">
                     <p>{product.description?.replace(/<[^>]*>/g, '') || 'No description'}</p>
                     <dl>
-                      <dt>Shopify ID</dt>
+                      <dt> Product ID</dt>
                       <dd>{product.externalProductId}</dd>
                       <dt>Type</dt>
                       <dd>{product.productType || '—'}</dd>
                       <dt>Variants</dt>
                       <dd>{product.variants?.length ?? 0}</dd>
+                      <dt>Total stock</dt>
+                      <dd><span className={`product-stock ${inventory.tone}`}>{inventory.label}</span></dd>
                       <dt>Tags</dt>
                       <dd>{product.tags?.join(', ') || '—'}</dd>
                     </dl>
+                    {!!product.variants?.length && <div className="product-variant-stock"><strong>Variant inventory</strong>{product.variants.map((variant, index) => { const quantity = variantInventory(variant); const name = String(variant.title ?? variant.name ?? variant.sku ?? `Variant ${index + 1}`); return <div key={String(variant.id ?? variant.externalId ?? index)}><span>{name}{variant.sku ? ` · SKU ${String(variant.sku)}` : ''}</span><b className={`product-stock ${quantity === 0 ? 'out' : quantity !== null && quantity <= 5 ? 'low' : quantity === null ? 'unknown' : 'available'}`}>{quantity === null ? 'Not provided' : quantity}</b></div>; })}</div>}
                   </div>
                 </details>
-              ))
+              })
             )}
           </div>
-        ) : (
+        ) : detailTab === 'orders' ? (
           <div className="store-data-list">
             {orders.length === 0 ? (
               <p>No imported orders.</p>
@@ -984,6 +1021,20 @@ export function Stores() {
                 </details>
               ))
             )}
+          </div>
+        ) : (
+          <div className="store-data-list">
+            {reviews.length === 0 ? <p>No verified reviews collected yet.</p> : reviews.map(review => (
+              <article key={review.id} className="store-review-item">
+                {review.product?.imageUrl ? <img src={review.product.imageUrl} alt="" /> : <Star size={28} />}
+                <div>
+                  <strong>{review.product?.title ?? review.productName}</strong>
+                  <span className="review-stars" aria-label={`${review.rating} out of 5 stars`}>{'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}</span>
+                  <p>{review.comment || 'Rating submitted without a comment.'}</p>
+                  <small>Order {review.order?.orderNumber ?? review.order?.externalOrderId ?? '—'} · {review.customerPhone} · {new Date(review.createdAt).toLocaleString()}</small>
+                </div>
+              </article>
+            ))}
           </div>
         )}
       </Modal>

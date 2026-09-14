@@ -10,6 +10,7 @@ import { MessageService } from '../message/message.service';
 import { Session } from '../session/entities/session.entity';
 import { Product } from './entities/product.entity';
 import { Order } from './entities/order.entity';
+import { ProductReview } from './entities/product-review.entity';
 import { CredentialEncryptionService } from '../../common/security/credential-encryption.service';
 import { getRequestUserScope } from '../../common/services/request-context';
 import { PlanUsageService } from '../auth/plan-usage.service';
@@ -29,6 +30,8 @@ export class StoreService {
     private readonly productRepository: Repository<Product>,
     @InjectRepository(Order, 'data')
     private readonly orderRepository: Repository<Order>,
+    @InjectRepository(ProductReview, 'data')
+    private readonly reviewRepository: Repository<ProductReview>,
     @InjectRepository(OrderAiConversation, 'data')
     private readonly conversationRepository: Repository<OrderAiConversation>,
     @InjectRepository(Message, 'data')
@@ -320,6 +323,15 @@ export class StoreService {
   async findOrders(storeId: string): Promise<Order[]> {
     await this.findOneById(storeId);
     return this.orderRepository.find({ where: { storeId }, order: { externalCreatedAt: 'DESC' } });
+  }
+
+  async findReviews(storeId: string): Promise<ProductReview[]> {
+    await this.findOneById(storeId);
+    return this.reviewRepository.find({
+      where: { storeId },
+      relations: { product: true, order: true },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async getOrderConversation(storeId: string, orderId: string) {

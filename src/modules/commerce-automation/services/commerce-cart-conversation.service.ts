@@ -13,6 +13,7 @@ import { Platform } from '../../stores/enum/platform.enum';
 import { CommerceVoiceService } from './commerce-voice.service';
 import { CommerceExecutionLogService } from './commerce-execution-log.service';
 import { CommerceToolExecution } from '../../stores/entities/commerce-tool-execution.entity';
+import { Order } from '../../stores/entities/order.entity';
 
 export type CartConversationResult = 'not_handled' | 'handled' | 'catalog_assistance';
 
@@ -39,6 +40,7 @@ export class CommerceCartConversationService {
     private readonly voice: CommerceVoiceService,
     private readonly executions: CommerceExecutionLogService,
     @InjectRepository(StoreOrderCart, 'data') private readonly carts: Repository<StoreOrderCart>,
+    @InjectRepository(Order, 'data') private readonly orders: Repository<Order>,
   ) {}
 
   hasProductSelectionIntent(text: string, products: Product[]): boolean {
@@ -337,6 +339,44 @@ export class CommerceCartConversationService {
           postalCode: cart.postalCode,
           country: cart.country,
         },
+      );
+      await this.orders.upsert(
+        {
+          storeId: input.store.id,
+          externalOrderId: result.orderId,
+          orderNumber: result.orderName,
+          email: null,
+          phone: `+${input.phone}`,
+          customerName: String(cart.customerName),
+          totalPrice: Number(product.price) * cart.quantity,
+          currency: input.store.currency,
+          financialStatus: 'pending',
+          fulfillmentStatus: null,
+          lineItems: [{
+            productId: product.externalProductId,
+            variantId: cart.variantId,
+            title: product.title,
+            variantTitle: cart.variantTitle,
+            quantity: cart.quantity,
+            price: Number(product.price),
+          }],
+          shippingAddress: {
+            name: String(cart.customerName),
+            address1: String(cart.address1),
+            city: String(cart.city),
+            zip: cart.postalCode,
+            country: cart.country,
+            phone: `+${input.phone}`,
+          },
+          customer: { name: String(cart.customerName), phone: `+${input.phone}` },
+          tags: ['smartconfirm:whatsapp-confirmed'],
+          status: 'confirmed',
+          confirmationStatus: 'confirmed',
+          confirmationSentAt: new Date(),
+          confirmationError: null,
+          externalCreatedAt: new Date(),
+        } as any,
+        ['storeId', 'externalOrderId'],
       );
       await this.carts.delete(cart.id);
       await this.executions.succeed(execution, {

@@ -6,6 +6,13 @@ export interface BillingPlanLimits {
   audioTranscriptions: number; audioReplies: number;
 }
 
+export interface BillingPlanCapabilities {
+  orderPdf: boolean;
+  productImages: boolean;
+  productReviews: boolean;
+  deliveryNotifications: boolean;
+}
+
 @Entity('billing_plans')
 export class BillingPlan {
   @PrimaryGeneratedColumn('uuid') id: string;
@@ -16,6 +23,7 @@ export class BillingPlan {
   @Column({ type: 'varchar', length: 3, default: 'USD' }) currency: string;
   @Column({ type: jsonColumnType() }) limits: BillingPlanLimits;
   @Column({ type: jsonColumnType() }) features: string[];
+  @Column({ type: jsonColumnType(), default: '{}' }) capabilities: BillingPlanCapabilities;
   @Column({ type: 'int', default: 0 }) trialDays: number;
   @Column({ type: 'boolean', default: true }) active: boolean;
   @Column({ type: 'boolean', default: false }) highlighted: boolean;

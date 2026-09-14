@@ -11,7 +11,7 @@ describe('CommerceNotificationService WhatsApp-created orders', () => {
   it('does not send a second confirmation when the provider echoes the order webhook', async () => {
     const messages = { sendText: jest.fn() };
     const orders = { save: jest.fn(async (value: unknown) => value) };
-    const service = new CommerceNotificationService(messages as any, orders as any, {} as any);
+    const service = new CommerceNotificationService(messages as any, orders as any, {} as any, { hasSessionCapability: jest.fn().mockResolvedValue(true) } as any);
     const order = {
       tags: ['smartConfirm:whatsapp-confirmed'],
       status: 'open',

@@ -97,6 +97,12 @@ export class StoreController {
     return this.storeService.findOrders(id);
   }
 
+  @Get(':id/reviews')
+  @ApiOperation({ summary: 'List verified product reviews collected through WhatsApp' })
+  findReviews(@Param('id', ParseUUIDPipe) id: string) {
+    return this.storeService.findReviews(id);
+  }
+
   @Get('conversation-ownership/current')
   getConversationOwnership(@Query('sessionId') sessionId: string, @Query('chatId') chatId: string) {
     return this.storeService.getConversationOwnership(sessionId, chatId);

@@ -32,7 +32,9 @@ export class CommerceWebhookService {
 
     if (previousPayment !== 'paid' && (payment === 'paid' || hint === 'order.paid')) events.add('paid');
     if (!this.isPartial(previousFulfillment) && this.isPartial(fulfillment)) events.add('partiallyFulfilled');
-    if (!this.isShipped(previousFulfillment) && this.isShipped(fulfillment)) events.add('shipped');
+    if (this.isDelivered(fulfillment)) {
+      if (!this.isDelivered(previousFulfillment)) events.add('delivered');
+    } else if (!this.isShipped(previousFulfillment) && this.isShipped(fulfillment)) events.add('shipped');
     if (!this.isCancelled(previousStatus) && (this.isCancelled(status) || hint === 'order.cancelled')) {
       events.add('cancelled');
     }
@@ -49,8 +51,10 @@ export class CommerceWebhookService {
   }
 
   private isShipped(value: string): boolean {
-    return ['fulfilled', 'completed', 'shipped', 'delivered'].includes(value);
+    return ['fulfilled', 'completed', 'shipped', 'in-transit', 'out-for-delivery'].includes(value);
   }
+
+  private isDelivered(value: string): boolean { return ['delivered', 'completed'].includes(value); }
 
   private isCancelled(value: string): boolean {
     return ['cancelled', 'canceled', 'canceled-by-seller', 'cancelled-by-seller'].includes(value);

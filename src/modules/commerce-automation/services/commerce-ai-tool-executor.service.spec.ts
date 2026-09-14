@@ -17,7 +17,11 @@ describe('CommerceAiToolExecutorService', () => {
     { stock: jest.fn(), searchProducts: jest.fn() } as unknown as CommerceToolService,
     {} as CommerceCartConversationService,
     {} as CommerceOrderActionService,
+    {} as any,
+    {} as any,
+    {} as any,
     {} as Repository<OrderAiConversation>,
+    {} as any,
   );
   const store = { id: 'store-1', provider: 'shopify', currency: 'MAD', settings: {} } as Store;
 

@@ -10,12 +10,14 @@ import { CommerceCartConversationService } from './commerce-cart-conversation.se
 import { CommerceVoiceService } from './commerce-voice.service';
 import { CommerceExecutionLogService } from './commerce-execution-log.service';
 import { CommerceToolExecution } from '../../stores/entities/commerce-tool-execution.entity';
+import { Order } from '../../stores/entities/order.entity';
 
 describe('CommerceCartConversationService', () => {
   const findOneBy = jest.fn();
   const create = jest.fn((value: Partial<StoreOrderCart>) => value as StoreOrderCart);
   const save = jest.fn((value: StoreOrderCart) => Promise.resolve(value));
   const removeCart = jest.fn();
+  const upsertOrder = jest.fn();
   const updateCart = jest.fn(() => Promise.resolve({ affected: 1, raw: [], generatedMaps: [] }));
   const createOrder = jest.fn();
   const sendReply = jest.fn();
@@ -32,6 +34,7 @@ describe('CommerceCartConversationService', () => {
     { sendReply } as unknown as CommerceVoiceService,
     executionLog as unknown as CommerceExecutionLogService,
     { findOneBy, create, save, update: updateCart, delete: removeCart } as unknown as Repository<StoreOrderCart>,
+    { upsert: upsertOrder } as unknown as Repository<Order>,
   );
   const store = {
     id: 'store-1',
@@ -116,6 +119,10 @@ describe('CommerceCartConversationService', () => {
       expect.objectContaining({ productId: product.externalProductId, quantity: 1, city: 'Rabat' }),
     );
     expect(removeCart).toHaveBeenCalledWith('cart-1');
+    expect(upsertOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ externalOrderId: 'external-1', status: 'confirmed', confirmationStatus: 'confirmed' }),
+      ['storeId', 'externalOrderId'],
+    );
     expect(sendReply).toHaveBeenCalled();
   });
 });

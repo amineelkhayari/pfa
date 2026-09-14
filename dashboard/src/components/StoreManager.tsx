@@ -7,12 +7,13 @@ import { Modal } from './Modal';
 import type { Session, Store, StorePayload } from '../services/api';
 
 type Tab = 'overview' | 'automation' | 'settings';
-type NotificationEvent = 'paid' | 'partiallyFulfilled' | 'shipped' | 'cancelled';
+type NotificationEvent = 'paid' | 'partiallyFulfilled' | 'shipped' | 'delivered' | 'cancelled';
 
 const defaults: Record<NotificationEvent, { label: string; help: string; enabled: boolean; template: string }> = {
   paid: { label: 'Payment received', help: 'Sent when the commerce platform marks the order as paid.', enabled: false, template: 'Bonjour {{customerName}} 👋\nLe paiement de votre commande {{orderNumber}} est confirmé.\nTotal : {{total}} {{currency}}.' },
   partiallyFulfilled: { label: 'Partially fulfilled', help: 'Sent when only part of the order is ready.', enabled: false, template: 'Bonjour {{customerName}} 👋\nUne partie de votre commande {{orderNumber}} est prête.\nStatut : {{fulfillmentStatus}}.' },
   shipped: { label: 'Shipped / fulfilled', help: 'Sent with tracking details after fulfillment.', enabled: true, template: 'Bonjour {{customerName}} 👋\nVotre commande {{orderNumber}} a été expédiée 📦\n\n{{items}}\n\nSuivi : {{trackingNumber}}' },
+  delivered: { label: 'Delivered', help: 'Sent when delivery is completed and invites the customer to leave a review.', enabled: true, template: 'Bonjour {{customerName}} 👋\nVotre commande {{orderNumber}} a été livrée ✅\n\n{{items}}\n\nMerci pour votre confiance. Vous pouvez maintenant partager votre avis avec nous.' },
   cancelled: { label: 'Order cancelled', help: 'Sent when the order is cancelled in the store.', enabled: false, template: 'Bonjour {{customerName}},\nVotre commande {{orderNumber}} a été annulée.' },
 };
 

@@ -30,6 +30,8 @@ import { CommerceMessageReceipt } from '../stores/entities/commerce-message-rece
 import { CommerceToolExecution } from '../stores/entities/commerce-tool-execution.entity';
 import { CommerceExecutionLogService } from './services/commerce-execution-log.service';
 import { AdminCommerceExecutionsController } from './controllers/admin-commerce-executions.controller';
+import { ProductReview } from '../stores/entities/product-review.entity';
+import { OrderReportService } from './services/order-report.service';
 
 /** Provider-neutral customer conversation and order automation. */
 @Module({
@@ -42,7 +44,7 @@ import { AdminCommerceExecutionsController } from './controllers/admin-commerce-
     BillingModule,
     StoreModule,
     TypeOrmModule.forFeature(
-      [Store, Product, Order, OrderAiConversation, StoreOrderCart, CommerceMessageReceipt, CommerceToolExecution],
+      [Store, Product, Order, ProductReview, OrderAiConversation, StoreOrderCart, CommerceMessageReceipt, CommerceToolExecution],
       'data',
     ),
   ],
@@ -59,6 +61,7 @@ import { AdminCommerceExecutionsController } from './controllers/admin-commerce-
     CommerceOrderRoutingService,
     CommerceMessageIdempotencyService,
     CommerceExecutionLogService,
+    OrderReportService,
     CommerceVoiceService,
     AudioTranscriptionService,
     CredentialEncryptionService,

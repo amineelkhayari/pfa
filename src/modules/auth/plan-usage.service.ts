@@ -10,6 +10,7 @@ import { BillingSubscription } from '../billing/entities/subscription.entity';
 import { ApiKeyRole } from './entities/api-key.entity';
 import { UserAccount, UserPlan } from './entities/user-account.entity';
 import { PlanCatalogService } from '../billing/plan-catalog.service';
+import type { BillingPlanCapabilities } from '../billing/entities/billing-plan.entity';
 
 export interface PlanLimits {
   sessions: number;
@@ -196,6 +197,14 @@ export class PlanUsageService {
 
   async reserveAudioReply(sessionId: string): Promise<boolean> {
     return this.reserveAudioUsage(sessionId, 'audioRepliesUsed', 'audioReplies');
+  }
+
+  async hasSessionCapability(sessionId: string, capability: keyof BillingPlanCapabilities): Promise<boolean> {
+    const user = await this.userForSession(sessionId);
+    if (!user || user.role === ApiKeyRole.ADMIN) return true;
+    await this.resetUsagePeriodIfNeeded(user);
+    if (this.isTrialExpired(user)) return false;
+    return this.plans.get(user.plan).capabilities?.[capability] === true;
   }
 
   async releaseAudioTranscription(sessionId: string): Promise<void> {

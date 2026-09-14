@@ -20,6 +20,7 @@ export class ShopifyProvider implements IntegrationProvider {
     cancelOrder: true,
     updateShippingAddress: true,
     createOrder: true,
+    createProductReview: false,
   } as const;
   constructor(private readonly shopifyService: ShopifyService) {}
   async validate(credentials: Record<string, any>): Promise<void> {

@@ -61,4 +61,9 @@ describe('CommerceWebhookService', () => {
     expect(service.detectOrderEvents(undefined, order({}), 'order.paid')).toEqual(['paid']);
     expect(service.detectOrderEvents(undefined, order({}), 'order.cancelled')).toEqual(['cancelled']);
   });
+
+  it('distinguishes shipped from delivered transitions', () => {
+    expect(service.detectOrderEvents(order({ fulfillmentStatus: 'processing' }), order({ fulfillmentStatus: 'shipped' }))).toEqual(['shipped']);
+    expect(service.detectOrderEvents(order({ fulfillmentStatus: 'shipped' }), order({ fulfillmentStatus: 'delivered' }))).toEqual(['delivered']);
+  });
 });

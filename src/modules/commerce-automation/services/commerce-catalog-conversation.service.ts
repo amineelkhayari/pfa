@@ -105,7 +105,7 @@ export class CommerceCatalogConversationService {
         turns,
         { name: store.name, language: store.language, products, orders: customerOrders },
         this.tools.definitions(),
-        call => this.executor.execute(call.name, call.arguments, store, phone, catalog, customerOrders, text),
+        call => this.executor.execute(call.name, call.arguments, store, phone, catalog, customerOrders, text, sessionId, chatId),
         sessionId,
       );
       const safe = this.hasUnverifiedMutationClaim(answer)

@@ -126,7 +126,7 @@ export interface Store {
     confirmationSuccessTemplate?: string;
     relatedProductsTemplate?: string;
     orderNotifications?: Record<
-      'paid' | 'partiallyFulfilled' | 'shipped' | 'cancelled',
+      'paid' | 'partiallyFulfilled' | 'shipped' | 'delivered' | 'cancelled',
       { enabled: boolean; template: string }
     >;
     connected?: boolean;
@@ -247,6 +247,20 @@ export interface StoreOrder {
   whatsappMessageId?: string | null;
   confirmationSentAt?: string | null;
   confirmationError?: string | null;
+}
+
+export interface StoreProductReview {
+  id: string;
+  customerPhone: string;
+  rating: number;
+  comment?: string | null;
+  status: string;
+  providerReviewId?: string | null;
+  externalProductId: string;
+  productName: string;
+  createdAt: string;
+  product?: Pick<StoreProduct, 'id' | 'title' | 'imageUrl'>;
+  order?: Pick<StoreOrder, 'id' | 'orderNumber' | 'externalOrderId'>;
 }
 
 export interface Campaign {
@@ -1073,6 +1087,7 @@ export const storesApi = {
   delete: (id: string) => request<void>(`/stores/${id}`, { method: 'DELETE' }),
   products: (id: string) => request<StoreProduct[]>(`/stores/${id}/products`),
   orders: (id: string) => request<StoreOrder[]>(`/stores/${id}/orders`),
+  reviews: (id: string) => request<StoreProductReview[]>(`/stores/${id}/reviews`),
   orderConversations: (storeId: string) =>
     request<Record<string, OrderAiConversation>>(`/stores/${storeId}/order-conversations`),
   conversationOwnership: (sessionId: string, chatId: string) =>
@@ -1786,6 +1801,7 @@ export interface BillingPlan {
     audioReplies: number;
   };
   features: string[];
+  capabilities: { orderPdf: boolean; productImages: boolean; productReviews: boolean; deliveryNotifications: boolean };
   trialDays: number;
   active: boolean;
   highlighted: boolean;

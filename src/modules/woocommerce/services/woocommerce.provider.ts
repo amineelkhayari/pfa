@@ -3,6 +3,7 @@ import {
   IntegrationProvider,
   ProviderConnection,
   ProviderCreateOrderInput,
+  ProviderCreateReviewInput,
   ProviderShippingAddress,
 } from '../../../commerce/integration-provider.interface';
 import { Order } from '../../stores/entities/order.entity';
@@ -20,6 +21,7 @@ export class WooCommerceProvider implements IntegrationProvider {
     cancelOrder: true,
     updateShippingAddress: true,
     createOrder: true,
+    createProductReview: true,
   } as const;
   constructor(private readonly woo: WooCommerceService) {}
   async validate(credentials: Record<string, any>): Promise<void> {
@@ -82,5 +84,8 @@ export class WooCommerceProvider implements IntegrationProvider {
       postalCode: input.postalCode,
       country: input.country,
     });
+  }
+  createProductReview(connection: ProviderConnection, input: ProviderCreateReviewInput) {
+    return this.woo.createProductReview(connection.credentials as WooCredentials, input);
   }
 }

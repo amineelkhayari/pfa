@@ -3,6 +3,7 @@ import {
   IntegrationProvider,
   ProviderConnection,
   ProviderCreateOrderInput,
+  ProviderCreateReviewInput,
   ProviderShippingAddress,
 } from '../../../commerce/integration-provider.interface';
 import { Order } from '../../stores/entities/order.entity';
@@ -20,6 +21,7 @@ export class YouCanProvider implements IntegrationProvider {
     cancelOrder: true,
     updateShippingAddress: true,
     createOrder: true,
+    createProductReview: true,
   } as const;
   constructor(private readonly youcan: YouCanService) {}
   validate(credentials: Record<string, any>) {
@@ -80,5 +82,8 @@ export class YouCanProvider implements IntegrationProvider {
       country: input.country,
       shippingEstimationId: String(connection.credentials.youcanShippingEstimationId ?? ''),
     });
+  }
+  createProductReview(connection: ProviderConnection, input: ProviderCreateReviewInput) {
+    return this.youcan.createProductReview(connection.credentials as YouCanCredentials, input);
   }
 }

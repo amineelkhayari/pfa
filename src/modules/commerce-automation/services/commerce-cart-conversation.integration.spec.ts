@@ -10,6 +10,7 @@ import { CommerceCartConversationService } from './commerce-cart-conversation.se
 import { CommerceVoiceService } from './commerce-voice.service';
 import { CommerceExecutionLogService } from './commerce-execution-log.service';
 import { CommerceToolExecution } from '../../stores/entities/commerce-tool-execution.entity';
+import { Order } from '../../stores/entities/order.entity';
 
 describe('CommerceCartConversationService flow', () => {
   let activeCart: StoreOrderCart | null;
@@ -39,6 +40,7 @@ describe('CommerceCartConversationService flow', () => {
       return Promise.resolve({ affected: 1, raw: [] });
     }),
   };
+  const orderRepository = { upsert: jest.fn(() => Promise.resolve()) };
   const service = new CommerceCartConversationService(
     { get: jest.fn(() => ({ createOrder })) } as unknown as IntegrationProviderRegistry,
     { revealSettings: jest.fn(() => ({ accessToken: 'secret' })) } as unknown as CredentialEncryptionService,
@@ -46,6 +48,7 @@ describe('CommerceCartConversationService flow', () => {
     { sendReply } as unknown as CommerceVoiceService,
     executionLog as unknown as CommerceExecutionLogService,
     cartRepository as unknown as Repository<StoreOrderCart>,
+    orderRepository as unknown as Repository<Order>,
   );
   const store = {
     id: 'store-1',

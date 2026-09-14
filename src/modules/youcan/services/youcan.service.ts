@@ -40,7 +40,7 @@ export class YouCanService {
     });
     const scopes =
       c.scopes ||
-      'read-orders edit-orders delete-orders read-products read-products-review read-categories read-coupons read-customers edit-customers read-pages read-menus read-rest-hooks edit-rest-hooks read-payments read-shipping-zones view-store-info view-store-profits read-upsells';
+      'read-orders edit-orders delete-orders read-products read-products-review edit-products-review read-categories read-coupons read-customers edit-customers read-pages read-menus read-rest-hooks edit-rest-hooks read-payments read-shipping-zones view-store-info view-store-profits read-upsells';
     for (const scope of scopes.split(/[\s,]+/).filter(Boolean)) query.append('scope[]', scope);
     return `https://seller-area.youcan.shop/admin/oauth/authorize?${query}`;
   }
@@ -65,6 +65,28 @@ export class YouCanService {
 
   async getStore(c: YouCanCredentials) {
     return this.request(c, '/me');
+  }
+
+  async createProductReview(c: YouCanCredentials, input: { reviewId?: string | null; productId: string; rating: number; comment: string; reviewerName: string; reviewerEmail: string }) {
+    const [firstName, ...lastName] = input.reviewerName.trim().split(/\s+/);
+    if (input.reviewId) {
+      await this.request(c, `/reviews/${input.reviewId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ ratings: input.rating, email: input.reviewerEmail, first_name: firstName || 'Customer', last_name: lastName.join(' '), content: input.comment }),
+      });
+      return { reviewId: input.reviewId };
+    }
+    const review = await this.request(c, `/products/${encodeURIComponent(input.productId)}/reviews`, {
+      method: 'POST',
+      body: JSON.stringify({ ratings: input.rating, email: input.reviewerEmail, first_name: firstName || 'Customer', last_name: lastName.join(' '), content: input.comment }),
+    });
+    if (!review?.id) throw new BadGatewayException('YouCan did not return the created product review.');
+    try {
+      await this.request(c, `/reviews/${review.id}/approve`, { method: 'PUT' });
+    } catch (error) {
+      if (!/already approved/i.test(error instanceof Error ? error.message : '')) throw error;
+    }
+    return { reviewId: String(review.id) };
   }
   async getStoreKnowledge(c: YouCanCredentials) {
     const [pages, shipping, payments] = await Promise.all([

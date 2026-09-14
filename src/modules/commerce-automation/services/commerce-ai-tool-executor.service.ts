@@ -12,6 +12,10 @@ import { Store } from '../../stores/entities/store.entity';
 import { CommerceCartConversationService } from './commerce-cart-conversation.service';
 import { CommerceOrderActionService } from './commerce-order-action.service';
 import { CommerceToolService } from './commerce-tool.service';
+import { MessageService } from '../../message/message.service';
+import { PlanUsageService } from '../../auth/plan-usage.service';
+import { ProductReview } from '../../stores/entities/product-review.entity';
+import { OrderReportService } from './order-report.service';
 
 @Injectable()
 export class CommerceAiToolExecutorService {
@@ -23,7 +27,11 @@ export class CommerceAiToolExecutorService {
     private readonly tools: CommerceToolService,
     private readonly carts: CommerceCartConversationService,
     private readonly orderActions: CommerceOrderActionService,
+    private readonly messages: MessageService,
+    private readonly planUsage: PlanUsageService,
+    private readonly reports: OrderReportService,
     @InjectRepository(OrderAiConversation, 'data') private readonly conversations: Repository<OrderAiConversation>,
+    @InjectRepository(ProductReview, 'data') private readonly reviews: Repository<ProductReview>,
   ) {}
 
   async execute(
@@ -34,6 +42,8 @@ export class CommerceAiToolExecutorService {
     catalog: Product[],
     orders: Order[],
     customerText: string,
+    sessionId?: string,
+    chatId?: string,
   ): Promise<Record<string, unknown>> {
     if (!phone) return { error: 'CUSTOMER_PHONE_UNAVAILABLE' };
     if (name === 'search_products') {
@@ -44,6 +54,9 @@ export class CommerceAiToolExecutorService {
     if (name === 'get_product_details') return this.productDetails(input, catalog, store.currency);
     if (name === 'list_customer_orders') return this.listOrders(orders);
     if (name === 'get_order_details') return this.orderDetails(input, orders);
+    if (name === 'send_order_history_pdf') return this.sendOrderPdf(store, phone, orders, sessionId, chatId);
+    if (name === 'send_product_image') return this.sendProductImage(input, store, catalog, sessionId, chatId);
+    if (name === 'add_product_review') return this.addReview(input, store, phone, catalog, orders, sessionId);
     if (name === 'get_active_cart') return this.carts.getActiveCart(store, phone, catalog);
     if (name === 'start_new_order') {
       if (!providerSupports(this.providers.get(store.provider), 'createOrder'))
@@ -123,6 +136,95 @@ export class CommerceAiToolExecutorService {
       currency: order.currency,
       items: order.lineItems ?? [],
       shipping_address: order.shippingAddress ?? null,
+    };
+  }
+
+  private async sendOrderPdf(store: Store, phone: string, orders: Order[], sessionId?: string, chatId?: string) {
+    if (!sessionId || !chatId) return { error: 'WHATSAPP_CONTEXT_UNAVAILABLE', sent: false };
+    if (!(await this.planUsage.hasSessionCapability(sessionId, 'orderPdf'))) return { error: 'PLAN_UPGRADE_REQUIRED', capability: 'orderPdf', sent: false };
+    if (!orders.length) return { error: 'NO_CUSTOMER_ORDERS', sent: false };
+    const pdf = await this.reports.customerOrders(store, orders);
+    await this.messages.sendDocument(sessionId, { chatId, base64: pdf.toString('base64'), mimetype: 'application/pdf', filename: `orders-${phone.slice(-4)}.pdf`, caption: `Historique de vos commandes chez ${store.name}` });
+    this.log('send_order_history_pdf', store.id, phone);
+    return { sent: true, format: 'pdf', orders: orders.length };
+  }
+
+  private async sendProductImage(input: Record<string, unknown>, store: Store, catalog: Product[], sessionId?: string, chatId?: string) {
+    if (!sessionId || !chatId) return { error: 'WHATSAPP_CONTEXT_UNAVAILABLE', sent: false };
+    if (!(await this.planUsage.hasSessionCapability(sessionId, 'productImages'))) return { error: 'PLAN_UPGRADE_REQUIRED', capability: 'productImages', sent: false };
+    const product = catalog.find(item => item.id === this.scalar(input.product_id));
+    if (!product) return { error: 'PRODUCT_NOT_FOUND', sent: false };
+    if (!product.imageUrl) return { error: 'PRODUCT_IMAGE_UNAVAILABLE', sent: false };
+    await this.messages.sendImage(sessionId, { chatId, url: product.imageUrl, caption: `${product.title}\n${Number(product.price).toFixed(2)} ${store.currency}` });
+    this.log('send_product_image', store.id, chatId);
+    return { sent: true, product_id: product.id, product_name: product.title };
+  }
+
+  private async addReview(input: Record<string, unknown>, store: Store, phone: string, catalog: Product[], orders: Order[], sessionId?: string) {
+    if (!sessionId || !(await this.planUsage.hasSessionCapability(sessionId, 'productReviews'))) return { error: 'PLAN_UPGRADE_REQUIRED', capability: 'productReviews', saved: false };
+    const order = this.findOrder(orders, input.order_number);
+    if (!order) return { error: 'ORDER_NOT_FOUND', saved: false };
+    const delivered = /delivered|completed|fulfilled|livr/i.test(`${order.status} ${order.fulfillmentStatus ?? ''}`);
+    if (!delivered) return { error: 'ORDER_NOT_DELIVERED', saved: false };
+    const requested = this.scalar(input.product_id).trim();
+    const requestedLower = requested.toLowerCase();
+    const product = catalog.find(item =>
+      item.id === requested || item.externalProductId === requested || item.title.toLowerCase() === requestedLower,
+    );
+    const purchasedItem = (order.lineItems ?? []).find(item => {
+      const externalId = this.scalar(item.product_id ?? item.productId);
+      const name = this.scalar(item.title ?? item.name).trim().toLowerCase();
+      return externalId === (product?.externalProductId ?? requested) ||
+        Boolean(requestedLower && (name === requestedLower || name.includes(requestedLower))) ||
+        Boolean(product && (name === product.title.toLowerCase() || name.includes(product.title.toLowerCase())));
+    });
+    if (!purchasedItem) return { error: 'PRODUCT_NOT_IN_ORDER', saved: false };
+    const externalProductId = this.scalar(purchasedItem.product_id ?? purchasedItem.productId) || product?.externalProductId;
+    const productName = this.scalar(purchasedItem.title ?? purchasedItem.name) || product?.title;
+    if (!externalProductId || !productName) return { error: 'PURCHASED_PRODUCT_ID_UNAVAILABLE', saved: false };
+    const rating = Math.min(5, Math.max(1, Math.round(Number(input.rating) || 0)));
+    const comment = this.text(input.comment, 1000) || null;
+    let review = await this.reviews.findOneBy({ orderId: order.id, externalProductId, customerPhone: phone });
+    const provider = this.providers.get(store.provider);
+    let providerReviewId: string | null = null;
+    if (providerSupports(provider, 'createProductReview') && provider.createProductReview) {
+      const credentials = this.encryption.revealSettings(store.settings ?? {});
+      try {
+        const published = await provider.createProductReview(
+          { storeId: store.id, credentials },
+          {
+            reviewId: review?.providerReviewId,
+            productId: externalProductId,
+            rating,
+            comment: comment ?? `${rating}/5`,
+            reviewerName: order.customerName || 'WhatsApp customer',
+            reviewerEmail: order.email || `whatsapp-${phone}@smartconfirm.local`,
+          },
+        );
+        providerReviewId = published.reviewId;
+      } catch (error) {
+        this.logger.error(`Product review provider publish failed (store=${store.id}, order=${order.id}): ${error instanceof Error ? error.message : 'unknown error'}`);
+        return { error: 'PROVIDER_REVIEW_PUBLISH_FAILED', message: error instanceof Error ? error.message : 'Review publishing failed', saved: false, published: false };
+      }
+    }
+    review ??= this.reviews.create({
+      storeId: store.id,
+      orderId: order.id,
+      productId: product?.id ?? null,
+      externalProductId,
+      productName,
+      customerPhone: phone,
+    });
+    Object.assign(review, { rating, comment, status: 'published', providerReviewId, productId: product?.id ?? review.productId ?? null, productName });
+    await this.reviews.save(review);
+    this.log('add_product_review', store.id, phone);
+    return {
+      saved: true,
+      published: providerReviewId !== null,
+      provider_review_id: providerReviewId,
+      order_number: order.orderNumber ?? order.externalOrderId,
+      product_name: productName,
+      rating,
     };
   }
 
