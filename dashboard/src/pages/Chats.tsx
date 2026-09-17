@@ -13,6 +13,7 @@ import {
   MessageSquare,
   Bot,
   UserRoundCheck,
+  ContactRound,
 } from 'lucide-react';
 import { useProfilePicture } from '../hooks/useProfilePicture';
 import { useProfilePictures } from '../hooks/useProfilePictures';
@@ -22,6 +23,8 @@ import {
   sessionApi,
   messageApi,
   storesApi,
+  commerceSupportApi,
+  templateApi,
   asMessageType,
   type Session,
   type Chat,
@@ -58,6 +61,8 @@ import ChatComposer, { type StagedAttachment } from '../components/chats/ChatCom
 import StatusMedia from '../components/chats/StatusMedia';
 import StatusComposeModal from '../components/chats/StatusComposeModal';
 import NewChatModal from '../components/chats/NewChatModal';
+import CustomerContextPanel from '../components/chats/CustomerContextPanel';
+import type { CustomerOrderContext, CustomerProductContext, MessageTemplate } from '../services/api';
 import './Chats.css';
 
 // Quiet window for coalescing mark-as-read RPCs (see markReadCoalescer below).
@@ -266,17 +271,189 @@ export function Chats() {
     staleTime: 10_000,
   });
   const [takingOver, setTakingOver] = useState(false);
+  const [customerPanelOpen, setCustomerPanelOpen] = useState(false);
+  const [customerActionOrderId, setCustomerActionOrderId] = useState<string | null>(null);
+  const customerContextQuery = useQuery({
+    queryKey: ['customer-context', selectedSessionId, ownershipChatId],
+    queryFn: () => storesApi.customerContext(selectedSessionId, ownershipChatId!),
+    enabled: Boolean(customerPanelOpen && selectedSessionId && ownershipChatId && activeChat?.kind === 'individual'),
+    staleTime: 15_000,
+  });
+  const supportStatesQuery = useQuery({
+    queryKey: ['customer-support-states', selectedSessionId],
+    queryFn: () => storesApi.customerSupportStates(selectedSessionId),
+    enabled: Boolean(selectedSessionId),
+    staleTime: 10_000,
+  });
+  const supportTemplatesQuery = useQuery({
+    queryKey: ['support-templates', selectedSessionId],
+    queryFn: () => templateApi.list(selectedSessionId),
+    enabled: Boolean(customerPanelOpen && selectedSessionId),
+    staleTime: 30_000,
+  });
   const takeOverConversation = async () => {
-    const ownership = ownershipQuery.data;
-    if (!ownership?.storeId || !ownership.orderId) return;
+    if (!ownershipChatId) return;
     setTakingOver(true);
     try {
-      await storesApi.setOrderHandoff(ownership.storeId, ownership.orderId, true);
-      await ownershipQuery.refetch();
+      await storesApi.setCustomerSupport({ sessionId: selectedSessionId, chatId: ownershipChatId, mode: 'human' });
+      await Promise.all([ownershipQuery.refetch(), customerContextQuery.refetch(), supportStatesQuery.refetch()]);
     } catch (error) {
       showErrorToast(t('chats.handoffError'), error instanceof Error ? error.message : undefined);
     } finally {
       setTakingOver(false);
+    }
+  };
+
+  const changeChatHandoff = async (human: boolean) => {
+    if (!ownershipChatId) return false;
+    if (human && ownershipQuery.data?.status === 'human') return true;
+    setCustomerActionOrderId('handoff');
+    try {
+      await storesApi.setCustomerSupport({
+        sessionId: selectedSessionId,
+        chatId: ownershipChatId,
+        mode: human ? 'human' : 'ai',
+      });
+      await Promise.all([customerContextQuery.refetch(), ownershipQuery.refetch(), supportStatesQuery.refetch()]);
+      return true;
+    } catch (error) {
+      showErrorToast(t('chats.handoffError'), error instanceof Error ? error.message : undefined);
+      return false;
+    } finally {
+      setCustomerActionOrderId(null);
+    }
+  };
+
+  const saveCustomerIssue = async (data: { summary: string; status: 'open' | 'resolved'; priority: 'low' | 'normal' | 'high' | 'urgent'; tags: string[] }) => {
+    if (!ownershipChatId) return;
+    setCustomerActionOrderId('issue');
+    try {
+      await storesApi.setCustomerSupport({ sessionId: selectedSessionId, chatId: ownershipChatId, issueSummary: data.summary, issueStatus: data.status, priority: data.priority, tags: data.tags });
+      await Promise.all([customerContextQuery.refetch(), supportStatesQuery.refetch()]);
+    } catch (error) {
+      showErrorToast(t('common.error'), error instanceof Error ? error.message : undefined);
+    } finally {
+      setCustomerActionOrderId(null);
+    }
+  };
+
+  const remindCustomerOrder = async (order: CustomerOrderContext) => {
+    if (!order.store?.id) return;
+    setCustomerActionOrderId(order.id);
+    try {
+      await storesApi.remindOrder(order.store.id, order.id);
+      await customerContextQuery.refetch();
+    } catch (error) {
+      showErrorToast(t('common.error'), error instanceof Error ? error.message : undefined);
+    } finally {
+      setCustomerActionOrderId(null);
+    }
+  };
+
+  const sendCustomerOrderHistoryPdf = async (order: CustomerOrderContext) => {
+    if (!order.store?.id || !(await changeChatHandoff(true))) return;
+    setCustomerActionOrderId(`pdf:${order.id}`);
+    try {
+      await commerceSupportApi.sendOrderHistoryPdf(order.store.id, order.id);
+      if (activeChat) await queryClient.invalidateQueries({ queryKey: messagesQueryKey(selectedSessionId, activeChat.id) });
+    } catch (error) {
+      showErrorToast(t('common.error'), error instanceof Error ? error.message : undefined);
+    } finally {
+      setCustomerActionOrderId(null);
+    }
+  };
+
+  const prepareOrderSummary = (order: CustomerOrderContext) => {
+    const items = (order.lineItems ?? [])
+      .map(item => `• ${String(item.name ?? item.title ?? 'Product')} × ${String(item.quantity ?? 1)}`)
+      .join('\n');
+    setMessageInput(
+      `Order #${order.orderNumber || order.externalOrderId}\n${items}${items ? '\n' : ''}Total: ${Number(order.totalPrice).toFixed(2)} ${order.currency}\nPayment: ${order.financialStatus || '—'}\nFulfillment: ${order.fulfillmentStatus || '—'}`,
+    );
+    setCustomerPanelOpen(false);
+  };
+
+  const prepareProductProposal = (product: CustomerProductContext) => {
+    const variants = (product.variants ?? [])
+      .slice(0, 5)
+      .map(variant => String(variant.title ?? variant.name ?? ''))
+      .filter(Boolean)
+      .join(', ');
+    setMessageInput(
+      `${product.title}\nPrice: ${Number(product.price).toFixed(2)}${variants ? `\nOptions: ${variants}` : ''}${product.description ? `\n${product.description.slice(0, 300)}` : ''}`,
+    );
+    setCustomerPanelOpen(false);
+  };
+
+  const useSupportTemplate = (template: MessageTemplate) => {
+    setMessageInput([template.header, template.body, template.footer].filter(Boolean).join('\n'));
+    setCustomerPanelOpen(false);
+  };
+
+  const sendProductProposal = async (product: CustomerProductContext) => {
+    if (!activeChat || !(await changeChatHandoff(true))) return;
+    setCustomerActionOrderId(`product:${product.id}`);
+    const currency = customerContextQuery.data?.orders[0]?.currency ?? 'USD';
+    const caption = `${product.title}\n${Number(product.price).toFixed(2)} ${currency}${product.description ? `\n${product.description.slice(0, 300)}` : ''}`;
+    try {
+      if (product.imageUrl) await messageApi.sendImage(selectedSessionId, activeChat.id, product.imageUrl, caption);
+      else await messageApi.sendText(selectedSessionId, activeChat.id, caption);
+      await queryClient.invalidateQueries({ queryKey: messagesQueryKey(selectedSessionId, activeChat.id) });
+    } catch (error) {
+      showErrorToast(t('chats.errors.send'), error instanceof Error ? error.message : undefined);
+    } finally {
+      setCustomerActionOrderId(null);
+    }
+  };
+
+  const createHumanCustomerOrder = async (
+    product: CustomerProductContext,
+    data: { variantId?: string | null; variantTitle?: string | null; quantity: number; customerName: string; phone: string; address1: string; city: string; postalCode?: string; country: string; notifyCustomer: boolean },
+  ) => {
+    if (!product.store?.id || !(await changeChatHandoff(true))) return;
+    if (!window.confirm(`Create and confirm ${data.quantity} × ${product.title} in ${product.store.name}?`)) return;
+    setCustomerActionOrderId(`create:${product.id}`);
+    try {
+      await commerceSupportApi.createOrder(product.store.id, { productId: product.id, ...data });
+      await Promise.all([
+        customerContextQuery.refetch(),
+        activeChat ? queryClient.invalidateQueries({ queryKey: messagesQueryKey(selectedSessionId, activeChat.id) }) : Promise.resolve(),
+      ]);
+    } catch (error) {
+      showErrorToast(t('common.error'), error instanceof Error ? error.message : undefined);
+    } finally {
+      setCustomerActionOrderId(null);
+    }
+  };
+
+  const runHumanOrderAction = async (order: CustomerOrderContext, action: 'confirm' | 'cancel') => {
+    if (!order.store?.id) return;
+    const label = action === 'confirm' ? 'confirm' : 'cancel';
+    if (!window.confirm(`Do you want to ${label} order #${order.orderNumber || order.externalOrderId} in ${order.store.name}? The customer will be notified.`)) return;
+    setCustomerActionOrderId(`status:${order.id}`);
+    try {
+      await commerceSupportApi.setOrderStatus(order.store.id, order.id, action, true);
+      await customerContextQuery.refetch();
+    } catch (error) {
+      showErrorToast(t('common.error'), error instanceof Error ? error.message : undefined);
+    } finally {
+      setCustomerActionOrderId(null);
+    }
+  };
+
+  const updateHumanOrderAddress = async (
+    order: CustomerOrderContext,
+    address: { customerName: string; address1: string; city: string; postalCode?: string; country: string; phone?: string },
+  ) => {
+    if (!order.store?.id) return;
+    setCustomerActionOrderId(`address:${order.id}`);
+    try {
+      await commerceSupportApi.updateShippingAddress(order.store.id, order.id, address);
+      await customerContextQuery.refetch();
+    } catch (error) {
+      showErrorToast(t('common.error'), error instanceof Error ? error.message : undefined);
+    } finally {
+      setCustomerActionOrderId(null);
     }
   };
 
@@ -852,7 +1029,7 @@ export function Chats() {
           </p>
         </div>
       ) : (
-        <div className={`chats-layout ${activeChat || activeChannel || activeStatusGroup ? 'has-active-chat' : ''}`}>
+        <div data-tour="chat-workspace" className={`chats-layout ${activeChat || activeChannel || activeStatusGroup ? 'has-active-chat' : ''}`}>
           {/* LEFT SIDEBAR: session & chat rooms */}
           <ChatSidebar
             sessions={sessions}
@@ -870,6 +1047,7 @@ export function Chats() {
               chats: filteredChats,
               activeChatId: activeChat?.id,
               pictures: listPics.data,
+              supportStates: supportStatesQuery.data,
               onSelectChat: setActiveChat,
             }}
             channelsTab={{
@@ -892,6 +1070,7 @@ export function Chats() {
           {/* RIGHT VIEW: active chat room */}
           <main className="chats-room">
             {activeChat ? (
+              <div className="room-workspace">
               <div className="room-container">
                 {/* Room header */}
                 <header className="room-header">
@@ -921,6 +1100,17 @@ export function Chats() {
                         (activeChat.isGroup ? t('chats.groupSubtitle') : t('chats.privateContactSubtitle'))}
                     </span>
                   </div>
+                  {activeChat.kind === 'individual' && (
+                    <button
+                      type="button"
+                      className={`customer-context-toggle ${customerPanelOpen ? 'active' : ''}`}
+                      onClick={() => setCustomerPanelOpen(open => !open)}
+                      title="Customer orders and automation"
+                    >
+                      <ContactRound size={19} />
+                      <span>Customer</span>
+                    </button>
+                  )}
                 </header>
 
                 {ownershipQuery.data?.locked && (
@@ -929,7 +1119,9 @@ export function Chats() {
                     <div>
                       <strong>{t('chats.automationOwnsChat')}</strong>
                       <span>
-                        {t('chats.automationOwnsChatHint', { order: ownershipQuery.data.orderNumber ?? '—' })}
+                        {ownershipQuery.data.orderNumber
+                          ? t('chats.automationOwnsChatHint', { order: ownershipQuery.data.orderNumber })
+                          : 'AI automation is active for this complete customer chat.'}
                       </span>
                     </div>
                     <button type="button" onClick={takeOverConversation} disabled={takingOver}>
@@ -971,8 +1163,32 @@ export function Chats() {
                   setAttachment={setAttachment}
                   previewUrl={previewUrl}
                   setPreviewUrl={setPreviewUrl}
-                  automationLocked={ownershipQuery.data?.locked === true}
+                  automationLocked={false}
+                  onBeforeSend={() => changeChatHandoff(true)}
                 />
+              </div>
+              {customerPanelOpen && activeChat.kind === 'individual' && (
+                <CustomerContextPanel
+                  context={customerContextQuery.data}
+                  loading={customerContextQuery.isLoading}
+                  error={customerContextQuery.isError}
+                  busyAction={customerActionOrderId}
+                  onClose={() => setCustomerPanelOpen(false)}
+                  onRefresh={() => void customerContextQuery.refetch()}
+                  onChatHandoff={human => void changeChatHandoff(human)}
+                  onSaveIssue={data => void saveCustomerIssue(data)}
+                  onRemind={order => void remindCustomerOrder(order)}
+                  onPrepareSummary={prepareOrderSummary}
+                  onSendOrderHistoryPdf={order => void sendCustomerOrderHistoryPdf(order)}
+                  onPrepareProduct={prepareProductProposal}
+                  onSendProduct={product => void sendProductProposal(product)}
+                  onCreateOrder={(product, data) => void createHumanCustomerOrder(product, data)}
+                  onOrderAction={(order, action) => void runHumanOrderAction(order, action)}
+                  onUpdateAddress={(order, address) => void updateHumanOrderAddress(order, address)}
+                  templates={supportTemplatesQuery.data ?? []}
+                  onUseTemplate={useSupportTemplate}
+                />
+              )}
               </div>
             ) : activeChannel ? (
               // Read-only channel pane: no send footer, reactions, delete, reply, or markChatRead —

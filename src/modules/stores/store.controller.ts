@@ -108,6 +108,35 @@ export class StoreController {
     return this.storeService.getConversationOwnership(sessionId, chatId);
   }
 
+  @Get('customer-context/current')
+  @ApiOperation({ summary: 'Get store, order, and AI context for a WhatsApp customer' })
+  getCustomerContext(@Query('sessionId') sessionId: string, @Query('chatId') chatId: string) {
+    return this.storeService.getCustomerContext(sessionId, chatId);
+  }
+
+  @Get('customer-context/support-states')
+  @ApiOperation({ summary: 'List chat ownership and support queue state for one WhatsApp session' })
+  getCustomerSupportStates(@Query('sessionId') sessionId: string) {
+    return this.storeService.getCustomerSupportStates(sessionId);
+  }
+
+  @Patch('customer-context/support')
+  @RequireRole(ApiKeyRole.OPERATOR)
+  @ApiOperation({ summary: 'Take over/resume a complete customer chat and update its support issue' })
+  setCustomerSupport(
+    @Body() body: {
+      sessionId: string;
+      chatId: string;
+      mode?: 'ai' | 'human';
+      issueStatus?: 'open' | 'resolved';
+      issueSummary?: string | null;
+      priority?: 'low' | 'normal' | 'high' | 'urgent';
+      tags?: string[];
+    },
+  ) {
+    return this.storeService.setCustomerSupport(body.sessionId, body.chatId, body);
+  }
+
   @Get(':id/order-conversations')
   getOrderConversations(@Param('id', ParseUUIDPipe) id: string) {
     return this.storeService.getOrderConversations(id);

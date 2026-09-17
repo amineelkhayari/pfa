@@ -17,6 +17,7 @@ import { CommerceCoreModule } from '../../commerce/commerce-core.module';
 import { StoreIntegrationService } from './store-integration.service';
 import { CommerceWebhookService } from './commerce-webhook.service';
 import { ProductReview } from './entities/product-review.entity';
+import { CustomerSupportConversation } from './entities/customer-support-conversation.entity';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { ProductReview } from './entities/product-review.entity';
         Session,
         OrderAiConversation,
         Message,
+        CustomerSupportConversation,
         // IntegrationConnection
       ],
       'data',

@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { AlertCircle, CircleDashed, Loader2, Megaphone, Plus, Search } from 'lucide-react';
 import type { UseQueryResult } from '@tanstack/react-query';
-import type { Channel, Chat, ContactStatusGroup, Session } from '../../services/api';
+import type { Channel, Chat, ContactStatusGroup, CustomerSupportQueueState, Session } from '../../services/api';
 import ChatAvatar from './ChatAvatar';
 
 export type ChatsTab = 'chats' | 'channels' | 'status';
@@ -22,6 +22,7 @@ interface ChatSidebarProps {
     chats: Chat[];
     activeChatId?: string;
     pictures?: Record<string, string | null>;
+    supportStates?: Record<string, CustomerSupportQueueState>;
     onSelectChat: (chat: Chat) => void;
   };
   channelsTab: {
@@ -67,6 +68,7 @@ function ChatSidebar({
   // change every render.
   const renderChatRow = (chat: Chat) => {
     const isActive = chatsTab.activeChatId === chat.id;
+    const support = chatsTab.supportStates?.[chat.id];
     return (
       <div
         key={chat.id}
@@ -102,6 +104,13 @@ function ChatSidebar({
               </span>
             )}
           </div>
+          {support && (
+            <div className="chat-support-badges">
+              <span className={`support-mode-badge mode-${support.mode}`}>{support.mode === 'human' ? 'Human' : 'AI'}</span>
+              {support.issueStatus === 'open' && <span className="support-open-badge">Open</span>}
+              {support.priority !== 'normal' && <span className={`support-priority-badge priority-${support.priority}`}>{support.priority}</span>}
+            </div>
+          )}
         </div>
       </div>
     );

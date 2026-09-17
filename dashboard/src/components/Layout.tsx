@@ -27,12 +27,15 @@ import {
   Megaphone,
   ContactRound,
   Activity,
+  CircleHelp,
+  GraduationCap,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { type UserRole } from '../hooks/useRole';
 import { languageOptions, resolveSupportedLanguage, rtlLanguages, type SupportedLanguage } from '../i18n';
 import { healthApi } from '../services/api';
 import './Layout.css';
+import { ProductTour, START_PRODUCT_TOUR_EVENT } from './ProductTour';
 
 interface LayoutProps {
   onLogout: () => void;
@@ -56,6 +59,7 @@ const allNavItems = [
   { to: '/logs', icon: FileText, key: 'logs' as const, adminOnly: false },
   { to: '/account', icon: UserRound, key: 'account' as const, adminOnly: false },
   { to: '/ai-test', icon: Bot, key: 'aiTest' as const, adminOnly: false },
+  { to: '/guide', icon: GraduationCap, key: 'guide' as const, adminOnly: false },
   { to: '/admin/users', icon: UsersRound, key: 'users' as const, adminOnly: true },
   { to: '/admin/payments', icon: CreditCard, key: 'payments' as const, adminOnly: true },
   { to: '/admin/ai', icon: Bot, key: 'aiSettings' as const, adminOnly: true },
@@ -228,8 +232,10 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
                             ? 'AI Settings'
                             : key === 'aiTest'
                               ? 'Test AI Agent'
-                              : key === 'automationLogs'
+                            : key === 'automationLogs'
                                 ? 'AI & Automation Logs'
+                                : key === 'guide'
+                                  ? 'Setup Guide'
                                 : key,
             });
             return (
@@ -240,6 +246,7 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
                 end={to === '/'}
                 onClick={handleNavClick}
                 title={isCollapsed ? label : undefined}
+                data-tour={`nav-${key}`}
               >
                 <Icon size={20} />
                 {!isCollapsed && <span>{label}</span>}
@@ -249,6 +256,7 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
         </nav>
 
         <div className="sidebar-footer">
+          {userRole === 'operator' && <button className="theme-toggle-btn" type="button" onClick={() => window.dispatchEvent(new Event(START_PRODUCT_TOUR_EVENT))} title="Product tour"><CircleHelp size={18} />{!isCollapsed && <span>Product tour</span>}</button>}
           <div className="language-menu" ref={languageMenuRef}>
             <button
               className="theme-toggle-btn"
@@ -300,6 +308,7 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
       <main className={`main-content ${isCollapsed ? 'expanded' : ''} ${isMobile ? 'mobile' : ''}`}>
         <Outlet />
       </main>
+      <ProductTour role={userRole} />
     </div>
   );
 }

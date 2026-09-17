@@ -14,6 +14,7 @@ import { CommerceCatalogConversationService } from './commerce-catalog-conversat
 import { CommerceAiOrderConversationService } from './commerce-ai-order-conversation.service';
 import { CommerceOrderRoutingService } from './commerce-order-routing.service';
 import { CommerceMessageIdempotencyService } from './commerce-message-idempotency.service';
+import { CustomerSupportConversation } from '../../stores/entities/customer-support-conversation.entity';
 
 interface IncomingReply {
   id?: string;
@@ -43,6 +44,8 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
     private readonly messageIdempotency: CommerceMessageIdempotencyService,
     @InjectRepository(Store, 'data') private readonly stores: Repository<Store>,
     @InjectRepository(Order, 'data') private readonly orders: Repository<Order>,
+    @InjectRepository(CustomerSupportConversation, 'data')
+    private readonly supportConversations: Repository<CustomerSupportConversation>,
   ) {}
 
   onModuleInit(): void {
@@ -75,6 +78,13 @@ export class CommerceConversationService implements OnModuleInit, OnModuleDestro
   private async handleReply(sessionId: string | undefined, message: IncomingReply): Promise<void> {
     if (!sessionId || message.fromMe) return;
     const chatId = message.chatId ?? message.from;
+    if (chatId) {
+      const phone = normalizePhone(chatId);
+      const supportChatId = phone ? `${phone}@c.us` : chatId;
+      const support = await this.supportConversations.findOneBy({ sessionId, chatId: supportChatId });
+      // Human ownership applies to the complete chat: confirmation, catalogue help, carts and voice.
+      if (support?.mode === 'human') return;
+    }
     const isAudio = message.type === 'voice' || message.type === 'audio';
     let reply = message.body?.trim();
     if (isAudio) {

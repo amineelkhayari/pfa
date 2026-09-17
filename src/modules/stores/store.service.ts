@@ -17,6 +17,7 @@ import { PlanUsageService } from '../auth/plan-usage.service';
 import { OrderAiConversation } from './entities/order-ai-conversation.entity';
 import { Message } from '../message/entities/message.entity';
 import { isSamePhone, normalizePhone, phoneToChatId } from '../../common/utils/phone.util';
+import { CustomerSupportConversation } from './entities/customer-support-conversation.entity';
 
 @Injectable()
 export class StoreService {
@@ -36,6 +37,8 @@ export class StoreService {
     private readonly conversationRepository: Repository<OrderAiConversation>,
     @InjectRepository(Message, 'data')
     private readonly messageRepository: Repository<Message>,
+    @InjectRepository(CustomerSupportConversation, 'data')
+    private readonly supportConversationRepository: Repository<CustomerSupportConversation>,
     private readonly credentialEncryption: CredentialEncryptionService,
     private readonly messageService: MessageService,
     private readonly planUsage: PlanUsageService,
@@ -353,6 +356,16 @@ export class StoreService {
     const stores = await this.findAll();
     const storeIds = stores.filter(store => store.sessionId === sessionId).map(store => store.id);
     if (!storeIds.length) return { locked: false };
+    const supportChatId = phoneToChatId(phone);
+    const support = await this.supportConversationRepository.findOneBy({ sessionId, chatId: supportChatId });
+    if (support) {
+      return {
+        locked: support.mode === 'ai',
+        automation: 'ai',
+        status: support.mode,
+        support,
+      };
+    }
     const candidates = await this.orderRepository
       .createQueryBuilder('order')
       .where('order.storeId IN (:...storeIds)', { storeIds })
@@ -371,6 +384,119 @@ export class StoreService {
       automation: conversation ? 'ai' : 'confirmation',
       status: conversation?.status ?? 'active',
     };
+  }
+
+  async getCustomerContext(sessionId: string, chatId: string) {
+    const phone = normalizePhone(chatId);
+    if (!phone) return { phone: null, customerName: null, orders: [], products: [], support: null };
+
+    // findAll() is already scoped to the authenticated user. Restricting again by session prevents
+    // a chat opened on one WhatsApp device from exposing orders owned by another device.
+    const stores = (await this.findAll()).filter(store => store.sessionId === sessionId);
+    if (!stores.length) return { phone, customerName: null, orders: [], products: [], support: null };
+
+    const storeById = new Map(stores.map(store => [store.id, store]));
+    const orders = await this.orderRepository
+      .createQueryBuilder('order')
+      .where('order.storeId IN (:...storeIds)', { storeIds: stores.map(store => store.id) })
+      .orderBy('order.externalCreatedAt', 'DESC')
+      .addOrderBy('order.createdAt', 'DESC')
+      .getMany();
+    const customerOrders = orders.filter(order => isSamePhone(order.phone, phone));
+    const conversations = customerOrders.length
+      ? await this.conversationRepository
+          .createQueryBuilder('conversation')
+          .where('conversation.orderId IN (:...orderIds)', { orderIds: customerOrders.map(order => order.id) })
+          .getMany()
+      : [];
+    const conversationByOrder = new Map(conversations.map(row => [row.orderId, row]));
+    const products = await this.productRepository
+      .createQueryBuilder('product')
+      .where('product.storeId IN (:...storeIds)', { storeIds: stores.map(store => store.id) })
+      .andWhere('product.status != :archived', { archived: 'archived' })
+      .orderBy('product.externalUpdatedAt', 'DESC')
+      .take(250)
+      .getMany();
+    const support = await this.supportConversationRepository.findOneBy({
+      sessionId,
+      chatId: phoneToChatId(phone),
+    });
+
+    return {
+      phone,
+      customerName: customerOrders.find(order => order.customerName)?.customerName ?? null,
+      support,
+      products: products.map(product => {
+        const store = storeById.get(product.storeId);
+        return {
+          ...product,
+          store: store ? { id: store.id, name: store.name, provider: store.provider, currency: store.currency } : null,
+        };
+      }),
+      orders: customerOrders.map(order => {
+        const store = storeById.get(order.storeId);
+        return {
+          ...order,
+          store: store ? { id: store.id, name: store.name, provider: store.provider, currency: store.currency } : null,
+          conversation: conversationByOrder.get(order.id) ?? null,
+        };
+      }),
+    };
+  }
+
+  async getCustomerSupportStates(sessionId: string) {
+    const hasStore = (await this.findAll()).some(store => store.sessionId === sessionId);
+    if (!hasStore) return {};
+    const rows = await this.supportConversationRepository.find({ where: { sessionId } });
+    return Object.fromEntries(rows.map(row => [row.chatId, {
+      mode: row.mode,
+      issueStatus: row.issueStatus,
+      issueSummary: row.issueSummary,
+      priority: row.priority,
+      tags: row.tags ?? [],
+      assignedUserId: row.assignedUserId,
+      updatedAt: row.updatedAt,
+    }]));
+  }
+
+  async setCustomerSupport(
+    sessionId: string,
+    chatId: string,
+    changes: { mode?: 'ai' | 'human'; issueStatus?: 'open' | 'resolved'; issueSummary?: string | null; priority?: 'low' | 'normal' | 'high' | 'urgent'; tags?: string[] },
+  ) {
+    const phone = normalizePhone(chatId);
+    if (!phone) throw new BadRequestException('A personal WhatsApp phone number is required.');
+    const hasStore = (await this.findAll()).some(store => store.sessionId === sessionId);
+    if (!hasStore) return { available: false, mode: 'human' as const };
+
+    const normalizedChatId = phoneToChatId(phone);
+    let support = await this.supportConversationRepository.findOneBy({ sessionId, chatId: normalizedChatId });
+    support ??= this.supportConversationRepository.create({
+      sessionId,
+      chatId: normalizedChatId,
+      phone,
+      mode: 'ai',
+      issueStatus: 'open',
+      issueSummary: null,
+      priority: 'normal',
+      tags: [],
+      assignedUserId: null,
+      assignedAt: null,
+      lastHumanMessageAt: null,
+    });
+    if (changes.mode) {
+      support.mode = changes.mode;
+      support.assignedAt = changes.mode === 'human' ? new Date() : null;
+      if (changes.mode === 'human') {
+        support.lastHumanMessageAt = new Date();
+        support.assignedUserId = getRequestUserScope().userId ?? null;
+      }
+    }
+    if (changes.issueStatus) support.issueStatus = changes.issueStatus;
+    if (changes.issueSummary !== undefined) support.issueSummary = changes.issueSummary?.trim().slice(0, 2000) || null;
+    if (changes.priority) support.priority = changes.priority;
+    if (changes.tags) support.tags = [...new Set(changes.tags.map(tag => tag.trim().toLowerCase()).filter(Boolean))].slice(0, 12);
+    return this.supportConversationRepository.save(support);
   }
 
   async setOrderConversationHandoff(storeId: string, orderId: string, handoff: boolean) {

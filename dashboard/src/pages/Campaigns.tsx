@@ -71,7 +71,7 @@ export function Campaigns() {
       {messageLimit.reason && <PlanUpgradeNotice reason={messageLimit.reason} />}
       {report.isLoading && <div className="campaign-panel">Loading campaigns…</div>}
       <section className="campaign-grid lower">
-        <form className="campaign-panel compose" onSubmit={submit}>
+        <form className="campaign-panel compose" data-tour="campaign-create" onSubmit={submit}>
           <div className="section-title">
             <div>
               <h2>Create campaign</h2>

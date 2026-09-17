@@ -531,7 +531,7 @@ export function Sessions() {
         subtitle={t('sessions.subtitle')}
         actions={
           canWrite && (
-            <button className="btn-primary" onClick={() => setShowCreateModal(true)} disabled={sessionLimit.blocked} title={sessionLimit.reason ?? undefined}>
+            <button className="btn-primary" data-tour="session-create" onClick={() => setShowCreateModal(true)} disabled={sessionLimit.blocked} title={sessionLimit.reason ?? undefined}>
               <Plus size={18} />
               {t('sessions.newSession')}
             </button>

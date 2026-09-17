@@ -33,6 +33,7 @@ const AiTestChat = lazy(() => import('./pages/AiTestChat').then(m => ({ default:
 const Campaigns = lazy(() => import('./pages/Campaigns').then(m => ({ default: m.Campaigns })));
 const Contacts = lazy(() => import('./pages/Contacts').then(m => ({ default: m.Contacts })));
 const AutomationLogs = lazy(() => import('./pages/AutomationLogs').then(m => ({ default: m.AutomationLogs })));
+const Guide = lazy(() => import('./pages/Guide').then(m => ({ default: m.Guide })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -184,6 +185,7 @@ function AppContent() {
             {role !== 'admin' && <Route path="message-tester" element={<MessageTester />} />}
             <Route path="account" element={<Account />} />
             {role !== 'admin' && <Route path="ai-test" element={<AiTestChat />} />}
+            {role !== 'admin' && <Route path="guide" element={<Guide />} />}
             {role === 'admin' && <Route path="admin/users" element={<AdminUsers />} />}
             {role === 'admin' && <Route path="admin/payments" element={<PaymentSettings />} />}
             {role === 'admin' && <Route path="admin/ai" element={<AiSettings />} />}

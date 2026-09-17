@@ -412,6 +412,7 @@ export class CommerceCartConversationService {
 
   private providerVariantId(provider: Platform, variant: Record<string, unknown> | undefined): string {
     const id = this.scalarString(variant?.id);
+    if (provider === Platform.WOOCOMMERCE && /^default$/i.test(this.scalarString(variant?.title))) return '';
     if ([Platform.WOOCOMMERCE, Platform.YOUCAN].includes(provider)) return id;
     return this.scalarString(variant?.admin_graphql_api_id) || (id ? `gid://shopify/ProductVariant/${id}` : '');
   }

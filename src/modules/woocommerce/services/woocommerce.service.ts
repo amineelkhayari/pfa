@@ -179,21 +179,21 @@ export class WooCommerceService {
   }
 
   async confirmOrder(credentials: WooCredentials, externalId: string) {
-    await this.request(credentials, `orders/${externalId}`, {
+    await this.request(credentials, `orders/${this.numericId(externalId, 'order')}`, {
       method: 'PUT',
       body: JSON.stringify({ status: 'processing' }),
     });
   }
   async cancelOrder(credentials: WooCredentials, externalId: string) {
-    await this.request(credentials, `orders/${externalId}`, {
+    await this.request(credentials, `orders/${this.numericId(externalId, 'order')}`, {
       method: 'PUT',
       body: JSON.stringify({ status: 'cancelled' }),
     });
   }
   async updateOrderShippingAddress(credentials: WooCredentials, externalId: string, address: Record<string, unknown>) {
-    await this.request(credentials, `orders/${externalId}`, {
+    await this.request(credentials, `orders/${this.numericId(externalId, 'order')}`, {
       method: 'PUT',
-      body: JSON.stringify({ shipping: address }),
+      body: JSON.stringify({ shipping: { ...address, country: this.countryCode(String(address.country ?? '')) } }),
     });
   }
 
@@ -218,7 +218,7 @@ export class WooCommerceService {
       address_1: input.address1,
       city: input.city,
       postcode: input.postalCode || '',
-      country: input.country,
+      country: this.countryCode(input.country),
       phone: input.phone,
     };
     const payload = await this.request(credentials, 'orders', {
@@ -232,9 +232,11 @@ export class WooCommerceService {
         shipping: address,
         line_items: [
           {
-            product_id: Number(input.productId),
+            product_id: this.numericId(input.productId, 'product'),
             quantity: input.quantity,
-            ...(input.variationId ? { variation_id: Number(input.variationId) } : {}),
+            ...(input.variationId && input.variationId !== input.productId
+              ? { variation_id: this.numericId(input.variationId, 'variation') }
+              : {}),
           },
         ],
         meta_data: [{ key: '_smartConfirm_source', value: 'whatsapp-confirmed' }],
@@ -277,6 +279,29 @@ export class WooCommerceService {
       if (batch.length < 100) break;
     }
     return result;
+  }
+
+  private numericId(value: string, kind: string): number {
+    const normalized = String(value ?? '').trim().replace(/^#/, '');
+    if (!/^\d+$/.test(normalized) || Number(normalized) <= 0) {
+      throw new BadRequestException(`WooCommerce ${kind} ID must be a positive numeric ID.`);
+    }
+    return Number(normalized);
+  }
+
+  private countryCode(value: string): string {
+    const country = value.trim();
+    if (/^[a-z]{2}$/i.test(country)) return country.toUpperCase();
+    const normalized = country.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const codes: Record<string, string> = {
+      maroc: 'MA', morocco: 'MA', france: 'FR', espagne: 'ES', spain: 'ES',
+      belgique: 'BE', belgium: 'BE', canada: 'CA', 'united states': 'US', usa: 'US',
+      'united kingdom': 'GB', uk: 'GB', allemagne: 'DE', germany: 'DE',
+      italie: 'IT', italy: 'IT', portugal: 'PT', tunisie: 'TN', tunisia: 'TN',
+      algerie: 'DZ', algeria: 'DZ', senegal: 'SN', 'saudi arabia': 'SA',
+      'arabie saoudite': 'SA', uae: 'AE', 'united arab emirates': 'AE',
+    };
+    return codes[normalized] ?? country.toUpperCase();
   }
 
   private async request(credentials: WooCredentials, endpoint: string, init: RequestInit = {}): Promise<any> {

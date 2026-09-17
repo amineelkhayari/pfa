@@ -338,6 +338,41 @@ export interface ConversationOwnership {
   status?: string;
 }
 
+export interface CustomerOrderContext extends StoreOrder {
+  store: Pick<Store, 'id' | 'name' | 'provider' | 'currency'> | null;
+  conversation: OrderAiConversation | null;
+}
+
+export interface CustomerProductContext extends StoreProduct {
+  store: Pick<Store, 'id' | 'name' | 'provider' | 'currency'> | null;
+}
+
+export interface CustomerSupportState {
+  id: string;
+  sessionId: string;
+  chatId: string;
+  phone: string | null;
+  mode: 'ai' | 'human';
+  issueStatus: 'open' | 'resolved';
+  issueSummary: string | null;
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  tags: string[] | null;
+  assignedUserId: string | null;
+  assignedAt: string | null;
+  lastHumanMessageAt: string | null;
+  updatedAt: string;
+}
+
+export type CustomerSupportQueueState = Pick<CustomerSupportState, 'mode' | 'issueStatus' | 'issueSummary' | 'priority' | 'tags' | 'assignedUserId' | 'updatedAt'>;
+
+export interface CustomerContext {
+  phone: string | null;
+  customerName: string | null;
+  orders: CustomerOrderContext[];
+  products: CustomerProductContext[];
+  support: CustomerSupportState | null;
+}
+
 export interface OrderConfirmationSummary {
   total: number;
   pending: number;
@@ -1094,6 +1129,29 @@ export const storesApi = {
     request<ConversationOwnership>(
       `/stores/conversation-ownership/current?sessionId=${encodeURIComponent(sessionId)}&chatId=${encodeURIComponent(chatId)}`,
     ),
+  customerContext: (sessionId: string, chatId: string) =>
+    request<CustomerContext>(
+      `/stores/customer-context/current?sessionId=${encodeURIComponent(sessionId)}&chatId=${encodeURIComponent(chatId)}`,
+    ),
+  customerSupportStates: (sessionId: string) =>
+    request<Record<string, CustomerSupportQueueState>>(
+      `/stores/customer-context/support-states?sessionId=${encodeURIComponent(sessionId)}`,
+    ),
+  setCustomerSupport: (
+    data: {
+      sessionId: string;
+      chatId: string;
+      mode?: 'ai' | 'human';
+      issueStatus?: 'open' | 'resolved';
+      issueSummary?: string | null;
+      priority?: 'low' | 'normal' | 'high' | 'urgent';
+      tags?: string[];
+    },
+  ) =>
+    request<CustomerSupportState | { available: false; mode: 'human' }>('/stores/customer-context/support', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
   remindOrder: (storeId: string, orderId: string) =>
     request<StoreOrder>(`/stores/${storeId}/orders/${orderId}/remind`, { method: 'POST' }),
   orderConversation: (storeId: string, orderId: string) =>
@@ -1103,6 +1161,42 @@ export const storesApi = {
       method: 'POST',
       body: JSON.stringify({ handoff }),
     }),
+};
+
+export const commerceSupportApi = {
+  createOrder: (storeId: string, data: {
+    productId: string;
+    variantId?: string | null;
+    variantTitle?: string | null;
+    quantity: number;
+    customerName: string;
+    phone: string;
+    address1: string;
+    city: string;
+    postalCode?: string;
+    country: string;
+    notifyCustomer?: boolean;
+  }) => request<StoreOrder>(`/commerce-support/stores/${storeId}/orders`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  sendOrderHistoryPdf: (storeId: string, orderId: string) =>
+    request<{ sent: boolean; orders: number; messageId?: string }>(`/commerce-support/stores/${storeId}/orders/${orderId}/order-history-pdf`, {
+      method: 'POST',
+    }),
+  setOrderStatus: (storeId: string, orderId: string, action: 'confirm' | 'cancel', notifyCustomer = true) =>
+    request<StoreOrder>(`/commerce-support/stores/${storeId}/orders/${orderId}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ action, notifyCustomer }),
+    }),
+  updateShippingAddress: (
+    storeId: string,
+    orderId: string,
+    address: { customerName: string; address1: string; city: string; postalCode?: string; country: string; phone?: string },
+  ) => request<StoreOrder>(`/commerce-support/stores/${storeId}/orders/${orderId}/shipping-address`, {
+    method: 'PATCH',
+    body: JSON.stringify(address),
+  }),
 };
 
 export const campaignApi = {

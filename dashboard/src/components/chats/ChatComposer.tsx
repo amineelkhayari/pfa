@@ -78,6 +78,7 @@ interface ChatComposerProps {
   previewUrl: string | null;
   setPreviewUrl: Dispatch<SetStateAction<string | null>>;
   automationLocked?: boolean;
+  onBeforeSend?: () => Promise<boolean>;
 }
 
 // The composer half of the chat room: attachment preview, emoji panel, reply banner, and the input
@@ -98,6 +99,7 @@ function ChatComposer({
   previewUrl,
   setPreviewUrl,
   automationLocked = false,
+  onBeforeSend,
 }: ChatComposerProps) {
   const { t } = useTranslation();
   const { canWrite } = useRole();
@@ -233,6 +235,7 @@ function ChatComposer({
       (composerType === 'forward' && !!specialValues[0].trim() && !!specialValues[1].trim());
     if (fileComposerTypes.includes(composerType) && !attachment) return;
     if (!textToSend && !attachment && !specialValid) return;
+    if (onBeforeSend && !(await onBeforeSend())) return;
 
     setMessageInput('');
     setSending(true);

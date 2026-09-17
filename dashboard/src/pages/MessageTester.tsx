@@ -456,7 +456,7 @@ export function MessageTester() {
       {messageLimit.reason && <PlanUpgradeNotice reason={messageLimit.reason} />}
 
       <div className="tester-panels">
-        <div className="compose-panel">
+        <div className="compose-panel" data-tour="message-tester-compose">
           <h2 className="eyebrow">{t('messageTester.compose')}</h2>
 
           <div className="form-group">

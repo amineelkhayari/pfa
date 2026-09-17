@@ -395,7 +395,7 @@ export function Stores() {
         subtitle={t('stores.subtitle')}
         actions={
           canWrite ? (
-            <button className="btn-primary" onClick={openCreate} disabled={storeLimit.blocked || !availableSessions.length} title={storeLimit.reason ?? undefined}>
+            <button className="btn-primary" data-tour="store-create" onClick={openCreate} disabled={storeLimit.blocked || !availableSessions.length} title={storeLimit.reason ?? undefined}>
               <Plus size={16} /> {t('stores.addStore')}
             </button>
           ) : undefined

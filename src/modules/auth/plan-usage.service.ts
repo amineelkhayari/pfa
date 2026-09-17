@@ -272,6 +272,10 @@ export class PlanUsageService {
   }
   private trialEndsAt(user: UserAccount): Date | null {
     const plan = this.plans.get(user.plan);
+    // The local one-time trial gate is only for free access. Paid plans are
+    // authorized by billing_subscriptions (active/trialing + currentPeriodEnd),
+    // and must never expire from user.createdAt + plan.trialDays.
+    if (plan.priceMonthly > 0) return null;
     if (!plan.trialDays) return null;
     return new Date(new Date(user.createdAt).getTime() + plan.trialDays * 86_400_000);
   }

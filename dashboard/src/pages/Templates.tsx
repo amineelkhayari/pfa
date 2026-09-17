@@ -230,7 +230,7 @@ export function Templates() {
                 <h2>{t('templates.savedTitle')}</h2>
                 <span>{t('templates.count', { count: templates.length })}</span>
               </div>
-              <button className="btn-primary templates-new-btn" onClick={resetForm} disabled={!canWrite}>
+              <button className="btn-primary templates-new-btn" data-tour="template-create" onClick={resetForm} disabled={!canWrite}>
                 <Plus size={16} />
                 {t('templates.newTemplate')}
               </button>

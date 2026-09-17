@@ -132,7 +132,7 @@ export function AiTestChat() {
   };
 
   const currency = stores.data?.find(item => item.id === storeId)?.currency || 'MAD';
-  return <div className="ai-test-page"><PageHeader title="Test AI agent" subtitle="Test a realistic store conversation without sending WhatsApp messages or changing a real order"/>{aiLimit.reason && <PlanUpgradeNotice reason={aiLimit.reason}/>}<div className="agent-demo">
+  return <div className="ai-test-page"><PageHeader title="Test AI agent" subtitle="Test a realistic store conversation without sending WhatsApp messages or changing a real order"/>{aiLimit.reason && <PlanUpgradeNotice reason={aiLimit.reason}/>}<div className="agent-demo" data-tour="ai-test-workspace">
     <aside className="agent-catalog"><h2>Catalogue importé</h2><p>{products.data?.length ?? 0} produits depuis la boutique sélectionnée</p><div className="agent-product-list">
       {products.isLoading && <span className="agent-muted">Chargement du catalogue…</span>}
       {products.data?.map(product => { const quantity = stock(product); return <article className="agent-product" key={product.id}><strong>{product.title}</strong><small>{product.productType || 'produit'} · {Number(product.price).toFixed(2)} {currency}</small><span className={quantity === 0 ? 'out' : quantity !== null && quantity <= 5 ? 'low' : 'ok'}>{quantity === null ? 'Stock non communiqué' : quantity === 0 ? 'Rupture' : `${quantity} en stock`}</span></article>; })}

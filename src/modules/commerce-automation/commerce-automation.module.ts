@@ -32,6 +32,9 @@ import { CommerceExecutionLogService } from './services/commerce-execution-log.s
 import { AdminCommerceExecutionsController } from './controllers/admin-commerce-executions.controller';
 import { ProductReview } from '../stores/entities/product-review.entity';
 import { OrderReportService } from './services/order-report.service';
+import { CustomerSupportConversation } from '../stores/entities/customer-support-conversation.entity';
+import { HumanCommerceActionController } from './controllers/human-commerce-action.controller';
+import { HumanCommerceActionService } from './services/human-commerce-action.service';
 
 /** Provider-neutral customer conversation and order automation. */
 @Module({
@@ -44,11 +47,11 @@ import { OrderReportService } from './services/order-report.service';
     BillingModule,
     StoreModule,
     TypeOrmModule.forFeature(
-      [Store, Product, Order, ProductReview, OrderAiConversation, StoreOrderCart, CommerceMessageReceipt, CommerceToolExecution],
+      [Store, Product, Order, ProductReview, OrderAiConversation, StoreOrderCart, CommerceMessageReceipt, CommerceToolExecution, CustomerSupportConversation],
       'data',
     ),
   ],
-  controllers: [AdminAiTestController, UserAiTestController, AdminCommerceExecutionsController],
+  controllers: [AdminAiTestController, UserAiTestController, AdminCommerceExecutionsController, HumanCommerceActionController],
   providers: [
     CommerceConversationService,
     CommerceAiAgentService,
@@ -65,6 +68,7 @@ import { OrderReportService } from './services/order-report.service';
     CommerceVoiceService,
     AudioTranscriptionService,
     CredentialEncryptionService,
+    HumanCommerceActionService,
   ],
   exports: [CommerceConversationService, CommerceAiAgentService, CommerceToolService],
 })
