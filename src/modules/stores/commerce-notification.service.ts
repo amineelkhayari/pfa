@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MessageService } from '../message/message.service';
@@ -7,6 +7,7 @@ import { Order } from './entities/order.entity';
 import { OrderAiConversation } from './entities/order-ai-conversation.entity';
 import { phoneToChatId } from '../../common/utils/phone.util';
 import { PlanUsageService } from '../auth/plan-usage.service';
+import { NotificationService } from '../notification/notification.service';
 
 export type CommerceOrderEvent = 'paid' | 'partiallyFulfilled' | 'shipped' | 'delivered' | 'cancelled';
 export type NewOrderNotificationResult =
@@ -31,7 +32,8 @@ const defaults: Record<CommerceOrderEvent, EventSetting> = {
   },
   delivered: {
     enabled: true,
-    template: 'Bonjour {{customerName}} 👋\nVotre commande {{orderNumber}} a été livrée ✅\n\n{{items}}\n\nMerci pour votre confiance. Vous pouvez maintenant partager votre avis avec nous.',
+    template:
+      'Bonjour {{customerName}} 👋\nVotre commande {{orderNumber}} a été livrée ✅\n\n{{items}}\n\nMerci pour votre confiance. Vous pouvez maintenant partager votre avis avec nous.',
   },
   cancelled: { enabled: false, template: 'Bonjour {{customerName}},\nVotre commande {{orderNumber}} a été annulée.' },
 };
@@ -54,6 +56,7 @@ export class CommerceNotificationService {
     @InjectRepository(Order, 'data') private readonly orders: Repository<Order>,
     @InjectRepository(OrderAiConversation, 'data') private readonly conversations: Repository<OrderAiConversation>,
     private readonly planUsage: PlanUsageService,
+    @Optional() private readonly notifications?: NotificationService,
   ) {}
 
   defaultSettings() {
@@ -65,6 +68,9 @@ export class CommerceNotificationService {
     order: Order,
     settings: Record<string, any>,
   ): Promise<NewOrderNotificationResult> {
+    void this.notifications
+      ?.orderChanged(store.userId, order.id, order.orderNumber, 'created', store.name)
+      .catch(() => undefined);
     // Provider webhooks echo orders created by this WhatsApp conversation. Import the
     // order, but never start a second confirmation flow for the same customer action.
     if (isWhatsAppCreatedOrder(order.tags)) {
@@ -111,8 +117,15 @@ export class CommerceNotificationService {
   }
 
   async notify(store: Store, order: Order, event: CommerceOrderEvent, settings: Record<string, any>): Promise<boolean> {
+    void this.notifications
+      ?.orderChanged(store.userId, order.id, order.orderNumber, event, store.name)
+      .catch(() => undefined);
     if (settings.automaticMessagesEnabled === false) return false;
-    if (['partiallyFulfilled', 'shipped', 'delivered'].includes(event) && !(await this.planUsage.hasSessionCapability(store.sessionId, 'deliveryNotifications'))) return false;
+    if (
+      ['partiallyFulfilled', 'shipped', 'delivered'].includes(event) &&
+      !(await this.planUsage.hasSessionCapability(store.sessionId, 'deliveryNotifications'))
+    )
+      return false;
     const configured = (settings.orderNotifications?.[event] ?? {}) as EventSetting;
     const definition = { ...defaults[event], ...configured };
     if (!definition.enabled || !order.phone || !definition.template?.trim()) return false;

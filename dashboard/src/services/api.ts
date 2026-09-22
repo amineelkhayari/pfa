@@ -363,7 +363,10 @@ export interface CustomerSupportState {
   updatedAt: string;
 }
 
-export type CustomerSupportQueueState = Pick<CustomerSupportState, 'mode' | 'issueStatus' | 'issueSummary' | 'priority' | 'tags' | 'assignedUserId' | 'updatedAt'>;
+export type CustomerSupportQueueState = Pick<
+  CustomerSupportState,
+  'mode' | 'issueStatus' | 'issueSummary' | 'priority' | 'tags' | 'assignedUserId' | 'updatedAt'
+>;
 
 export interface CustomerContext {
   phone: string | null;
@@ -465,6 +468,8 @@ export interface AuditLog {
   id: string;
   action: string;
   severity: 'info' | 'warn' | 'error';
+  userId?: string;
+  userName?: string;
   apiKeyId?: string;
   apiKeyName?: string;
   sessionId?: string;
@@ -475,6 +480,21 @@ export interface AuditLog {
   statusCode?: number;
   errorMessage?: string;
   createdAt: string;
+}
+
+export interface AppNotification {
+  id: string;
+  userId: string | null;
+  eventType: string;
+  entityId: string | null;
+  title: string;
+  message: string;
+  kind: 'info' | 'success' | 'warning' | 'error';
+  link: string | null;
+  active: boolean;
+  expiresAt: string | null;
+  createdAt: string;
+  read?: boolean;
 }
 
 export interface MessageResponse {
@@ -1137,17 +1157,15 @@ export const storesApi = {
     request<Record<string, CustomerSupportQueueState>>(
       `/stores/customer-context/support-states?sessionId=${encodeURIComponent(sessionId)}`,
     ),
-  setCustomerSupport: (
-    data: {
-      sessionId: string;
-      chatId: string;
-      mode?: 'ai' | 'human';
-      issueStatus?: 'open' | 'resolved';
-      issueSummary?: string | null;
-      priority?: 'low' | 'normal' | 'high' | 'urgent';
-      tags?: string[];
-    },
-  ) =>
+  setCustomerSupport: (data: {
+    sessionId: string;
+    chatId: string;
+    mode?: 'ai' | 'human';
+    issueStatus?: 'open' | 'resolved';
+    issueSummary?: string | null;
+    priority?: 'low' | 'normal' | 'high' | 'urgent';
+    tags?: string[];
+  }) =>
     request<CustomerSupportState | { available: false; mode: 'human' }>('/stores/customer-context/support', {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -1164,26 +1182,33 @@ export const storesApi = {
 };
 
 export const commerceSupportApi = {
-  createOrder: (storeId: string, data: {
-    productId: string;
-    variantId?: string | null;
-    variantTitle?: string | null;
-    quantity: number;
-    customerName: string;
-    phone: string;
-    address1: string;
-    city: string;
-    postalCode?: string;
-    country: string;
-    notifyCustomer?: boolean;
-  }) => request<StoreOrder>(`/commerce-support/stores/${storeId}/orders`, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  }),
-  sendOrderHistoryPdf: (storeId: string, orderId: string) =>
-    request<{ sent: boolean; orders: number; messageId?: string }>(`/commerce-support/stores/${storeId}/orders/${orderId}/order-history-pdf`, {
+  createOrder: (
+    storeId: string,
+    data: {
+      productId: string;
+      variantId?: string | null;
+      variantTitle?: string | null;
+      quantity: number;
+      customerName: string;
+      phone: string;
+      address1: string;
+      city: string;
+      postalCode?: string;
+      country: string;
+      notifyCustomer?: boolean;
+    },
+  ) =>
+    request<StoreOrder>(`/commerce-support/stores/${storeId}/orders`, {
       method: 'POST',
+      body: JSON.stringify(data),
     }),
+  sendOrderHistoryPdf: (storeId: string, orderId: string) =>
+    request<{ sent: boolean; orders: number; messageId?: string }>(
+      `/commerce-support/stores/${storeId}/orders/${orderId}/order-history-pdf`,
+      {
+        method: 'POST',
+      },
+    ),
   setOrderStatus: (storeId: string, orderId: string, action: 'confirm' | 'cancel', notifyCustomer = true) =>
     request<StoreOrder>(`/commerce-support/stores/${storeId}/orders/${orderId}/status`, {
       method: 'POST',
@@ -1192,11 +1217,19 @@ export const commerceSupportApi = {
   updateShippingAddress: (
     storeId: string,
     orderId: string,
-    address: { customerName: string; address1: string; city: string; postalCode?: string; country: string; phone?: string },
-  ) => request<StoreOrder>(`/commerce-support/stores/${storeId}/orders/${orderId}/shipping-address`, {
-    method: 'PATCH',
-    body: JSON.stringify(address),
-  }),
+    address: {
+      customerName: string;
+      address1: string;
+      city: string;
+      postalCode?: string;
+      country: string;
+      phone?: string;
+    },
+  ) =>
+    request<StoreOrder>(`/commerce-support/stores/${storeId}/orders/${orderId}/shipping-address`, {
+      method: 'PATCH',
+      body: JSON.stringify(address),
+    }),
 };
 
 export const campaignApi = {
@@ -1321,15 +1354,22 @@ export const apiKeyApi = {
 // =============================================================================
 
 export const auditApi = {
-  list: (params?: { action?: string; severity?: string; limit?: number; offset?: number }) => {
+  list: (params?: { action?: string; severity?: string; userId?: string; limit?: number; offset?: number }) => {
     const query = new URLSearchParams();
     if (params?.action) query.set('action', params.action);
     if (params?.severity) query.set('severity', params.severity);
+    if (params?.userId) query.set('userId', params.userId);
     if (params?.limit) query.set('limit', String(params.limit));
     if (params?.offset) query.set('offset', String(params.offset));
     const queryStr = query.toString();
     return request<{ data: AuditLog[]; total: number }>(`/audit${queryStr ? `?${queryStr}` : ''}`);
   },
+};
+
+export const notificationApi = {
+  list: () => request<{ items: AppNotification[]; unread: number }>('/notifications'),
+  markRead: (id: string) => request<{ read: boolean }>(`/notifications/${id}/read`, { method: 'POST' }),
+  markAllRead: () => request<{ marked: number }>('/notifications/read-all', { method: 'POST' }),
 };
 
 // =============================================================================
@@ -1836,10 +1876,13 @@ export const adminUsersApi = {
   update: (id: string, body: { plan?: string; status?: 'active' | 'suspended' }) =>
     request<AccountUser>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   resetDatabase: (password: string, confirmation: string) =>
-    request<{ reset: boolean; preservedAdmin: string; signInRequired: boolean; restartRecommended: boolean }>('/admin/users/maintenance/reset-database', {
-      method: 'POST',
-      body: JSON.stringify({ password, confirmation }),
-    }),
+    request<{ reset: boolean; preservedAdmin: string; signInRequired: boolean; restartRecommended: boolean }>(
+      '/admin/users/maintenance/reset-database',
+      {
+        method: 'POST',
+        body: JSON.stringify({ password, confirmation }),
+      },
+    ),
 };
 
 export interface AdminUserDetails {
@@ -1946,13 +1989,25 @@ export const billingApi = {
   reactivateSubscription: (id: string) =>
     request<BillingSubscription>(`/billing/subscriptions/${id}/reactivate`, { method: 'POST' }),
   previewPlanChange: (id: string, plan: string) =>
-    request<PlanChangePreview>(`/billing/subscriptions/${id}/change-preview`, { method: 'POST', body: JSON.stringify({ plan }) }),
+    request<PlanChangePreview>(`/billing/subscriptions/${id}/change-preview`, {
+      method: 'POST',
+      body: JSON.stringify({ plan }),
+    }),
   changePlan: (id: string, plan: string, prorationDate?: number | null) =>
-    request<{ subscription: BillingSubscription; approvalUrl: string | null }>(`/billing/subscriptions/${id}/change-plan`, { method: 'POST', body: JSON.stringify({ plan, ...(prorationDate ? { prorationDate } : {}) }) }),
+    request<{ subscription: BillingSubscription; approvalUrl: string | null }>(
+      `/billing/subscriptions/${id}/change-plan`,
+      { method: 'POST', body: JSON.stringify({ plan, ...(prorationDate ? { prorationDate } : {}) }) },
+    ),
   cancelPlanChange: (id: string) =>
-    request<{ subscription: BillingSubscription; warning: string | null }>(`/billing/subscriptions/${id}/cancel-plan-change`, { method: 'POST' }),
+    request<{ subscription: BillingSubscription; warning: string | null }>(
+      `/billing/subscriptions/${id}/cancel-plan-change`,
+      { method: 'POST' },
+    ),
   reconcileSubscription: (id: string) =>
-    request<{ subscription: BillingSubscription; reconciledAt: string; warnings: string[] }>(`/billing/subscriptions/${id}/reconcile`, { method: 'POST' }),
+    request<{ subscription: BillingSubscription; reconciledAt: string; warnings: string[] }>(
+      `/billing/subscriptions/${id}/reconcile`,
+      { method: 'POST' },
+    ),
 };
 
 export interface AdminPaymentSettings {
@@ -2020,9 +2075,15 @@ export const adminBillingApi = {
   reactivateSubscription: (id: string) =>
     request<BillingSubscription>(`/admin/billing-settings/subscriptions/${id}/reactivate`, { method: 'POST' }),
   cancelPlanChange: (id: string) =>
-    request<{ subscription: BillingSubscription; warning: string | null }>(`/admin/billing-settings/subscriptions/${id}/cancel-plan-change`, { method: 'POST' }),
+    request<{ subscription: BillingSubscription; warning: string | null }>(
+      `/admin/billing-settings/subscriptions/${id}/cancel-plan-change`,
+      { method: 'POST' },
+    ),
   reconcileSubscription: (id: string) =>
-    request<{ subscription: BillingSubscription; reconciledAt: string; warnings: string[] }>(`/admin/billing-settings/subscriptions/${id}/reconcile`, { method: 'POST' }),
+    request<{ subscription: BillingSubscription; reconciledAt: string; warnings: string[] }>(
+      `/admin/billing-settings/subscriptions/${id}/reconcile`,
+      { method: 'POST' },
+    ),
   refund: (id: string, amount?: number, reason?: string) =>
     request<PaymentTransaction>(`/admin/billing-settings/payments/${id}/refund`, {
       method: 'POST',

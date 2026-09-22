@@ -10,10 +10,12 @@ import { CustomSelect } from '../components/CustomSelect';
 import { pageWindow } from '../utils/pageWindow';
 import { fetchAllPages } from '../utils/fetchAllPages';
 import { escapeCsvCell } from '../utils/csv';
+import { useRole } from '../hooks/useRole';
 import './Logs.css';
 
 export function Logs() {
   const { t } = useTranslation();
+  const { isAdmin } = useRole();
   useDocumentTitle(t('logs.title'));
   const [searchQuery, setSearchQuery] = useState('');
   const [severityFilter, setSeverityFilter] = useState('all');
@@ -29,6 +31,7 @@ export function Logs() {
   const filteredLogs = logs.filter(log => {
     const matchesSearch =
       log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (log.userName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (log.errorMessage || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
@@ -42,8 +45,8 @@ export function Logs() {
       'timestamp',
       'action',
       'severity',
+      ...(isAdmin ? ['user'] : []),
       'session',
-      'apiKey',
       'ip',
       'method',
       'path',
@@ -55,8 +58,8 @@ export function Logs() {
         log.createdAt,
         log.action,
         log.severity,
+        ...(isAdmin ? [log.userName || log.userId || ''] : []),
         log.sessionName || log.sessionId || '',
-        log.apiKeyName || log.apiKeyId || '',
         log.ipAddress,
         log.method,
         log.path,
@@ -91,7 +94,12 @@ export function Logs() {
       );
       const q = searchQuery.toLowerCase();
       const rows = q
-        ? all.filter(l => l.action.toLowerCase().includes(q) || (l.errorMessage || '').toLowerCase().includes(q))
+        ? all.filter(
+            l =>
+              l.action.toLowerCase().includes(q) ||
+              (l.userName || '').toLowerCase().includes(q) ||
+              (l.errorMessage || '').toLowerCase().includes(q),
+          )
         : all;
       if (rows.length > 0) download(buildCsv(rows));
     } catch {
@@ -162,12 +170,12 @@ export function Logs() {
       </div>
 
       <div className="logs-table-container">
-        <div className="logs-table">
+        <div className={`logs-table ${isAdmin ? 'admin-view' : 'customer-view'}`}>
           <div className="table-row header">
             <span>{t('logs.columns.timestamp')}</span>
             <span>{t('logs.columns.action')}</span>
+            {isAdmin && <span>{t('logs.columns.user')}</span>}
             <span>{t('logs.columns.session')}</span>
-            <span>{t('logs.columns.apiKey')}</span>
             <span>{t('logs.columns.ip')}</span>
             <span>{t('logs.columns.severity')}</span>
           </div>
@@ -182,8 +190,8 @@ export function Logs() {
               <div key={log.id} className="table-row">
                 <span className="timestamp">{formatTimestamp(log.createdAt)}</span>
                 <span className="action">{log.action}</span>
+                {isAdmin && <span>{log.userName || log.userId || 'System'}</span>}
                 <span>{log.sessionName || log.sessionId || '—'}</span>
-                <span className="api-key">{log.apiKeyName || '—'}</span>
                 <span className="ip">{log.ipAddress || '—'}</span>
                 <span>
                   <span className={`severity-badge ${log.severity}`}>{log.severity.toUpperCase()}</span>

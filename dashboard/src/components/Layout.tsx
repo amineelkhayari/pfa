@@ -36,6 +36,7 @@ import { languageOptions, resolveSupportedLanguage, rtlLanguages, type Supported
 import { healthApi } from '../services/api';
 import './Layout.css';
 import { ProductTour, START_PRODUCT_TOUR_EVENT } from './ProductTour';
+import { NotificationBell } from './NotificationBell';
 
 interface LayoutProps {
   onLogout: () => void;
@@ -232,11 +233,11 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
                             ? 'AI Settings'
                             : key === 'aiTest'
                               ? 'Test AI Agent'
-                            : key === 'automationLogs'
+                              : key === 'automationLogs'
                                 ? 'AI & Automation Logs'
                                 : key === 'guide'
                                   ? 'Setup Guide'
-                                : key,
+                                  : key,
             });
             return (
               <NavLink
@@ -256,7 +257,18 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
         </nav>
 
         <div className="sidebar-footer">
-          {userRole === 'operator' && <button className="theme-toggle-btn" type="button" onClick={() => window.dispatchEvent(new Event(START_PRODUCT_TOUR_EVENT))} title="Product tour"><CircleHelp size={18} />{!isCollapsed && <span>Product tour</span>}</button>}
+          <NotificationBell collapsed={isCollapsed} />
+          {userRole === 'operator' && (
+            <button
+              className="theme-toggle-btn"
+              type="button"
+              onClick={() => window.dispatchEvent(new Event(START_PRODUCT_TOUR_EVENT))}
+              title="Product tour"
+            >
+              <CircleHelp size={18} />
+              {!isCollapsed && <span>Product tour</span>}
+            </button>
+          )}
           <div className="language-menu" ref={languageMenuRef}>
             <button
               className="theme-toggle-btn"

@@ -48,6 +48,7 @@ import { WooCommerceModule } from './modules/woocommerce/woocommerce.module';
 import { YouCanModule } from './modules/youcan/youcan.module';
 import { CampaignModule } from './modules/campaign/campaign.module';
 import { CommerceAutomationModule } from './modules/commerce-automation/commerce-automation.module';
+import { NotificationModule } from './modules/notification/notification.module';
 
 // Only import QueueModule if explicitly enabled to avoid Redis connection errors
 const queueModules: Array<Type | DynamicModule> = [];
@@ -151,6 +152,7 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
             __dirname + '/modules/woocommerce/**/*.entity{.ts,.js}',
             __dirname + '/modules/youcan/**/*.entity{.ts,.js}',
             __dirname + '/modules/campaign/**/*.entity{.ts,.js}',
+            __dirname + '/modules/notification/**/*.entity{.ts,.js}',
 
             // __dirname + '/modules/stores/**/*.entity{.ts,.js}',
           ],
@@ -296,6 +298,7 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
     CampaignModule,
     CommerceAutomationModule,
     CommerceCoreModule,
+    NotificationModule,
     ...searchModules, // Global message search (opt-out via SEARCH_ENABLED=false; default ON)
     ...mcpModules, // MCP Streamable-HTTP server (opt-in via MCP_ENABLED=true)
     ...serveStaticModules, // Bundled dashboard SPA (production single-port setup)

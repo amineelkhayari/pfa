@@ -564,6 +564,7 @@
     "columns": {
       "timestamp": "الوقت",
       "action": "الإجراء",
+      "user": "الحساب",
       "session": "الجلسة",
       "apiKey": "مفتاح API",
       "ip": "عنوان IP",

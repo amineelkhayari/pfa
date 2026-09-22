@@ -1,4 +1,12 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  OnModuleInit,
+  Optional,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
@@ -11,6 +19,7 @@ import { SignInDto, SignUpDto, UpdateUserProfileDto } from './dto/user-auth.dto'
 import { createLogger } from '../../common/services/logger.service';
 import { AdminUpdateUserDto } from './dto/admin-user.dto';
 import { PlanCatalogService } from '../billing/plan-catalog.service';
+import { NotificationService } from '../notification/notification.service';
 
 const scrypt = promisify(scryptCallback);
 
@@ -22,6 +31,7 @@ export class UserAuthService implements OnModuleInit {
     @InjectRepository(UserAccount, 'data') private readonly users: Repository<UserAccount>,
     @InjectRepository(UserLoginSession, 'data') private readonly sessions: Repository<UserLoginSession>,
     private readonly plans: PlanCatalogService,
+    @Optional() private readonly notifications?: NotificationService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -82,6 +92,13 @@ export class UserAuthService implements OnModuleInit {
         usagePeriodStart: new Date(),
       }),
     );
+    void this.notifications
+      ?.accountCreated(user)
+      .catch(error =>
+        this.logger.warn(
+          `Unable to create account notification: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
     return this.issueSession(user);
   }
 
@@ -141,7 +158,12 @@ export class UserAuthService implements OnModuleInit {
       .addGroupBy('user.status')
       .getRawMany<{ plan: UserPlan; status: string; count: string }>();
     const total = rows.reduce((sum, row) => sum + Number(row.count), 0);
-    const byPlan = rows.filter(row => row.plan).reduce<Record<string, number>>((totals, row) => { totals[row.plan] = (totals[row.plan] ?? 0) + Number(row.count); return totals; }, {});
+    const byPlan = rows
+      .filter(row => row.plan)
+      .reduce<Record<string, number>>((totals, row) => {
+        totals[row.plan] = (totals[row.plan] ?? 0) + Number(row.count);
+        return totals;
+      }, {});
     return {
       total,
       active: rows.filter(row => row.status === 'active').reduce((sum, row) => sum + Number(row.count), 0),
@@ -174,18 +196,14 @@ export class UserAuthService implements OnModuleInit {
     const jti = randomBytes(24).toString('hex');
     const expiresInSeconds = this.jwtLifetimeSeconds();
     const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
-    const accessToken = sign(
-      { role: user.role, username: user.username },
-      this.jwtSecret(),
-      {
-        algorithm: 'HS256',
-        subject: user.id,
-        jwtid: jti,
-        issuer: 'smartConfirm',
-        audience: 'smartConfirm-dashboard',
-        expiresIn: expiresInSeconds,
-      },
-    );
+    const accessToken = sign({ role: user.role, username: user.username }, this.jwtSecret(), {
+      algorithm: 'HS256',
+      subject: user.id,
+      jwtid: jti,
+      issuer: 'smartConfirm',
+      audience: 'smartConfirm-dashboard',
+      expiresIn: expiresInSeconds,
+    });
     await this.sessions.save(this.sessions.create({ tokenHash: this.hashToken(jti), userId: user.id, expiresAt }));
     return { accessToken, token: accessToken, tokenType: 'Bearer', expiresAt, user: this.publicView(user) };
   }

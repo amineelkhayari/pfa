@@ -82,6 +82,13 @@ export class AuditLog {
 
   @Index()
   @Column({ type: 'varchar', length: 36, nullable: true })
+  userId: string | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  userName: string | null;
+
+  @Index()
+  @Column({ type: 'varchar', length: 36, nullable: true })
   sessionId: string | null;
 
   @Column({ type: 'varchar', length: 100, nullable: true })

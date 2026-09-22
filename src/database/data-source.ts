@@ -28,6 +28,7 @@ const dataEntities = [
   sourceGlob('..', 'modules', 'woocommerce', '**', '*.entity{.ts,.js}'),
   sourceGlob('..', 'modules', 'youcan', '**', '*.entity{.ts,.js}'),
   sourceGlob('..', 'modules', 'campaign', '**', '*.entity{.ts,.js}'),
+  sourceGlob('..', 'modules', 'notification', '**', '*.entity{.ts,.js}'),
 ];
 const dataMigrations = [sourceGlob('migrations', '*{.ts,.js}')];
 

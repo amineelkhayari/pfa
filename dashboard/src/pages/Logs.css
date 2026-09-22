@@ -80,11 +80,18 @@
 /* Unified row styling - same class for header and data */
 .logs-page .logs-table .table-row {
   display: grid;
-  grid-template-columns: 180px 200px 150px 150px 150px 1fr 120px;
   gap: 1rem;
   padding: 1rem 1.5rem;
   align-items: center;
   border-bottom: 1px solid var(--border);
+}
+
+.logs-page .logs-table.customer-view .table-row {
+  grid-template-columns: 180px minmax(190px, 1fr) 170px 150px 110px;
+}
+
+.logs-page .logs-table.admin-view .table-row {
+  grid-template-columns: 180px minmax(190px, 1fr) 180px 170px 150px 110px;
 }
 
 .logs-page .logs-table .table-row:last-child {

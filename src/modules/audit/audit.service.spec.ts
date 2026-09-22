@@ -5,6 +5,8 @@ import { AuditLog, AuditAction, AuditSeverity } from './entities/audit-log.entit
 describe('AuditService', () => {
   let service: AuditService;
   let repo: { create: jest.Mock; save: jest.Mock; findAndCount: jest.Mock; delete: jest.Mock };
+  let sessions: { findOne: jest.Mock };
+  let users: { findOne: jest.Mock };
 
   beforeEach(() => {
     repo = {
@@ -13,7 +15,13 @@ describe('AuditService', () => {
       findAndCount: jest.fn().mockResolvedValue([[], 0]),
       delete: jest.fn().mockResolvedValue({ affected: 0 }),
     };
-    service = new AuditService(repo as unknown as Repository<AuditLog>);
+    sessions = { findOne: jest.fn().mockResolvedValue(null) };
+    users = { findOne: jest.fn().mockResolvedValue(null) };
+    service = new AuditService(
+      repo as unknown as Repository<AuditLog>,
+      sessions as unknown as Repository<never>,
+      users as unknown as Repository<never>,
+    );
   });
 
   it('log() persists the action/severity and null-coalesces absent context fields', async () => {
@@ -25,11 +33,19 @@ describe('AuditService', () => {
         severity: AuditSeverity.WARN,
         sessionId: 's1',
         apiKeyId: null,
+        userId: null,
         ipAddress: null,
         statusCode: null,
       }),
     );
     expect(repo.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('attributes worker logs to the account that owns the session', async () => {
+    sessions.findOne.mockResolvedValue({ userId: 'u1' });
+    users.findOne.mockResolvedValue({ name: 'Customer One', username: 'customer1' });
+    await service.logInfo(AuditAction.SESSION_CONNECTED, { sessionId: 's1' });
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u1', userName: 'Customer One' }));
   });
 
   it('logInfo/logWarn/logError map to the right severity', async () => {
@@ -50,6 +66,11 @@ describe('AuditService', () => {
         skip: 0,
       }),
     );
+  });
+
+  it('findAll scopes rows by account when userId is provided', async () => {
+    await service.findAll({ userId: 'u1' });
+    expect(repo.findAndCount).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 'u1' } }));
   });
 
   it('findAll clamps an oversized limit to the max page size (prevents whole-table loads)', async () => {

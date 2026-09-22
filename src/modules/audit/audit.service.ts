@@ -6,12 +6,16 @@ import { ApiKey } from '../auth/entities/api-key.entity';
 import { createLogger } from '../../common/services/logger.service';
 import { getRequestId, getRequestActor } from '../../common/services/request-context';
 import { resolveSessionScope } from '../../common/security/session-scope';
+import { Session } from '../session/entities/session.entity';
+import { UserAccount } from '../auth/entities/user-account.entity';
 
 /** Upper bound on a single audit-log page, so a large `limit` can't load the whole table at once. */
 export const MAX_AUDIT_PAGE_SIZE = 200;
 
 interface AuditContext {
   apiKey?: ApiKey;
+  userId?: string;
+  userName?: string;
   sessionId?: string;
   sessionName?: string;
   ipAddress?: string;
@@ -26,6 +30,7 @@ interface AuditContext {
 export interface AuditQueryOptions {
   action?: AuditAction;
   apiKeyId?: string;
+  userId?: string;
   sessionId?: string;
   severity?: AuditSeverity;
   startDate?: Date;
@@ -42,6 +47,10 @@ export class AuditService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @InjectRepository(AuditLog, 'data')
     private readonly auditRepository: Repository<AuditLog>,
+    @InjectRepository(Session, 'data')
+    private readonly sessionRepository: Repository<Session>,
+    @InjectRepository(UserAccount, 'data')
+    private readonly userRepository: Repository<UserAccount>,
   ) {}
 
   /**
@@ -90,6 +99,25 @@ export class AuditService implements OnModuleInit, OnModuleDestroy {
     const actor = getRequestActor();
     const apiKeyId = context.apiKey?.id ?? actor?.apiKeyId;
     const apiKeyName = context.apiKey?.name ?? actor?.apiKeyName;
+    let userId = context.userId ?? actor?.userId;
+    let userName = context.userName ?? actor?.userName;
+    // Engine callbacks and queue workers do not run inside the original HTTP request context. When
+    // they carry a session id, resolve the owning account so their audit entries remain visible to
+    // the correct customer instead of becoming unscoped administrator-only rows.
+    if (!userId && context.sessionId) {
+      const owner = await this.sessionRepository.findOne({
+        where: { id: context.sessionId },
+        select: { id: true, userId: true },
+      });
+      userId = owner?.userId ?? undefined;
+      if (userId) {
+        const account = await this.userRepository.findOne({
+          where: { id: userId },
+          select: { id: true, name: true, username: true },
+        });
+        userName = account?.name || account?.username || undefined;
+      }
+    }
     const ipAddress = context.ipAddress ?? actor?.ipAddress;
     const metadata =
       context.metadata || requestId ? { ...(context.metadata ?? {}), ...(requestId ? { requestId } : {}) } : null;
@@ -98,6 +126,8 @@ export class AuditService implements OnModuleInit, OnModuleDestroy {
       severity,
       apiKeyId: apiKeyId || null,
       apiKeyName: apiKeyName || null,
+      userId: userId || null,
+      userName: userName || null,
       sessionId: context.sessionId || null,
       sessionName: context.sessionName || null,
       ipAddress: ipAddress || null,
@@ -146,6 +176,7 @@ export class AuditService implements OnModuleInit, OnModuleDestroy {
 
     if (options.action) where.action = options.action;
     if (options.apiKeyId) where.apiKeyId = options.apiKeyId;
+    if (options.userId) where.userId = options.userId;
     // The calling key's allowedSessions is authoritative; the query sessionId may only narrow within it.
     // Without this, a session-scoped ADMIN key reads every tenant's rows (no param => where.sessionId
     // unset => all), because the ApiKeyGuard fence only inspects route params, not the query string.

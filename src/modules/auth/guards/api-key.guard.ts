@@ -90,7 +90,12 @@ export class ApiKeyGuard implements CanActivate {
         throw new ForbiddenException('This WhatsApp session does not belong to your account.');
       }
       (request as Request & { user?: UserAccount }).user = user;
-      setRequestActor({ userId: user.id, userRole: user.role, ipAddress: this.getClientIp(request) });
+      setRequestActor({
+        userId: user.id,
+        userName: user.name || user.username,
+        userRole: user.role,
+        ipAddress: this.getClientIp(request),
+      });
       return true;
     }
   }
@@ -115,6 +120,7 @@ export class ApiKeyGuard implements CanActivate {
       '/metrics',
       '/infra',
       '/plugins',
+      '/notifications',
       '/auth/api-keys',
     ];
     return (

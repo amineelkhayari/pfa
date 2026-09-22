@@ -564,6 +564,7 @@
     "columns": {
       "timestamp": "Horodatage",
       "action": "Action",
+      "user": "Compte",
       "session": "Session",
       "apiKey": "Clé API",
       "ip": "Adresse IP",

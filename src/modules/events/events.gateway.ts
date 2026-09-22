@@ -60,6 +60,7 @@ import type {
 } from './dto/ws-messages.dto';
 import { SUBSCRIBABLE_EVENTS, buildRoomName } from './dto/ws-messages.dto';
 import type { DeliveryStatus } from '../../engine/interfaces/whatsapp-engine.interface';
+import { NotificationService } from '../notification/notification.service';
 
 /**
  * Whether an API key may subscribe to a session's WebSocket event rooms.
@@ -136,6 +137,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     private readonly auditService: AuditService,
     @Optional() private readonly userAuthService?: UserAuthService,
     @Optional() @InjectRepository(Session, 'data') private readonly sessionRepository?: Repository<Session>,
+    @Optional() private readonly notifications?: NotificationService,
   ) {
     this.rateLimits = readWsRateLimitConfig();
     this.frameLimiter = new TokenBucketLimiter(this.rateLimits.framePerSecond, this.rateLimits.frameBurst);
@@ -246,7 +248,11 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     // leaks the credential into proxy/access logs. (The deprecated `?apiKey=` fallback was removed.)
     const handshakeAuth = client.handshake.auth as { apiKey?: string; accessToken?: string } | undefined;
     const bearer = (client.handshake.headers['authorization'] as string | undefined)?.replace(/^Bearer\s+/i, '');
-    const apiKey = handshakeAuth?.accessToken || bearer || handshakeAuth?.apiKey || (client.handshake.headers['x-api-key'] as string);
+    const apiKey =
+      handshakeAuth?.accessToken ||
+      bearer ||
+      handshakeAuth?.apiKey ||
+      (client.handshake.headers['x-api-key'] as string);
 
     if (!apiKey) {
       this.logger.warn(`Client ${client.id} rejected: No API key provided`);
@@ -433,9 +439,13 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     if (user.role === ApiKeyRole.ADMIN) throw new ForbiddenException('Administrators cannot access customer events');
     const sessions = await this.sessionRepository.find({ select: { id: true }, where: { userId: user.id } });
     return {
-      id: `user:${user.id}`, name: user.username, role: user.role,
+      id: `user:${user.id}`,
+      name: user.username,
+      role: user.role,
       allowedSessions: sessions.length ? sessions.map(session => session.id) : ['__no_owned_sessions__'],
-      allowedIps: null, isActive: true, expiresAt: null,
+      allowedIps: null,
+      isActive: true,
+      expiresAt: null,
     } as ApiKey;
   }
 
@@ -544,6 +554,13 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
    */
   emitSessionStatus(sessionId: string, status: string, data?: Record<string, unknown>) {
     this.emitToRooms(sessionId, 'session.status', { status, ...data });
+    void this.notifications
+      ?.sessionStatusChanged(sessionId, status)
+      .catch(error =>
+        this.logger.warn(
+          `Unable to create session notification: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
   }
 
   /**

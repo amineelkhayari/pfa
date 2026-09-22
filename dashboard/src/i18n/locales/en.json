@@ -611,6 +611,7 @@
     "columns": {
       "timestamp": "Timestamp",
       "action": "Action",
+      "user": "Account",
       "session": "Session",
       "apiKey": "API Key",
       "ip": "IP Address",

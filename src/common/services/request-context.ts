@@ -16,6 +16,7 @@ export interface RequestContext {
   /** The real client IP (ProxyAwareThrottlerGuard's notion, honoring TRUSTED_PROXIES). */
   ipAddress?: string;
   userId?: string;
+  userName?: string;
   userRole?: string;
 }
 
@@ -42,6 +43,7 @@ export function setRequestActor(actor: {
   apiKeyName?: string;
   ipAddress?: string;
   userId?: string;
+  userName?: string;
   userRole?: string;
 }): void {
   const store = requestContextStorage.getStore();
@@ -50,6 +52,7 @@ export function setRequestActor(actor: {
   if (actor.apiKeyName !== undefined) store.apiKeyName = actor.apiKeyName;
   if (actor.ipAddress !== undefined) store.ipAddress = actor.ipAddress;
   if (actor.userId !== undefined) store.userId = actor.userId;
+  if (actor.userName !== undefined) store.userName = actor.userName;
   if (actor.userRole !== undefined) store.userRole = actor.userRole;
 }
 
@@ -60,6 +63,7 @@ export function getRequestActor():
       apiKeyName?: string;
       ipAddress?: string;
       userId?: string;
+      userName?: string;
       userRole?: string;
     }
   | undefined {
@@ -70,6 +74,7 @@ export function getRequestActor():
     apiKeyName: store.apiKeyName,
     ipAddress: store.ipAddress,
     userId: store.userId,
+    userName: store.userName,
     userRole: store.userRole,
   };
 }
