@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiKeyRole } from './entities/api-key.entity';
 import { RequireRole, RequireUnscopedKey } from './decorators/auth.decorators';
-import { AdminUpdateUserDto } from './dto/admin-user.dto';
+import { AdminExtendTrialDto, AdminSetExtraQuotaDto, AdminUpdateUserDto } from './dto/admin-user.dto';
 import { UserAuthService } from './user-auth.service';
 import { PlanUsageService } from './plan-usage.service';
 import { ResetDatabaseDto } from './dto/reset-database.dto';
@@ -34,6 +34,16 @@ export class AdminUsersController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: AdminUpdateUserDto) {
     return this.users.adminUpdate(id, dto);
+  }
+
+  @Post(':id/trial')
+  extendTrial(@Param('id') id: string, @Body() dto: AdminExtendTrialDto) {
+    return this.users.adminExtendTrial(id, dto);
+  }
+
+  @Post(':id/extra-quota')
+  setExtraQuota(@Param('id') id: string, @Body() dto: AdminSetExtraQuotaDto) {
+    return this.users.adminSetExtraQuota(id, dto);
   }
 
   @Post('maintenance/reset-database')

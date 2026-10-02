@@ -11,7 +11,12 @@ import { NotificationService } from '../notification/notification.service';
 
 export type CommerceOrderEvent = 'paid' | 'partiallyFulfilled' | 'shipped' | 'delivered' | 'cancelled';
 export type NewOrderNotificationResult =
-  'sent' | 'skipped_automation_disabled' | 'skipped_no_phone' | 'skipped_whatsapp_created' | 'duplicate';
+  | 'sent'
+  | 'skipped_automation_disabled'
+  | 'skipped_no_phone'
+  | 'skipped_whatsapp_created'
+  | 'skipped_already_fulfilled'
+  | 'duplicate';
 type EventSetting = { enabled?: boolean; template?: string };
 
 const defaults: Record<CommerceOrderEvent, EventSetting> = {
@@ -84,6 +89,20 @@ export class CommerceNotificationService {
     if (settings.automaticMessagesEnabled === false || settings.newOrderMessageEnabled === false)
       return 'skipped_automation_disabled';
     if (!order.phone) return 'skipped_no_phone';
+    const status = (order.status ?? '').toLowerCase().trim();
+    const fulfillment = (order.fulfillmentStatus ?? '').toLowerCase().trim();
+    const financial = (order.financialStatus ?? '').toLowerCase().trim();
+    const isClosedOrFulfilled =
+      status === 'closed' ||
+      status === 'completed' ||
+      status === 'delivered' ||
+      fulfillment === 'fulfilled' ||
+      fulfillment === 'completed' ||
+      fulfillment === 'delivered' ||
+      fulfillment === 'shipped' ||
+      (financial === 'paid' && (fulfillment === 'fulfilled' || status === 'closed')) ||
+      status.includes('cancel');
+    if (isClosedOrFulfilled) return 'skipped_already_fulfilled';
 
     const claim = await this.orders
       .createQueryBuilder()

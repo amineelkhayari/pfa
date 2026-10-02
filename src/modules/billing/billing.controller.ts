@@ -11,12 +11,27 @@ class CancelSubscriptionDto {
 }
 class CheckoutPlanDto { @IsOptional() @IsString() plan?: string; }
 class ChangePlanDto { @IsString() @MinLength(1) plan: string; @IsOptional() @IsInt() prorationDate?: number; }
+class PurchaseAddonDto { @IsString() @MinLength(1) addonKey: string; @IsOptional() @IsInt() quantity?: number; }
+class ClaimAddonDto { @IsString() @MinLength(1) sessionId: string; }
+class RequestRefundDto { @IsOptional() @IsString() @MaxLength(500) reason?: string; }
 
 @Controller('billing')
 export class BillingController {
   constructor(private readonly billing: BillingService, private readonly plans: PlanCatalogService) {}
 
   @Get('plans') @Public() plansList() { return this.plans.list(); }
+
+  @Get('addons') @Public() addonsList() { return this.billing.listAddons(); }
+
+  @Post('addons/checkout')
+  purchaseAddon(@Req() req: Request & { user?: UserAccount }, @Body() dto: PurchaseAddonDto) {
+    return this.billing.createAddonCheckout(this.user(req), dto.addonKey, dto.quantity ?? 1);
+  }
+
+  @Post('addons/claim')
+  claimAddon(@Req() req: Request & { user?: UserAccount }, @Body() dto: ClaimAddonDto) {
+    return this.billing.claimStripeAddonSession(this.user(req).id, dto.sessionId);
+  }
 
   @Get('status')
   status(@Req() req: Request & { user?: UserAccount }) {
@@ -26,6 +41,15 @@ export class BillingController {
   @Get('history')
   history(@Req() req: Request & { user?: UserAccount }, @Query() query: Record<string, string>) {
     return this.billing.history(this.user(req).id, query as any);
+  }
+
+  @Post('payments/:id/request-refund')
+  requestRefund(
+    @Req() req: Request & { user?: UserAccount },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RequestRefundDto,
+  ) {
+    return this.billing.requestPaymentRefund(id, this.user(req).id, dto?.reason);
   }
 
   @Post('subscriptions/:id/cancel')

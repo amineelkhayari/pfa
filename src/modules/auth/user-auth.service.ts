@@ -17,7 +17,7 @@ import { UserAccount, UserPlan } from './entities/user-account.entity';
 import { UserLoginSession } from './entities/user-login-session.entity';
 import { SignInDto, SignUpDto, UpdateUserProfileDto } from './dto/user-auth.dto';
 import { createLogger } from '../../common/services/logger.service';
-import { AdminUpdateUserDto } from './dto/admin-user.dto';
+import { AdminExtendTrialDto, AdminSetExtraQuotaDto, AdminUpdateUserDto } from './dto/admin-user.dto';
 import { PlanCatalogService } from '../billing/plan-catalog.service';
 import { NotificationService } from '../notification/notification.service';
 
@@ -174,6 +174,102 @@ export class UserAuthService implements OnModuleInit {
     };
   }
 
+  async adminExtendTrial(id: string, dto: AdminExtendTrialDto) {
+    const user = await this.users.findOneBy({ id });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.role === ApiKeyRole.ADMIN) throw new BadRequestException('Administrators do not have trials');
+
+    const currentSettings = (user.settings as Record<string, any>) || {};
+    let currentEnd: Date;
+    if (currentSettings.trialEndsAt) {
+      currentEnd = new Date(currentSettings.trialEndsAt);
+    } else {
+      const plan = this.plans.get(user.plan);
+      const trialDays = plan.trialDays ?? 1;
+      currentEnd = new Date(new Date(user.createdAt).getTime() + trialDays * 86_400_000);
+    }
+
+    let newEnd: Date;
+    if (dto.trialEndsAt) {
+      newEnd = new Date(dto.trialEndsAt);
+      if (isNaN(newEnd.getTime())) {
+        throw new BadRequestException('Invalid date provided for trialEndsAt');
+      }
+    } else {
+      const now = new Date();
+      const base = currentEnd > now ? new Date(currentEnd) : new Date(now);
+
+      if (dto.extendYears) {
+        base.setFullYear(base.getFullYear() + dto.extendYears);
+      }
+      if (dto.extendMonths) {
+        base.setMonth(base.getMonth() + dto.extendMonths);
+      }
+      if (dto.extendWeeks) {
+        base.setDate(base.getDate() + dto.extendWeeks * 7);
+      }
+      if (dto.extendDays) {
+        base.setDate(base.getDate() + dto.extendDays);
+      }
+      if (dto.extendHours) {
+        base.setTime(base.getTime() + dto.extendHours * 3600 * 1000);
+      }
+
+      if (!dto.extendYears && !dto.extendMonths && !dto.extendWeeks && !dto.extendDays && !dto.extendHours) {
+        base.setDate(base.getDate() + 1);
+      }
+      newEnd = base;
+    }
+
+    user.settings = {
+      ...currentSettings,
+      trialEndsAt: newEnd.toISOString(),
+    };
+
+    if (dto.resetUsage) {
+      user.sentMessages = 0;
+      user.receivedMessages = 0;
+      user.aiTokensUsed = 0;
+      user.audioTranscriptionsUsed = 0;
+      user.audioRepliesUsed = 0;
+      user.usagePeriodStart = new Date();
+    }
+
+    const saved = await this.users.save(user);
+    return {
+      success: true,
+      trialEndsAt: newEnd.toISOString(),
+      user: this.publicView(saved),
+    };
+  }
+
+  async adminSetExtraQuota(id: string, dto: AdminSetExtraQuotaDto) {
+    const user = await this.users.findOneBy({ id });
+    if (!user) throw new NotFoundException('User not found');
+    const currentSettings = (user.settings as Record<string, any>) || {};
+    const currentQuota = currentSettings.extraQuota || {};
+
+    const updatedQuota = {
+      sessions: dto.sessions !== undefined ? dto.sessions : (currentQuota.sessions ?? 0),
+      stores: dto.stores !== undefined ? dto.stores : (currentQuota.stores ?? 0),
+      sentMessages: dto.sentMessages !== undefined ? dto.sentMessages : (currentQuota.sentMessages ?? 0),
+      receivedMessages: dto.receivedMessages !== undefined ? dto.receivedMessages : (currentQuota.receivedMessages ?? 0),
+      aiTokens: dto.aiTokens !== undefined ? dto.aiTokens : (currentQuota.aiTokens ?? 0),
+    };
+
+    user.settings = {
+      ...currentSettings,
+      extraQuota: updatedQuota,
+    };
+
+    const saved = await this.users.save(user);
+    return {
+      success: true,
+      extraQuota: updatedQuota,
+      user: this.publicView(saved),
+    };
+  }
+
   async adminUpdate(id: string, dto: AdminUpdateUserDto) {
     const user = await this.users.findOneBy({ id });
     if (!user) throw new NotFoundException('User not found');
@@ -189,7 +285,14 @@ export class UserAuthService implements OnModuleInit {
       user.status = dto.status;
       if (dto.status === 'suspended') await this.sessions.delete({ userId: user.id });
     }
-    return this.publicView(await this.users.save(user));
+    if (dto.trial) {
+      await this.adminExtendTrial(id, dto.trial);
+    }
+    if (dto.extraQuota) {
+      await this.adminSetExtraQuota(id, dto.extraQuota);
+    }
+    const finalUser = (dto.trial || dto.extraQuota) ? (await this.users.findOneByOrFail({ id })) : await this.users.save(user);
+    return this.publicView(finalUser);
   }
 
   private async issueSession(user: UserAccount) {

@@ -318,9 +318,9 @@ select:disabled {
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 1.25rem;
-  background: var(--bg-light, #f8fafc);
-  color: var(--text-secondary, #64748b);
-  border: 1px solid var(--border, #e2e8f0);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 0.9375rem;
   font-weight: 600;
@@ -329,9 +329,9 @@ select:disabled {
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: var(--bg-white, #fff);
-  border-color: var(--text-muted, #94a3b8);
-  color: var(--text-primary, #1e293b);
+  background: var(--surface-hover);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .btn-secondary:disabled {

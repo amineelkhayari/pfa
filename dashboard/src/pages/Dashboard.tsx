@@ -1,47 +1,41 @@
-import { Suspense, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { lazyWithRetry as lazy } from '../utils/lazyWithRetry';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  MessageSquare,
   Send,
-  Webhook,
-  Activity,
   Loader2,
   ShoppingCart,
   Clock3,
   CircleCheck,
   XCircle,
-  TriangleAlert,
-  Store,
-  Package,
   Bot,
-  ArrowUpRight,
-  ArrowDownLeft,
-  BrainCircuit,
-  Gauge,
   Megaphone,
   Smartphone,
-  Timer,
+  ShieldCheck,
+  TrendingUp,
+  Sparkles,
+  ExternalLink,
+  MessageSquare,
+  Store,
 } from 'lucide-react';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import {
   useSessionsQuery,
   useSessionStatsQuery,
-  useWebhooksQuery,
-  useStopSessionMutation,
   useOrderConfirmationSummaryQuery,
   useAccountUsageQuery,
 } from '../hooks/queries';
 import { PageHeader } from '../components/PageHeader';
 import { PlanUpgradeNotice, planLimitReason } from '../components/PlanLimitGate';
 import { campaignApi } from '../services/api';
+import { OnboardingWizard } from '../components/OnboardingWizard';
+import { RecentOrdersFeed } from '../components/RecentOrdersFeed';
 import './Dashboard.css';
 
 // recharts is heavy (~150kB gzip); load the analytics section on demand so it never bloats the
 // main/login bundle and only ships when the dashboard actually renders.
-const DashboardCharts = lazy(() => import('../components/DashboardCharts').then(m => ({ default: m.DashboardCharts })));
+// const DashboardCharts = lazy(() => import('../components/DashboardCharts').then(m => ({ default: m.DashboardCharts })));
 
 export function Dashboard() {
   const { t } = useTranslation();
@@ -49,7 +43,6 @@ export function Dashboard() {
   const navigate = useNavigate();
   const { isLoading: loadingSessions, error: sessionsError } = useSessionsQuery();
   const { data: stats } = useSessionStatsQuery();
-  const { data: webhooks = [] } = useWebhooksQuery();
   const [orderDays, setOrderDays] = useState(30);
   const [orderType, setOrderType] = useState('all');
   const { data: orderSummary } = useOrderConfirmationSummaryQuery({
@@ -62,6 +55,7 @@ export function Dashboard() {
     queryFn: campaignApi.report,
     refetchInterval: 30_000,
   });
+
   const accountLimitReason = accountUsage
     ? planLimitReason(accountUsage, 'receivedMessages') ||
       planLimitReason(accountUsage, 'sentMessages') ||
@@ -69,47 +63,70 @@ export function Dashboard() {
       planLimitReason(accountUsage, 'sessions') ||
       planLimitReason(accountUsage, 'stores')
     : null;
-  const stopMutation = useStopSessionMutation();
+
   const messagesToday = campaignReport?.summary.todaySent ?? 0;
-  const totalMessages = orderSummary
-    ? orderSummary.messageTotals.sent + orderSummary.messageTotals.received
-    : 0;
   const loading = loadingSessions;
   const error =
     sessionsError instanceof Error ? sessionsError.message : sessionsError ? t('dashboard.loadError') : null;
-  const webhookCount = webhooks.length;
 
-  const handleDisconnect = async (id: string) => {
-    try {
-      await stopMutation.mutateAsync(id);
-    } catch (err) {
-      console.error('Failed to disconnect:', err);
-    }
-  };
-
+  // 4 Core Executive KPIs (Zero duplication across the page)
   const statsCards = [
     {
-      // `stats.active` counts running engines — which includes initializing/qr_ready/connecting — so
-      // it overstates what an operator reads as "connected". READY is the only status where the
-      // session can actually send and receive.
-      label: t('dashboard.stats.activeSessions'),
-      value: stats?.ready ?? 0,
-      icon: MessageSquare,
-      detail: stats ? t('dashboard.stats.sessionsDetail', { running: stats.active, total: stats.total }) : undefined,
+      label: 'WhatsApp Status',
+      value: stats?.ready ? `${stats.ready} Active` : 'Disconnected',
+      icon: Smartphone,
+      detail: stats?.ready ? `${stats.total} registered engine` : 'Scan QR to connect',
     },
-    { label: 'Messages sent today', value: messagesToday, icon: Send },
-    { label: t('dashboard.stats.webhooksConfigured'), value: webhookCount, icon: Webhook },
-    { label: t('dashboard.stats.totalMessages'), value: totalMessages, icon: Activity },
+    {
+      label: 'Confirmation Rate',
+      value: orderSummary?.total ? `${Math.round((orderSummary.confirmed / orderSummary.total) * 100)}%` : '0%',
+      icon: CircleCheck,
+      detail: orderSummary ? `${orderSummary.confirmed} confirmed of ${orderSummary.total} orders` : 'No orders yet',
+    },
+    {
+      label: 'COD Delivery Savings',
+      value: `$${Math.round((orderSummary?.cancelled ?? 0) * 4.5).toLocaleString()}`,
+      icon: ShieldCheck,
+      detail: `${orderSummary?.cancelled ?? 0} fake/cancelled orders intercepted`,
+    },
+    {
+      label: 'Messages Sent Today',
+      value: messagesToday.toLocaleString(),
+      icon: Send,
+      detail: campaignReport ? `${campaignReport.summary.successRate}% delivery rate` : 'Outgoing WhatsApp messages',
+    },
   ];
 
-  const orderCards = [
-    { label: 'Total stores', value: orderSummary?.totalStores ?? 0, icon: Store, tone: 'total' },
-    { label: 'Total products', value: orderSummary?.totalProducts ?? 0, icon: Package, tone: 'total' },
-    { label: 'Total orders', value: orderSummary?.total ?? 0, icon: ShoppingCart, tone: 'total' },
-    { label: 'Awaiting customer', value: orderSummary?.pending ?? 0, icon: Clock3, tone: 'pending' },
-    { label: 'Confirmed', value: orderSummary?.confirmed ?? 0, icon: CircleCheck, tone: 'confirmed' },
-    { label: 'Cancelled', value: orderSummary?.cancelled ?? 0, icon: XCircle, tone: 'cancelled' },
-    { label: 'Failed', value: orderSummary?.failed ?? 0, icon: TriangleAlert, tone: 'failed' },
+  // 4 Pipeline metrics for the order verification hub (removes duplicate stores/products)
+  const pipelineCards = [
+    {
+      label: 'Total Ingested',
+      value: orderSummary?.total ?? 0,
+      icon: ShoppingCart,
+      tone: 'total',
+      desc: 'Orders synced from stores',
+    },
+    {
+      label: 'Awaiting Reply',
+      value: orderSummary?.pending ?? 0,
+      icon: Clock3,
+      tone: 'pending',
+      desc: 'Customer response pending',
+    },
+    {
+      label: 'Confirmed & Verified',
+      value: orderSummary?.confirmed ?? 0,
+      icon: CircleCheck,
+      tone: 'confirmed',
+      desc: 'Ready for shipping dispatch',
+    },
+    {
+      label: 'Cancelled / Avoided',
+      value: orderSummary?.cancelled ?? 0,
+      icon: XCircle,
+      tone: 'cancelled',
+      desc: `Saved ~$${Math.round((orderSummary?.cancelled ?? 0) * 4.5)} return costs`,
+    },
   ];
 
   const formatLastActive = (date?: string | null) => {
@@ -158,6 +175,37 @@ export function Dashboard() {
         }
       />
 
+      <OnboardingWizard
+        hasReadySession={(stats?.ready ?? 0) > 0}
+        hasStore={(orderSummary?.totalStores ?? 0) > 0}
+        hasConfirmedOrders={(orderSummary?.confirmed ?? 0) > 0}
+      />
+
+      {/* Quick Action Toolbar */}
+      <div className="dashboard-quick-actions">
+        <button type="button" className="quick-action-btn" onClick={() => navigate('/sessions')}>
+          <Smartphone size={16} />
+          <span>WhatsApp QR</span>
+        </button>
+        <button type="button" className="quick-action-btn" onClick={() => navigate('/stores')}>
+          <Store size={16} />
+          <span>Connect Store</span>
+        </button>
+        <button type="button" className="quick-action-btn" onClick={() => navigate('/chats')}>
+          <MessageSquare size={16} />
+          <span>Live Chats</span>
+        </button>
+        <button type="button" className="quick-action-btn" onClick={() => navigate('/ai-test')}>
+          <Bot size={16} />
+          <span>Test AI Bot</span>
+        </button>
+        <button type="button" className="quick-action-btn" onClick={() => navigate('/campaigns')}>
+          <Megaphone size={16} />
+          <span>New Broadcast</span>
+        </button>
+      </div>
+
+      {/* Top Executive KPI Grid (4 Distinct Metrics) */}
       <div className="stats-grid">
         {statsCards.map(({ label, value, icon: Icon, detail }) => (
           <div key={label} className="stat-card">
@@ -166,131 +214,107 @@ export function Dashboard() {
               <span className="stat-label">{label}</span>
               <Icon size={20} className="stat-icon" />
             </div>
-            <div className="stat-value">{typeof value === 'number' ? value.toLocaleString() : value}</div>
+            <div className="stat-value">{value}</div>
             {detail && <div className="stat-detail">{detail}</div>}
           </div>
         ))}
       </div>
 
+      {/* Compact Account Allowance & Tier Bar */}
       {accountUsage && (
-        <section className="plan-usage">
-          <div className="section-header">
-            <div>
-              <h2>{accountUsage.plan === 'pro' ? 'Pro plan' : 'Free plan'}</h2>
-              <span className="section-subtitle">
-                {accountUsage.plan === 'free'
-                  ? accountUsage.trialExpired
-                    ? 'Trial expired — upgrade required'
-                    : `One-time trial ends ${new Date(accountUsage.trialEndsAt!).toLocaleString()}`
-                  : 'Current monthly subscription usage'}
-              </span>
+        <section className="account-tier-card">
+          <div className="tier-info">
+            <div className="tier-badge">
+              <Sparkles size={14} />
+              <span>{accountUsage.plan === 'pro' ? 'Pro Plan' : 'Free Trial'}</span>
             </div>
-            {accountUsage.plan === 'free' && (
-              <button className="btn-sm" onClick={() => navigate('/account')}>
-                Upgrade to Pro · $5/month
-              </button>
-            )}
+            <span className="tier-meta">
+              {accountUsage.plan === 'free'
+                ? accountUsage.trialExpired
+                  ? 'Trial expired — upgrade required to continue automation'
+                  : `One-time trial ends ${new Date(accountUsage.trialEndsAt!).toLocaleDateString()}`
+                : 'Current monthly subscription allowance'}
+            </span>
           </div>
-          <div className="usage-grid">
-            {(
-              [
-                ['WhatsApp sessions', 'sessions'],
-                ['Connected stores', 'stores'],
-                ['Messages sent', 'sentMessages'],
-                ['Messages received', 'receivedMessages'],
-                ['AI context tokens', 'aiTokens'],
-                ['Voice transcriptions', 'audioTranscriptions'],
-                ['Audio replies', 'audioReplies'],
-              ] as const
-            ).map(([label, key]) => {
-              const used = accountUsage.usage[key];
-              const limit = accountUsage.limits[key];
-              const percent = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 100;
-              return (
-                <div className="usage-item" key={key}>
-                  <div>
-                    <span>{label}</span>
-                    <strong>
-                      {used.toLocaleString()} / {limit.toLocaleString()}
-                    </strong>
-                  </div>
-                  <div className="usage-track">
-                    <span style={{ width: `${percent}%` }} />
-                  </div>
-                </div>
-              );
-            })}
+
+          <div className="tier-gauges">
+            <div className="tier-gauge-item">
+              <div className="gauge-label">
+                <span>Monthly Messages</span>
+                <strong>
+                  {accountUsage.usage.sentMessages.toLocaleString()} / {accountUsage.limits.sentMessages.toLocaleString()}
+                </strong>
+              </div>
+              <div className="usage-track">
+                <span
+                  style={{
+                    width: `${
+                      accountUsage.limits.sentMessages > 0
+                        ? Math.min(100, Math.round((accountUsage.usage.sentMessages / accountUsage.limits.sentMessages) * 100))
+                        : 100
+                    }%`,
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="tier-gauge-item">
+              <div className="gauge-label">
+                <span>AI Context Tokens</span>
+                <strong>
+                  {accountUsage.usage.aiTokens.toLocaleString()} / {accountUsage.limits.aiTokens.toLocaleString()}
+                </strong>
+              </div>
+              <div className="usage-track">
+                <span
+                  style={{
+                    width: `${
+                      accountUsage.limits.aiTokens > 0
+                        ? Math.min(100, Math.round((accountUsage.usage.aiTokens / accountUsage.limits.aiTokens) * 100))
+                        : 100
+                    }%`,
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="tier-gauge-item">
+              <div className="gauge-label">
+                <span>WhatsApp Sessions</span>
+                <strong>
+                  {accountUsage.usage.sessions} / {accountUsage.limits.sessions}
+                </strong>
+              </div>
+              <div className="usage-track">
+                <span
+                  style={{
+                    width: `${
+                      accountUsage.limits.sessions > 0
+                        ? Math.min(100, Math.round((accountUsage.usage.sessions / accountUsage.limits.sessions) * 100))
+                        : 100
+                    }%`,
+                  }}
+                />
+              </div>
+            </div>
           </div>
+
+          {accountUsage.plan === 'free' && (
+            <button type="button" className="btn-upgrade-sm" onClick={() => navigate('/account')}>
+              Upgrade to Pro · $5/mo
+            </button>
+          )}
         </section>
       )}
+
       {accountLimitReason && <PlanUpgradeNotice reason={accountLimitReason} />}
 
-      {accountUsage && (
-        <section className="ai-performance">
-          <div className="section-header">
-            <div>
-              <h2>AI performance</h2>
-              <span className="section-subtitle">
-                Context usage and order-confirmation outcomes for the selected period
-              </span>
-            </div>
-            <button className="btn-sm" onClick={() => navigate('/ai-test')}>
-              Test AI agent
-            </button>
-          </div>
-          <div className="ai-performance-grid">
-            <div className="ai-performance-card">
-              <span>
-                <BrainCircuit size={19} /> AI tokens used
-              </span>
-              <strong>{accountUsage.usage.aiTokens.toLocaleString()}</strong>
-              <small>of {accountUsage.limits.aiTokens.toLocaleString()} plan tokens</small>
-            </div>
-            <div className="ai-performance-card">
-              <span>
-                <Gauge size={19} /> Token utilization
-              </span>
-              <strong>
-                {accountUsage.limits.aiTokens > 0
-                  ? Math.min(100, Math.round((accountUsage.usage.aiTokens / accountUsage.limits.aiTokens) * 100))
-                  : 100}
-                %
-              </strong>
-              <small>
-                {Math.max(0, accountUsage.limits.aiTokens - accountUsage.usage.aiTokens).toLocaleString()} tokens
-                remaining
-              </small>
-            </div>
-            <div className="ai-performance-card success">
-              <span>
-                <CircleCheck size={19} /> AI confirmation rate
-              </span>
-              <strong>{orderSummary?.aiPerformance.confirmationRate ?? 0}%</strong>
-              <small>
-                {orderSummary?.aiPerformance.confirmed ?? 0} confirmed of{' '}
-                {(orderSummary?.aiPerformance.confirmed ?? 0) + (orderSummary?.aiPerformance.cancelled ?? 0)} completed
-                decisions
-              </small>
-            </div>
-            <div className="ai-performance-card">
-              <span>
-                <Bot size={19} /> AI conversations
-              </span>
-              <strong>{orderSummary?.aiPerformance.conversations ?? 0}</strong>
-              <small>
-                {orderSummary?.aiPerformance.active ?? 0} active · {orderSummary?.aiPerformance.escalated ?? 0} handed
-                off
-              </small>
-            </div>
-          </div>
-        </section>
-      )}
-
+      {/* Unified Commerce & Order Verification Hub */}
       <section className="commerce-summary">
         <div className="section-header">
           <div>
-            <h2>Customer confirmations</h2>
-            <span className="section-subtitle">Live commerce order responses received through WhatsApp</span>
+            <h2>Order Confirmations & Protection</h2>
+            <span className="section-subtitle">Real-time WhatsApp verification stream and delivery status</span>
           </div>
           <div className="commerce-actions">
             <label>
@@ -314,194 +338,186 @@ export function Dashboard() {
                 <option value="not_sent">Not sent</option>
               </select>
             </label>
-            <button className="btn-sm" onClick={() => navigate('/stores')}>
-              View orders
+            <button type="button" className="btn-sm" onClick={() => navigate('/stores')}>
+              <span>View Stores</span>
+              <ExternalLink size={13} />
             </button>
           </div>
         </div>
-        <div className="commerce-stats-grid">
-          {orderCards.map(({ label, value, icon: Icon, tone }) => (
-            <div key={label} className={`stat-card commerce-stat ${tone}`}>
-              <Icon className="stat-watermark" />
-              <div className="stat-header">
-                <span className="stat-label">{label}</span>
-                <Icon size={20} className="stat-icon" />
+
+        {/* 4 Clean Pipeline Stat Pills */}
+        <div className="commerce-pipeline-grid">
+          {pipelineCards.map(({ label, value, icon: Icon, tone, desc }) => (
+            <div key={label} className={`pipeline-pill-card ${tone}`}>
+              <div className="pipeline-pill-head">
+                <span className="pipeline-pill-label">{label}</span>
+                <Icon size={18} className="pipeline-pill-icon" />
               </div>
-              <div className="stat-value">{value.toLocaleString()}</div>
+              <div className="pipeline-pill-val">{value.toLocaleString()}</div>
+              <span className="pipeline-pill-desc">{desc}</span>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="commerce-summary">
-        <div className="section-header">
-          <div>
-            <h2>Campaign and delivery health</h2>
-            <span className="section-subtitle">Current messaging activity across your connected WhatsApp devices</span>
-          </div>
-          <button className="btn-sm" onClick={() => navigate('/campaigns')}>Manage campaigns</button>
-        </div>
-        <div className="commerce-stats-grid">
-          {([
-            ['Sent today', campaignReport?.summary.todaySent ?? 0, Send, 'total'],
-            ['Delivery success', `${campaignReport?.summary.successRate ?? 0}%`, CircleCheck, 'confirmed'],
-            ['Active campaigns', campaignReport?.summary.activeCampaigns ?? 0, Megaphone, 'total'],
-            ['Connected devices', campaignReport?.summary.connectedDevices ?? 0, Smartphone, 'total'],
-            ['Pending messages', campaignReport?.summary.pendingMessages ?? 0, Timer, 'pending'],
-            ['High-risk campaigns', campaignReport?.summary.highRiskCampaigns ?? 0, TriangleAlert, 'failed'],
-          ] as const).map(([label, value, Icon, tone]) => (
-            <div key={String(label)} className={`stat-card commerce-stat ${tone}`}>
-              <Icon className="stat-watermark" />
-              <div className="stat-header"><span className="stat-label">{label}</span><Icon size={20} className="stat-icon" /></div>
-              <div className="stat-value">{typeof value === 'number' ? value.toLocaleString() : value}</div>
+      {/* Live Order Confirmations Stream */}
+      <RecentOrdersFeed />
+
+      {/* Unified Automations & Broadcast Hub (2-Column Side-by-Side) */}
+      <section className="automation-hub-section">
+        <div className="automation-hub-grid">
+          {/* Column 1: AI Sales Copilot */}
+          <div className="hub-panel">
+            <div className="hub-panel-header">
+              <div className="hub-title-group">
+                <div className="hub-icon-wrap ai">
+                  <Bot size={20} />
+                </div>
+                <div>
+                  <h3>AI Sales Copilot</h3>
+                  <span className="hub-subtitle">Conversational order handling & support</span>
+                </div>
+              </div>
+              <button type="button" className="btn-sm" onClick={() => navigate('/ai-test')}>
+                Test Agent
+              </button>
             </div>
-          ))}
-        </div>
-        {campaignReport && (
-          <div className="usage-item dashboard-campaign-usage">
-            <div><span>Monthly message allowance</span><strong>{campaignReport.monthly.used.toLocaleString()} / {campaignReport.monthly.limit.toLocaleString()}</strong></div>
-            <div className="usage-track"><span style={{ width: `${campaignReport.monthly.percent}%` }} /></div>
+
+            <div className="hub-metrics-grid">
+              <div className="hub-metric-tile">
+                <span className="hub-label">Autonomous Resolutions</span>
+                <strong className="hub-val">{orderSummary?.aiPerformance.confirmed ?? 0} orders</strong>
+                <small className="text-success">
+                  <TrendingUp size={12} /> {orderSummary?.aiPerformance.confirmationRate ?? 0}% close rate
+                </small>
+              </div>
+
+              <div className="hub-metric-tile">
+                <span className="hub-label">AI Conversations</span>
+                <strong className="hub-val">{orderSummary?.aiPerformance.conversations ?? 0}</strong>
+                <small className="text-muted">
+                  {orderSummary?.aiPerformance.active ?? 0} active · {orderSummary?.aiPerformance.escalated ?? 0} handed off
+                </small>
+              </div>
+            </div>
           </div>
-        )}
+
+          {/* Column 2: Broadcast Campaigns */}
+          <div className="hub-panel">
+            <div className="hub-panel-header">
+              <div className="hub-title-group">
+                <div className="hub-icon-wrap campaign">
+                  <Megaphone size={20} />
+                </div>
+                <div>
+                  <h3>Broadcast Campaigns</h3>
+                  <span className="hub-subtitle">Marketing messages & delivery performance</span>
+                </div>
+              </div>
+              <button type="button" className="btn-sm" onClick={() => navigate('/campaigns')}>
+                New Broadcast
+              </button>
+            </div>
+
+            <div className="hub-metrics-grid">
+              <div className="hub-metric-tile">
+                <span className="hub-label">Delivery Success</span>
+                <strong className="hub-val text-success">
+                  {campaignReport?.summary.successRate ?? 0}%
+                </strong>
+                <small className="text-muted">
+                  {campaignReport?.summary.pendingMessages ?? 0} pending in queue
+                </small>
+              </div>
+
+              <div className="hub-metric-tile">
+                <span className="hub-label">Active Campaigns</span>
+                <strong className="hub-val">
+                  {campaignReport?.summary.activeCampaigns ?? 0}
+                </strong>
+                <small className={campaignReport?.summary.highRiskCampaigns ? 'text-danger' : 'text-muted'}>
+                  {campaignReport?.summary.highRiskCampaigns ?? 0} high-risk warnings
+                </small>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
-      <Suspense fallback={null}>
+      {/* Activity Analytics Chart */}
+      {/* <Suspense fallback={null}>
         <DashboardCharts sessions={orderSummary?.sessions ?? []} />
-      </Suspense>
+      </Suspense> */}
 
+      {/* Unified Connected Stores & WhatsApp Channels Table */}
       <section className="operations-section">
         <div className="section-header">
           <div>
-            <h2>WhatsApp session performance</h2>
-            <span className="section-subtitle">Messages and order outcomes for the selected date range</span>
+            <h2>Connected Stores & WhatsApp Channels</h2>
+            <span className="section-subtitle">Synced stores, linked WhatsApp numbers, and automated order health</span>
           </div>
-          <span className="section-subtitle">{orderSummary?.sessions.length ?? 0} sessions</span>
-        </div>
-        <div className="operations-grid">
-          {(orderSummary?.sessions ?? []).map(session => {
-            const handled = session.confirmed + session.cancelled;
-            const rate = handled ? Math.round((session.confirmed / handled) * 100) : 0;
-            return (
-              <article className="operation-card" key={session.id}>
-                <div className="operation-card-head">
-                  <div>
-                    <strong>{session.name}</strong>
-                    <small>
-                      {session.phone || 'No phone'} · {session.storeName || 'No store linked'}
-                    </small>
-                  </div>
-                  <span className={`status-pill ${session.status}`}>{formatStatus(session.status)}</span>
-                </div>
-                <div className="metric-row">
-                  <span>
-                    <ArrowUpRight size={14} /> Sent <b>{session.sent.toLocaleString()}</b>
-                  </span>
-                  <span>
-                    <ArrowDownLeft size={14} /> Received <b>{session.received.toLocaleString()}</b>
-                  </span>
-                  <span className={session.failed ? 'metric-danger' : ''}>
-                    Failed <b>{session.failed}</b>
-                  </span>
-                </div>
-                <div className="outcome-row">
-                  <span>
-                    Orders <b>{session.orders}</b>
-                  </span>
-                  <span>
-                    Pending <b>{session.pending}</b>
-                  </span>
-                  <span>
-                    Confirmed <b>{session.confirmed}</b>
-                  </span>
-                  <span>
-                    AI active <b>{session.aiActive}</b>
-                  </span>
-                </div>
-                <div className="success-line">
-                  <div>
-                    <span>Confirmation success</span>
-                    <b>{rate}%</b>
-                  </div>
-                  <div className="usage-track">
-                    <span style={{ width: `${rate}%` }} />
-                  </div>
-                </div>
-                <div className="operation-footer">
-                  <span>Last activity: {formatLastActive(session.lastMessageAt || session.lastActiveAt)}</span>
-                  <div>
-                    <button className="btn-sm" onClick={() => navigate('/sessions')}>
-                      Manage
-                    </button>
-                    {['ready', 'initializing', 'qr_ready'].includes(session.status) && (
-                      <button className="btn-sm danger" onClick={() => handleDisconnect(session.id)}>
-                        Disconnect
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-          {!orderSummary?.sessions.length && <div className="operation-empty">No WhatsApp sessions found.</div>}
-        </div>
-      </section>
-
-      <section className="operations-section">
-        <div className="section-header">
-          <div>
-            <h2>Store performance</h2>
-            <span className="section-subtitle">Commerce, WhatsApp and AI health grouped by store</span>
-          </div>
-          <button className="btn-sm" onClick={() => navigate('/stores')}>
+          <button type="button" className="btn-sm" onClick={() => navigate('/stores')}>
             Manage stores
           </button>
         </div>
+
         <div className="store-operations-table">
           <div className="store-operation-header">
             <span>Store</span>
-            <span>Catalog</span>
-            <span>Messages</span>
+            <span>WhatsApp Device</span>
+            <span>Catalog & Orders</span>
             <span>Confirmations</span>
-            <span>AI</span>
+            <span>AI Status</span>
             <span>Health</span>
           </div>
+
           {(orderSummary?.stores ?? []).map(store => (
             <div className="store-operation-row" key={store.id}>
               <div>
                 <strong>{store.name}</strong>
-                <small>
-                  {store.provider} · {store.sessionName || 'No session'}
+                <small className={`store-badge ${store.provider}`}>{store.provider}</small>
+              </div>
+
+              <div>
+                <b>{store.sessionName || 'No device'}</b>
+                <small className="text-muted">
+                  {store.sent} ↑ · {store.received} ↓ messages
                 </small>
               </div>
+
               <div>
-                <b>{store.products}</b>
-                <small>products · {store.orders} orders</small>
+                <b>{store.products} products</b>
+                <small>{store.orders} total orders</small>
               </div>
-              <div>
-                <b>
-                  {store.sent} ↑ · {store.received} ↓
-                </b>
-                <small className={store.failed ? 'metric-danger' : ''}>{store.failed} failed</small>
-              </div>
+
               <div>
                 <b className="confirmed-text">{store.confirmed} confirmed</b>
                 <small>
                   {store.pending} pending · {store.cancelled} cancelled
                 </small>
               </div>
+
               <div>
                 <b>
                   <Bot size={14} /> {store.aiActive} active
                 </b>
                 <small>{store.aiEscalated} handoffs</small>
               </div>
+
               <div>
-                <span className={`status-pill ${store.sessionStatus}`}>{formatStatus(store.sessionStatus)}</span>
+                <span className={`status-pill ${store.sessionStatus}`}>
+                  {formatStatus(store.sessionStatus)}
+                </span>
                 <small>{formatLastActive(store.lastOrderAt || store.lastMessageAt)}</small>
               </div>
             </div>
           ))}
-          {!orderSummary?.stores.length && <div className="operation-empty">No stores found.</div>}
+
+          {!orderSummary?.stores.length && (
+            <div className="operation-empty">
+              No connected stores found. Link your Shopify, WooCommerce, or YouCan store in the Stores tab.
+            </div>
+          )}
         </div>
       </section>
     </div>

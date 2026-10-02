@@ -1,0 +1,618 @@
+.admin-dashboard-page {
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+@media (max-width: 768px) {
+  .admin-dashboard-page {
+    padding: 1rem;
+  }
+}
+
+.admin-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.admin-status-badge.live {
+  background: var(--success-soft);
+  color: var(--success);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.admin-section {
+  margin-bottom: 2rem;
+  width: 100%;
+}
+
+.admin-section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.admin-section-header.admin-section-between {
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.admin-section-header h2 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.admin-section-hint {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+/* Quick Platform Shortcuts (Fluid responsive auto-fill grid) */
+.admin-shortcuts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+  width: 100%;
+}
+
+.admin-shortcut-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.15rem 1.25rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-xs);
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.admin-shortcut-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-hover, #cbd5e1);
+}
+
+.admin-shortcut-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tone-blue .admin-shortcut-icon {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+.tone-green .admin-shortcut-icon {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.tone-purple .admin-shortcut-icon {
+  background: var(--accent-purple-soft);
+  color: var(--accent-purple);
+}
+
+.tone-amber .admin-shortcut-icon {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.tone-cyan .admin-shortcut-icon {
+  background: rgba(6, 182, 212, 0.12);
+  color: #0891b2;
+}
+
+.tone-pink .admin-shortcut-icon {
+  background: rgba(236, 72, 153, 0.12);
+  color: #db2777;
+}
+
+.admin-shortcut-content {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.admin-shortcut-content h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-shortcut-content p {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin: 0.2rem 0 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-shortcut-arrow {
+  color: var(--text-muted);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.admin-shortcut-card:hover .admin-shortcut-arrow {
+  color: var(--primary);
+  transform: translateX(3px);
+}
+
+/* Vitals Grid (Fluid responsive auto-fill grid) */
+.admin-vitals-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 1rem;
+  width: 100%;
+}
+
+.admin-vital-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.vital-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.vital-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.vital-icon {
+  color: var(--text-muted);
+}
+
+.vital-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.vital-footer {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+.tag-positive {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.tag-warning {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+/* Period Toggles */
+.admin-period-toggles {
+  display: flex;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  padding: 2px;
+  gap: 2px;
+}
+
+.period-toggle-btn {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.period-toggle-btn:hover {
+  color: var(--text-primary);
+}
+
+.period-toggle-btn.active {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Financial & Subscription KPI Summary Cards */
+.admin-financial-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+  width: 100%;
+}
+
+.financial-kpi-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+  box-shadow: var(--shadow-xs);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  box-sizing: border-box;
+  transition: transform 0.15s ease;
+}
+
+.financial-kpi-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-hover, #cbd5e1);
+}
+
+.financial-kpi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.financial-kpi-head span {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.financial-kpi-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.financial-kpi-detail {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* Plan Chart Meta & Card */
+.admin-chart-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.25rem 0.75rem;
+  box-shadow: var(--shadow-sm);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.plan-chart-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 1rem;
+}
+
+.plan-chart-title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.plan-chart-subtitle {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.chart-container {
+  width: 100%;
+}
+
+.chart-loading,
+.chart-empty {
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.chart-legend-custom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 9999px;
+}
+
+/* Plan Summary Cards Grid */
+.admin-plans-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+  width: 100%;
+}
+
+.admin-plan-summary-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.15rem 1.25rem;
+  box-shadow: var(--shadow-xs);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+  box-sizing: border-box;
+  transition: transform 0.15s ease;
+}
+
+.admin-plan-summary-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary);
+}
+
+.plan-summary-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.plan-title-block h4 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.plan-price-tag {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--primary);
+  margin-top: 2px;
+  display: inline-block;
+}
+
+.plan-share-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+  border-radius: 9999px;
+}
+
+.plan-summary-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  background: var(--surface-hover);
+  border-radius: var(--radius-sm, 6px);
+}
+
+.plan-stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plan-stat-item .stat-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.plan-stat-item strong {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.plan-limits-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+
+.plan-limits-inline b {
+  color: var(--text-secondary);
+}
+
+/* Two Column Layout */
+.admin-two-col-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.25rem;
+  margin-top: 1rem;
+  width: 100%;
+}
+
+.admin-section-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.admin-section-card .card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-section-card .card-header h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.btn-action-sm {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-action-sm:hover {
+  background: var(--surface-hover, var(--bg-light));
+  color: var(--text-primary);
+  border-color: var(--primary);
+}
+
+.admin-plans-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.admin-plan-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-white);
+  min-width: 0;
+}
+
+.admin-plan-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.admin-plan-info strong {
+  font-size: 0.9375rem;
+  color: var(--text-primary);
+}
+
+.admin-plan-info span {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.customer-count-badge {
+  display: inline-block;
+  padding: 0.25rem 0.65rem;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+/* Resources List */
+.admin-resources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.resource-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-hover, var(--bg-light));
+  min-width: 0;
+}
+
+.resource-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  min-width: 0;
+}
+
+.resource-left svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.resource-item strong {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+.text-capitalize {
+  text-transform: capitalize;
+}

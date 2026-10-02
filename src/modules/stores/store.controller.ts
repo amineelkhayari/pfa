@@ -103,6 +103,16 @@ export class StoreController {
     return this.storeService.findReviews(id);
   }
 
+  @Get(':id/report')
+  @ApiOperation({ summary: 'Get revenue, order evolution, and confirmation analytics for a store' })
+  getStoreReport(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('days') days?: string,
+  ) {
+    const parsedDays = days && days !== 'all' ? Number.parseInt(days, 10) : undefined;
+    return this.storeService.getStoreReport(id, parsedDays && parsedDays > 0 ? parsedDays : undefined);
+  }
+
   @Get('conversation-ownership/current')
   getConversationOwnership(@Query('sessionId') sessionId: string, @Query('chatId') chatId: string) {
     return this.storeService.getConversationOwnership(sessionId, chatId);

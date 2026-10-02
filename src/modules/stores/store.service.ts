@@ -18,6 +18,7 @@ import { OrderAiConversation } from './entities/order-ai-conversation.entity';
 import { Message } from '../message/entities/message.entity';
 import { isSamePhone, normalizePhone, phoneToChatId } from '../../common/utils/phone.util';
 import { CustomerSupportConversation } from './entities/customer-support-conversation.entity';
+import { StoreReportData, StoreReportEvolutionPoint } from './dto/store-report.dto';
 
 @Injectable()
 export class StoreService {
@@ -337,6 +338,127 @@ export class StoreService {
     });
   }
 
+  async getStoreReport(storeId: string, days?: number): Promise<StoreReportData> {
+    const store = await this.findOneById(storeId);
+    const [products, allOrders] = await Promise.all([
+      this.productRepository.count({ where: { storeId } }),
+      this.orderRepository.find({ where: { storeId }, order: { externalCreatedAt: 'ASC' } }),
+    ]);
+
+    const cutoff = days && days > 0 ? new Date(Date.now() - days * 86400000) : null;
+    const orders = cutoff
+      ? allOrders.filter(o => o.externalCreatedAt && new Date(o.externalCreatedAt) >= cutoff)
+      : allOrders;
+
+    let totalRevenue = 0;
+    let confirmedCount = 0;
+    let fulfilledCount = 0;
+    let pendingCount = 0;
+    let cancelledCount = 0;
+    let notSentCount = 0;
+    let failedCount = 0;
+
+    const evolutionMap = new Map<string, StoreReportEvolutionPoint>();
+
+    for (const order of orders) {
+      const price = Number(order.totalPrice) || 0;
+      totalRevenue += price;
+
+      const confirmation = (order.confirmationStatus ?? 'not_sent').toLowerCase();
+      const status = (order.status ?? '').toLowerCase();
+      const fulfillment = (order.fulfillmentStatus ?? '').toLowerCase();
+      const financial = (order.financialStatus ?? '').toLowerCase();
+
+      const isFulfilled =
+        status === 'closed' ||
+        status === 'completed' ||
+        status === 'delivered' ||
+        fulfillment === 'fulfilled' ||
+        fulfillment === 'completed' ||
+        fulfillment === 'delivered' ||
+        (financial === 'paid' && fulfillment === 'fulfilled');
+
+      const isCancelled = confirmation === 'cancelled' || status.includes('cancel');
+
+      if (isCancelled) {
+        cancelledCount++;
+      } else if (confirmation === 'confirmed') {
+        confirmedCount++;
+      } else if (confirmation === 'pending' || confirmation === 'processing_reply') {
+        pendingCount++;
+      } else if (confirmation === 'failed') {
+        failedCount++;
+      } else if (isFulfilled) {
+        fulfilledCount++;
+      } else {
+        notSentCount++;
+      }
+
+      const dateObj = order.externalCreatedAt ? new Date(order.externalCreatedAt) : new Date();
+      const dateKey = dateObj.toISOString().slice(0, 10);
+      const label = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+      if (!evolutionMap.has(dateKey)) {
+        evolutionMap.set(dateKey, {
+          date: dateKey,
+          label,
+          orders: 0,
+          revenue: 0,
+          confirmed: 0,
+          fulfilled: 0,
+          pending: 0,
+          cancelled: 0,
+        });
+      }
+
+      const point = evolutionMap.get(dateKey)!;
+      point.orders += 1;
+      point.revenue = Number((point.revenue + price).toFixed(2));
+      if (isCancelled) {
+        point.cancelled += 1;
+      } else if (confirmation === 'confirmed') {
+        point.confirmed += 1;
+      } else if (isFulfilled) {
+        point.fulfilled += 1;
+      } else {
+        point.pending += 1;
+      }
+    }
+
+    const totalOrders = orders.length;
+    const averageOrderValue = totalOrders > 0 ? Number((totalRevenue / totalOrders).toFixed(2)) : 0;
+    const confirmationRate = totalOrders > 0 ? Math.round((confirmedCount / totalOrders) * 100) : 0;
+    const evolution = Array.from(evolutionMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+    return {
+      store: {
+        id: store.id,
+        name: store.name,
+        provider: store.provider,
+        currency: orders[0]?.currency ?? store.settings?.currency ?? 'MAD',
+      },
+      periodDays: days ?? null,
+      summary: {
+        totalRevenue: Number(totalRevenue.toFixed(2)),
+        totalOrders,
+        totalProducts: products,
+        averageOrderValue,
+        confirmedOrders: confirmedCount,
+        confirmationRate,
+        currency: orders[0]?.currency ?? store.settings?.currency ?? 'MAD',
+      },
+      statusBreakdown: {
+        confirmed: confirmedCount,
+        fulfilled: fulfilledCount,
+        pending: pendingCount,
+        cancelled: cancelledCount,
+        notSent: notSentCount,
+        failed: failedCount,
+      },
+      evolution,
+    };
+  }
+
   async getOrderConversation(storeId: string, orderId: string) {
     await this.findOneById(storeId);
     const order = await this.orderRepository.findOneBy({ id: orderId, storeId });
@@ -527,6 +649,24 @@ export class StoreService {
     if (!order) throw new NotFoundException('Order not found.');
     if (!['pending', 'not_sent', 'failed'].includes(order.confirmationStatus)) {
       throw new BadRequestException('Only orders awaiting confirmation can receive a confirmation message.');
+    }
+    const orderStatus = (order.status ?? '').toLowerCase().trim();
+    const fulfillment = (order.fulfillmentStatus ?? '').toLowerCase().trim();
+    const financial = (order.financialStatus ?? '').toLowerCase().trim();
+    const isClosedOrFulfilled =
+      orderStatus === 'closed' ||
+      orderStatus === 'completed' ||
+      orderStatus === 'delivered' ||
+      fulfillment === 'fulfilled' ||
+      fulfillment === 'completed' ||
+      fulfillment === 'delivered' ||
+      fulfillment === 'shipped' ||
+      (financial === 'paid' && (fulfillment === 'fulfilled' || orderStatus === 'closed'));
+    if (isClosedOrFulfilled) {
+      throw new BadRequestException('Cannot send confirmation reminder for an order that is already fulfilled or closed in the store.');
+    }
+    if (orderStatus.includes('cancel')) {
+      throw new BadRequestException('Cannot send confirmation reminder for a cancelled order.');
     }
     if (!order.phone) throw new BadRequestException('Order has no customer phone number.');
 

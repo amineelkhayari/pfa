@@ -29,6 +29,8 @@ import {
   Activity,
   CircleHelp,
   GraduationCap,
+  Store,
+  Gauge,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { type UserRole } from '../hooks/useRole';
@@ -43,29 +45,17 @@ interface LayoutProps {
   userRole: UserRole | null;
 }
 
-const allNavItems = [
-  { to: '/', icon: LayoutDashboard, key: 'dashboard' as const, adminOnly: false },
-  { to: '/sessions', icon: Smartphone, key: 'sessions' as const, adminOnly: false },
-  { to: '/stores', icon: Smartphone, key: 'stores' as const, adminOnly: false },
+interface NavItem {
+  to: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  key: string;
+  badge?: string;
+}
 
-  { to: '/chats', icon: MessageSquare, key: 'chats' as const, adminOnly: false },
-  { to: '/contacts', icon: ContactRound, key: 'contacts' as const, adminOnly: false },
-  { to: '/webhooks', icon: Webhook, key: 'webhooks' as const, adminOnly: false },
-  { to: '/templates', icon: ClipboardList, key: 'templates' as const, adminOnly: false },
-  { to: '/campaigns', icon: Megaphone, key: 'campaigns' as const, adminOnly: false },
-  { to: '/message-tester', icon: Send, key: 'messageTester' as const, adminOnly: false },
-  // Backend /infra/* is ADMIN-only; hide the nav item from non-admins (UX + defense-in-depth).
-  { to: '/infrastructure', icon: Server, key: 'infrastructure' as const, adminOnly: true },
-  { to: '/plugins', icon: Puzzle, key: 'plugins' as const, adminOnly: true },
-  { to: '/logs', icon: FileText, key: 'logs' as const, adminOnly: false },
-  { to: '/account', icon: UserRound, key: 'account' as const, adminOnly: false },
-  { to: '/ai-test', icon: Bot, key: 'aiTest' as const, adminOnly: false },
-  { to: '/guide', icon: GraduationCap, key: 'guide' as const, adminOnly: false },
-  { to: '/admin/users', icon: UsersRound, key: 'users' as const, adminOnly: true },
-  { to: '/admin/payments', icon: CreditCard, key: 'payments' as const, adminOnly: true },
-  { to: '/admin/ai', icon: Bot, key: 'aiSettings' as const, adminOnly: true },
-  { to: '/admin/automation-logs', icon: Activity, key: 'automationLogs' as const, adminOnly: true },
-];
+interface NavSection {
+  title?: string;
+  items: NavItem[];
+}
 
 const themeIcons = { light: Sun, dark: Moon, system: Monitor };
 
@@ -75,18 +65,72 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
   const ThemeIcon = themeIcons[theme];
   const themeLabel = t(`theme.${theme}`);
 
-  const adminPaths = new Set([
-    '/',
-    '/infrastructure',
-    '/plugins',
-    '/logs',
-    '/account',
-    '/admin/users',
-    '/admin/payments',
-    '/admin/ai',
-    '/admin/automation-logs',
-  ]);
-  const navItems = allNavItems.filter(item => (userRole === 'admin' ? adminPaths.has(item.to) : !item.adminOnly));
+  const navSections: NavSection[] =
+    userRole === 'admin'
+      ? [
+          {
+            title: t('nav.sections.overview', 'Overview'),
+            items: [{ to: '/', icon: Gauge, key: 'dashboard' }],
+          },
+          {
+            title: t('nav.sections.tenancy', 'Customers & Plans'),
+            items: [
+              { to: '/admin/users', icon: UsersRound, key: 'users' },
+              { to: '/admin/payments', icon: CreditCard, key: 'payments' },
+            ],
+          },
+          {
+            title: t('nav.sections.intelligence', 'AI & Automations'),
+            items: [
+              { to: '/admin/ai', icon: Bot, key: 'aiSettings' },
+              { to: '/admin/automation-logs', icon: Activity, key: 'automationLogs' },
+            ],
+          },
+          {
+            title: t('nav.sections.operations', 'Platform & Ops'),
+            items: [
+              { to: '/infrastructure', icon: Server, key: 'infrastructure' },
+              { to: '/plugins', icon: Puzzle, key: 'plugins' },
+              { to: '/logs', icon: FileText, key: 'logs' },
+              { to: '/account', icon: UserRound, key: 'account' },
+            ],
+          },
+        ]
+      : [
+          {
+            title: t('nav.sections.main', 'Main'),
+            items: [
+              { to: '/', icon: LayoutDashboard, key: 'dashboard' },
+              { to: '/chats', icon: MessageSquare, key: 'chats' },
+            ],
+          },
+          {
+            title: t('nav.sections.commerce', 'Commerce & Bot'),
+            items: [
+              { to: '/stores', icon: Store, key: 'stores' },
+              { to: '/sessions', icon: Smartphone, key: 'sessions' },
+              { to: '/ai-test', icon: Bot, key: 'aiTest' },
+            ],
+          },
+          {
+            title: t('nav.sections.marketing', 'Marketing'),
+            items: [
+              { to: '/campaigns', icon: Megaphone, key: 'campaigns' },
+              { to: '/templates', icon: ClipboardList, key: 'templates' },
+              { to: '/contacts', icon: ContactRound, key: 'contacts' },
+            ],
+          },
+          {
+            title: t('nav.sections.settings', 'Settings & Tools'),
+            items: [
+              { to: '/message-tester', icon: Send, key: 'messageTester' },
+              { to: '/webhooks', icon: Webhook, key: 'webhooks' },
+              { to: '/logs', icon: FileText, key: 'logs' },
+              { to: '/guide', icon: GraduationCap, key: 'guide' },
+              { to: '/account', icon: UserRound, key: 'account' },
+            ],
+          },
+        ];
 
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -189,7 +233,6 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
           {!isCollapsed && (
             <div className="sidebar-brand">
               <span className="brand-name">{t('common.appName')}</span>
-              <span className="brand-version">v{version}</span>
             </div>
           )}
         </div>
@@ -216,44 +259,52 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
         )}
 
         <nav className="sidebar-nav">
-          {navItems.map(({ to, icon: Icon, key }) => {
-            const label = t(`nav.${key}`, {
-              defaultValue:
-                key === 'contacts'
-                  ? 'Contacts'
-                  : key === 'campaigns'
-                    ? 'Campaigns & Report'
-                    : key === 'account'
-                      ? 'My Account'
-                      : key === 'users'
-                        ? 'Users'
-                        : key === 'payments'
-                          ? 'Payment Settings'
-                          : key === 'aiSettings'
-                            ? 'AI Settings'
-                            : key === 'aiTest'
-                              ? 'Test AI Agent'
-                              : key === 'automationLogs'
-                                ? 'AI & Automation Logs'
-                                : key === 'guide'
-                                  ? 'Setup Guide'
-                                  : key,
-            });
-            return (
-              <NavLink
-                key={to}
-                to={to}
-                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-                end={to === '/'}
-                onClick={handleNavClick}
-                title={isCollapsed ? label : undefined}
-                data-tour={`nav-${key}`}
-              >
-                <Icon size={20} />
-                {!isCollapsed && <span>{label}</span>}
-              </NavLink>
-            );
-          })}
+          {navSections.map((section, sIdx) => (
+            <div key={section.title || sIdx} className="nav-section">
+              {section.title && !isCollapsed && (
+                <div className="nav-section-title">{section.title}</div>
+              )}
+              {isCollapsed && sIdx > 0 && <div className="nav-section-divider" />}
+              {section.items.map(({ to, icon: Icon, key }) => {
+                const label = t(`nav.${key}`, {
+                  defaultValue:
+                    key === 'contacts'
+                      ? 'Contacts'
+                      : key === 'campaigns'
+                        ? 'Campaigns & Report'
+                        : key === 'account'
+                          ? 'My Account'
+                          : key === 'users'
+                            ? 'Users & Merchants'
+                            : key === 'payments'
+                              ? 'Billing & Plans'
+                              : key === 'aiSettings'
+                                ? 'AI Settings'
+                                : key === 'aiTest'
+                                  ? 'Test AI Agent'
+                                  : key === 'automationLogs'
+                                    ? 'AI & Automation Logs'
+                                    : key === 'guide'
+                                      ? 'Setup Guide'
+                                      : key,
+                });
+                return (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                    end={to === '/'}
+                    onClick={handleNavClick}
+                    title={isCollapsed ? label : undefined}
+                    data-tour={`nav-${key}`}
+                  >
+                    <Icon size={19} />
+                    {!isCollapsed && <span>{label}</span>}
+                  </NavLink>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="sidebar-footer">
@@ -314,6 +365,11 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
             <LogOut size={20} />
             {!isCollapsed && <span>{t('common.logout')}</span>}
           </button>
+          {!isCollapsed && (
+            <div className="sidebar-version" style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center', padding: '6px 0 2px' }}>
+              v{version}
+            </div>
+          )}
         </div>
       </aside>
 

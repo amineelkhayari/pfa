@@ -122,6 +122,7 @@ export class ApiKeyGuard implements CanActivate {
       '/plugins',
       '/notifications',
       '/auth/api-keys',
+      '/ai',
     ];
     return (
       managementPrefixes.some(prefix => normalized === prefix || normalized.startsWith(`${prefix}/`)) ||

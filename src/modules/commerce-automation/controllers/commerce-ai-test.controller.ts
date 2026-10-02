@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Res, StreamableFile, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Post, Res, StreamableFile, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes } from '@nestjs/swagger';
 import type { Response } from 'express';
@@ -36,7 +36,7 @@ export class AdminAiTestController {
 
   @Post('test')
   async test(@Body() dto: TestAiDto) {
-    if (!this.agent.enabled()) throw new Error('AI is disabled or its provider API key is missing');
+    if (!this.agent.enabled()) throw new BadRequestException('AI is disabled or its provider API key is missing');
     const message = dto.message?.trim() || 'Yes, everything is correct. I confirm my order.';
     const decision = await this.agent.respond(sampleOrder, 'English', [
       { role: 'customer', text: message, at: new Date().toISOString() },
@@ -73,9 +73,9 @@ export class UserAiTestController {
 
   @Post('test-chat')
   async chat(@Body() dto: TestAiDto) {
-    if (!this.agent.enabled()) throw new Error('AI is disabled or its provider API key is missing');
+    if (!this.agent.enabled()) throw new BadRequestException('AI is disabled or its provider API key is missing');
     const message = dto.message?.trim();
-    if (!message) throw new Error('A test message is required');
+    if (!message) throw new BadRequestException('A test message is required');
     const history: AiConversationTurn[] = (dto.history ?? []).slice(-10).flatMap(turn => {
       const role = turn.role === 'assistant' ? 'assistant' : turn.role === 'customer' ? 'customer' : null;
       const text = typeof turn.text === 'string' ? turn.text.trim().slice(0, 1000) : '';

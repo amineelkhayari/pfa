@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Bot, BellRing, ClipboardPen, FileText, Headphones, Image as ImageIcon, Loader2, PackageSearch, RefreshCw, Search, ShoppingBag, UserRoundCheck, X } from 'lucide-react';
 import type { CustomerContext, CustomerOrderContext, CustomerProductContext, MessageTemplate } from '../../services/api';
+import { isOrderFulfilledOrClosed, canSendOrderConfirmation } from '../../utils/orderStatus';
 
 interface Props {
   context?: CustomerContext;
@@ -25,6 +26,7 @@ interface Props {
 
 const itemLabel = (item: Record<string, unknown>) => `${String(item.name ?? item.title ?? 'Product')} × ${Number(item.quantity ?? 1)}`;
 const nextAction = (order: CustomerOrderContext) => {
+  if (isOrderFulfilledOrClosed(order)) return 'No action required (order fulfilled)';
   if (['pending', 'processing_reply'].includes(order.confirmationStatus)) return 'Awaiting customer confirmation';
   if (order.confirmationStatus === 'failed') return 'Retry confirmation message';
   if (order.confirmationStatus === 'not_sent') return 'Send confirmation message';
@@ -94,7 +96,7 @@ export default function CustomerContextPanel(props: Props) {
           <section className="customer-order-section"><small>Products and quantities</small><div className="customer-order-items">{order.lineItems?.length ? order.lineItems.map((item, index) => <span key={index}>{itemLabel(item)}</span>) : <span>No product details saved.</span>}</div></section>
           {editingAddress === order.id && <div className="customer-address-form"><input placeholder="Customer name" value={address.customerName} onChange={event => setAddress(value => ({ ...value, customerName: event.target.value }))} /><input placeholder="Address" value={address.address1} onChange={event => setAddress(value => ({ ...value, address1: event.target.value }))} /><input placeholder="City" value={address.city} onChange={event => setAddress(value => ({ ...value, city: event.target.value }))} /><input placeholder="Postal code" value={address.postalCode} onChange={event => setAddress(value => ({ ...value, postalCode: event.target.value }))} /><input placeholder="Country" value={address.country} onChange={event => setAddress(value => ({ ...value, country: event.target.value }))} /><div><button type="button" onClick={() => setEditingAddress(null)}>Cancel</button><button type="button" disabled={busyAction === `address:${order.id}`} onClick={() => props.onUpdateAddress(order, { ...address, postalCode: address.postalCode || undefined, phone: address.phone || undefined })}>Save to store</button></div></div>}
           <div className="customer-order-actions">
-            <button type="button" disabled={busyAction === order.id || !['pending', 'not_sent', 'failed'].includes(order.confirmationStatus)} onClick={() => props.onRemind(order)}><BellRing size={15} /> Reminder</button>
+            <button type="button" disabled={busyAction === order.id || !canSendOrderConfirmation(order)} onClick={() => props.onRemind(order)}><BellRing size={15} /> Reminder</button>
             <button type="button" onClick={() => props.onPrepareSummary(order)}><ClipboardPen size={15} /> Summary</button>
             <button type="button" disabled={busyAction === `pdf:${order.id}`} onClick={() => props.onSendOrderHistoryPdf(order)}>{busyAction === `pdf:${order.id}` ? <Loader2 className="animate-spin" size={15} /> : <FileText size={15} />} Send PDF</button>
             <button type="button" disabled={order.confirmationStatus === 'confirmed' || busyAction === `status:${order.id}`} onClick={() => props.onOrderAction(order, 'confirm')}>Confirm</button>

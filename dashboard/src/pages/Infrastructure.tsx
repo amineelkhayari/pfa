@@ -12,8 +12,9 @@ import {
   AlertTriangle,
   Download,
   Upload,
+  DatabaseZap,
 } from 'lucide-react';
-import { infraApi, API_BASE_URL } from '../services/api';
+import { infraApi, adminUsersApi, API_BASE_URL } from '../services/api';
 import { copyToClipboard } from '../utils/clipboard';
 import { restartPollAttempts } from '../utils/restartPoll';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
@@ -521,6 +522,36 @@ export function Infrastructure() {
         <AlertTriangle size={14} /> {t('infrastructure.envPinNote')}
       </p>
     ) : null;
+
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetConfirmation, setResetConfirmation] = useState('');
+  const [resettingDb, setResettingDb] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+
+  const handleResetDatabase = async () => {
+    if (!resetPassword || resetConfirmation !== 'RESET') return;
+    if (
+      !window.confirm(
+        'Final confirmation: permanently reset all SmartConfirm data? This will erase all stores, sessions, messages, and customers. Only the admin account will remain.',
+      )
+    )
+      return;
+    setResettingDb(true);
+    setResetError(null);
+    try {
+      await adminUsersApi.resetDatabase(resetPassword, resetConfirmation);
+      localStorage.removeItem('smartConfirm_access_token');
+      sessionStorage.removeItem('smartConfirm_access_token');
+      window.alert(
+        'Database reset completed. Only the administrator account was preserved. Restart the API, then sign in again.',
+      );
+      window.location.assign('/login');
+    } catch (err) {
+      setResetError(err instanceof Error ? err.message : t('common.unknownError'));
+    } finally {
+      setResettingDb(false);
+    }
+  };
 
   return (
     <div className="infrastructure-page">
@@ -1047,6 +1078,65 @@ export function Infrastructure() {
                 )}
               </>
             )}
+          </div>
+        </section>
+
+        {/* Database Danger Zone - Reset System Database */}
+        <section className="infra-card danger-zone-card">
+          <div className="card-header">
+            <div className="header-left">
+              <DatabaseZap size={20} className="danger-header-icon" />
+              <div>
+                <h2 className="danger-header-title">Danger Zone: Reset Application Database</h2>
+                <p className="danger-header-desc">
+                  Permanently remove all customers, sessions, stores, messages, orders, campaigns, subscriptions, payments, templates, logs, and settings.
+                </p>
+              </div>
+            </div>
+            <span className="status-indicator disconnected">Irreversible</span>
+          </div>
+
+          <div className="danger-zone-content">
+            <div className="danger-box">
+              <strong>Warning: This action cannot be undone.</strong>
+              <p>
+                Only the permanent administrator account will remain. Every login session across the platform, including this one, will be immediately invalidated.
+              </p>
+            </div>
+
+            <div className="danger-form-row">
+              <div className="form-group" style={{ margin: 0 }}>
+                <label>Administrator password</label>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={resetPassword}
+                  onChange={e => setResetPassword(e.target.value)}
+                  placeholder="Enter your admin password"
+                />
+              </div>
+
+              <div className="form-group" style={{ margin: 0 }}>
+                <label>Type RESET to confirm</label>
+                <input
+                  type="text"
+                  value={resetConfirmation}
+                  onChange={e => setResetConfirmation(e.target.value)}
+                  placeholder="Type RESET"
+                />
+              </div>
+
+              <button
+                type="button"
+                className="btn-danger-reset"
+                disabled={resettingDb || !resetPassword || resetConfirmation !== 'RESET'}
+                onClick={handleResetDatabase}
+              >
+                {resettingDb ? <Loader2 size={16} className="animate-spin" /> : <DatabaseZap size={16} />}
+                {resettingDb ? 'Resetting…' : 'Reset Database'}
+              </button>
+            </div>
+            {resetError && <p className="restart-error-msg" style={{ marginTop: '0.75rem' }}>{resetError}</p>}
           </div>
         </section>
       </div>

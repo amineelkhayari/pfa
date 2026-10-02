@@ -43,10 +43,13 @@ export class PlanUsageService {
     const user = await this.currentLimitedUser();
     if (!user) return;
     const count = await this.sessions.count({ where: { userId: user.id } });
-    this.assertTrialActive(user);
+    const extraSessions = Number((user.settings as any)?.extraQuota?.sessions || 0);
+    if (extraSessions <= 0) {
+      this.assertTrialActive(user);
+    }
     const limits = this.limitsFor(user);
     if (count >= limits.sessions) {
-      throw new ForbiddenException(`Your plan allows at most ${limits.sessions} WhatsApp session(s). Choose a higher plan to continue.`);
+      throw new ForbiddenException(`Your plan allows at most ${limits.sessions} WhatsApp session(s). Choose a higher plan or purchase extra quota to continue.`);
     }
   }
 
@@ -54,10 +57,13 @@ export class PlanUsageService {
     const user = await this.currentLimitedUser();
     if (!user) return;
     const count = await this.stores.count({ where: { userId: user.id } });
-    this.assertTrialActive(user);
+    const extraStores = Number((user.settings as any)?.extraQuota?.stores || 0);
+    if (extraStores <= 0) {
+      this.assertTrialActive(user);
+    }
     const limits = this.limitsFor(user);
     if (count >= limits.stores) {
-      throw new ForbiddenException(`Your plan allows at most ${limits.stores} store(s). Choose a higher plan to continue.`);
+      throw new ForbiddenException(`Your plan allows at most ${limits.stores} store(s). Choose a higher plan or purchase extra quota to continue.`);
     }
   }
 
@@ -72,6 +78,8 @@ export class PlanUsageService {
     return {
       plan: user.plan,
       limits: this.limitsFor(user),
+      baseLimits: this.plans.get(user.plan).limits,
+      extraQuota: (user.settings as any)?.extraQuota || {},
       usage: { sessions, stores, sentMessages: user.sentMessages, receivedMessages: user.receivedMessages, aiTokens: user.aiTokensUsed ?? 0, audioTranscriptions: user.audioTranscriptionsUsed ?? 0, audioReplies: user.audioRepliesUsed ?? 0 },
       periodStart: user.usagePeriodStart,
       trialEndsAt,
@@ -100,9 +108,12 @@ export class PlanUsageService {
     return {
       user: { id: user.id, name: user.name, email: user.email, username: user.username, role: user.role, plan: user.plan, status: user.status, settings: user.settings, createdAt: user.createdAt, updatedAt: user.updatedAt },
       limits: user.role === ApiKeyRole.ADMIN ? null : this.limitsFor(user),
+      baseLimits: user.role === ApiKeyRole.ADMIN ? null : this.plans.get(user.plan).limits,
+      extraQuota: (user.settings as any)?.extraQuota || null,
       usage: { sessions, stores, products, orders, sentMessages: user.sentMessages, receivedMessages: user.receivedMessages, aiTokens: user.aiTokensUsed ?? 0, audioTranscriptions: user.audioTranscriptionsUsed ?? 0, audioReplies: user.audioRepliesUsed ?? 0 },
       usagePeriodStart: user.usagePeriodStart,
       trialEndsAt: this.trialEndsAt(user),
+      trialExpired: Boolean(this.trialEndsAt(user) && this.trialEndsAt(user)! <= new Date()),
       subscriptions,
     };
   }
@@ -255,7 +266,16 @@ export class PlanUsageService {
 
   private limitsFor(user: UserAccount): PlanLimits {
     const limits = this.plans.get(user.plan).limits;
-    return { ...limits, audioTranscriptions: limits.audioTranscriptions ?? 0, audioReplies: limits.audioReplies ?? 0 };
+    const extra = (user.settings as any)?.extraQuota || {};
+    return {
+      sessions: (limits.sessions ?? 0) + (Number(extra.sessions) || 0),
+      stores: (limits.stores ?? 0) + (Number(extra.stores) || 0),
+      sentMessages: (limits.sentMessages ?? 0) + (Number(extra.sentMessages) || 0),
+      receivedMessages: (limits.receivedMessages ?? 0) + (Number(extra.receivedMessages) || 0),
+      aiTokens: (limits.aiTokens ?? 0) + (Number(extra.aiTokens) || 0),
+      audioTranscriptions: limits.audioTranscriptions ?? 0,
+      audioReplies: limits.audioReplies ?? 0,
+    };
   }
   private async reserveAudioUsage(userSessionId: string, counter: 'audioTranscriptionsUsed' | 'audioRepliesUsed', limitKey: 'audioTranscriptions' | 'audioReplies'): Promise<boolean> {
     const user = await this.userForSession(userSessionId);
@@ -276,6 +296,13 @@ export class PlanUsageService {
     // authorized by billing_subscriptions (active/trialing + currentPeriodEnd),
     // and must never expire from user.createdAt + plan.trialDays.
     if (plan.priceMonthly > 0) return null;
+    const customTrialEndsAt = (user.settings as any)?.trialEndsAt;
+    if (customTrialEndsAt) {
+      const parsed = new Date(customTrialEndsAt);
+      if (!isNaN(parsed.getTime())) {
+        return parsed;
+      }
+    }
     if (!plan.trialDays) return null;
     return new Date(new Date(user.createdAt).getTime() + plan.trialDays * 86_400_000);
   }

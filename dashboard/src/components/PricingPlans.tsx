@@ -10,9 +10,14 @@ export function PricingPlans({ plans, currentPlan, busy, onSelect }: { plans: Bi
         {plan.highlighted && <div className="pricing-popular"><Sparkles size={14}/> Most popular</div>}
         <div><h3>{plan.name}</h3><p>{plan.description}</p></div>
         <div className="pricing-price"><strong>{new Intl.NumberFormat(undefined, { style: 'currency', currency: plan.currency, maximumFractionDigits: 2 }).format(plan.priceMonthly / 100)}</strong><span>{plan.priceMonthly ? '/ month' : plan.trialDays ? `for ${plan.trialDays}-day trial` : 'forever'}</span></div>
+        {plan.priceMonthly > 0 && plan.trialDays > 0 && (
+          <div style={{ display: 'inline-block', backgroundColor: 'rgba(59, 130, 246, 0.12)', color: '#2563eb', fontWeight: 600, fontSize: '0.78rem', padding: '0.25rem 0.6rem', borderRadius: '4px', margin: '0.25rem 0 0.5rem' }}>
+            🎁 {plan.trialDays}-Day Free Trial Included
+          </div>
+        )}
         <ul>{plan.features.map(feature => <li key={feature}><Check size={16}/><span>{feature}</span></li>)}</ul>
         <div className="pricing-capacity"><span>{plan.limits.sessions} sessions</span><span>{plan.limits.stores} stores</span><span>{plan.limits.sentMessages.toLocaleString()} sent messages</span><span>{plan.limits.aiTokens.toLocaleString()} AI tokens</span></div>
-        {current ? <button disabled className="pricing-current">Your current plan</button> : plan.priceMonthly > 0 ? <div className="pricing-payments"><button disabled={busy} onClick={() => onSelect(plan, 'stripe')}>Choose with Stripe</button><button disabled={busy} onClick={() => onSelect(plan, 'paypal')}>PayPal</button></div> : <button disabled className="pricing-current">Included at signup</button>}
+        {current ? <button disabled className="pricing-current">Your current plan</button> : plan.priceMonthly > 0 ? <div className="pricing-payments"><button disabled={busy} onClick={() => onSelect(plan, 'stripe')}>{plan.trialDays > 0 ? `Start ${plan.trialDays}d Free Trial` : 'Choose with Stripe'}</button><button disabled={busy} onClick={() => onSelect(plan, 'paypal')}>{plan.trialDays > 0 ? `PayPal Trial` : 'PayPal'}</button></div> : <button disabled className="pricing-current">Included at signup</button>}
       </article>;
     })}</div>
   </section>;

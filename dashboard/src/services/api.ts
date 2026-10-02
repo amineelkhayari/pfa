@@ -263,6 +263,49 @@ export interface StoreProductReview {
   order?: Pick<StoreOrder, 'id' | 'orderNumber' | 'externalOrderId'>;
 }
 
+export interface StoreReportEvolutionPoint {
+  date: string;
+  label: string;
+  orders: number;
+  revenue: number;
+  confirmed: number;
+  fulfilled: number;
+  pending: number;
+  cancelled: number;
+}
+
+export interface StoreReportStatusBreakdown {
+  confirmed: number;
+  fulfilled: number;
+  pending: number;
+  cancelled: number;
+  notSent: number;
+  failed: number;
+}
+
+export interface StoreReportSummary {
+  totalRevenue: number;
+  totalOrders: number;
+  totalProducts: number;
+  averageOrderValue: number;
+  confirmedOrders: number;
+  confirmationRate: number;
+  currency: string;
+}
+
+export interface StoreReportData {
+  store: {
+    id: string;
+    name: string;
+    provider: string;
+    currency: string;
+  };
+  periodDays: number | null;
+  summary: StoreReportSummary;
+  statusBreakdown: StoreReportStatusBreakdown;
+  evolution: StoreReportEvolutionPoint[];
+}
+
 export interface Campaign {
   id: string;
   sessionId: string;
@@ -1143,6 +1186,10 @@ export const storesApi = {
   products: (id: string) => request<StoreProduct[]>(`/stores/${id}/products`),
   orders: (id: string) => request<StoreOrder[]>(`/stores/${id}/orders`),
   reviews: (id: string) => request<StoreProductReview[]>(`/stores/${id}/reviews`),
+  report: (id: string, days?: number | string) => {
+    const query = days && days !== 'all' ? `?days=${days}` : '';
+    return request<StoreReportData>(`/stores/${id}/report${query}`);
+  },
   orderConversations: (storeId: string) =>
     request<Record<string, OrderAiConversation>>(`/stores/${storeId}/order-conversations`),
   conversationOwnership: (sessionId: string, chatId: string) =>
@@ -1808,6 +1855,14 @@ export const woocommerceApi = {
     request<{ products: number; orders: number }>(`/woocommerce/${storeId}/sync`, { method: 'POST' }),
 };
 
+export interface ExtraQuota {
+  sessions?: number;
+  stores?: number;
+  sentMessages?: number;
+  receivedMessages?: number;
+  aiTokens?: number;
+}
+
 export interface AccountUsage {
   plan: string;
   limits: {
@@ -1819,6 +1874,16 @@ export interface AccountUsage {
     audioTranscriptions: number;
     audioReplies: number;
   };
+  baseLimits?: {
+    sessions: number;
+    stores: number;
+    sentMessages: number;
+    receivedMessages: number;
+    aiTokens: number;
+    audioTranscriptions: number;
+    audioReplies: number;
+  };
+  extraQuota?: ExtraQuota;
   usage: {
     sessions: number;
     stores: number;
@@ -1875,6 +1940,28 @@ export const adminUsersApi = {
   details: (id: string) => request<AdminUserDetails>(`/admin/users/${id}/details`),
   update: (id: string, body: { plan?: string; status?: 'active' | 'suspended' }) =>
     request<AccountUser>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  extendTrial: (
+    id: string,
+    body: {
+      action?: 'extend' | 'set_date' | 'reset';
+      trialEndsAt?: string | null;
+      extendDays?: number;
+      extendHours?: number;
+      extendWeeks?: number;
+      extendMonths?: number;
+      extendYears?: number;
+      resetUsage?: boolean;
+    },
+  ) =>
+    request<{ success: boolean; trialEndsAt: string; user: AccountUser }>(`/admin/users/${id}/trial`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  setExtraQuota: (id: string, quota: ExtraQuota) =>
+    request<{ success: boolean; extraQuota: ExtraQuota; user: AccountUser }>(`/admin/users/${id}/extra-quota`, {
+      method: 'POST',
+      body: JSON.stringify(quota),
+    }),
   resetDatabase: (password: string, confirmation: string) =>
     request<{ reset: boolean; preservedAdmin: string; signInRequired: boolean; restartRecommended: boolean }>(
       '/admin/users/maintenance/reset-database',
@@ -1888,8 +1975,12 @@ export const adminUsersApi = {
 export interface AdminUserDetails {
   user: AccountUser;
   limits: AccountUsage['limits'] | null;
+  baseLimits?: AccountUsage['limits'] | null;
+  extraQuota?: ExtraQuota | null;
   usage: AccountUsage['usage'] & { products: number; orders: number };
   usagePeriodStart: string;
+  trialEndsAt: string | null;
+  trialExpired: boolean;
   subscriptions: BillingSubscription[];
 }
 
@@ -1960,6 +2051,10 @@ export interface PaymentTransaction {
   currency: string;
   description: string | null;
   paidAt: string | null;
+  refundRequestedAt?: string | null;
+  refundRequestReason?: string | null;
+  refundRequestStatus?: 'none' | 'pending' | 'approved' | 'rejected' | null;
+  refundRejectionReason?: string | null;
   createdAt: string;
   user?: { id: string; name: string; email: string; username: string } | null;
 }
@@ -1969,8 +2064,35 @@ export interface PaymentHistory {
   page: number;
   limit: number;
 }
+export interface QuotaAddonDef {
+  key: string;
+  title: string;
+  description: string;
+  category: 'sessions' | 'stores' | 'messages' | 'ai';
+  priceCents: number;
+  currency: string;
+  increments: {
+    sessions?: number;
+    stores?: number;
+    sentMessages?: number;
+    receivedMessages?: number;
+    aiTokens?: number;
+  };
+}
+
 export const billingApi = {
   plans: () => request<BillingPlan[]>('/billing/plans'),
+  addons: () => request<QuotaAddonDef[]>('/billing/addons'),
+  purchaseAddon: (addonKey: string, quantity = 1) =>
+    request<{ url?: string; success?: boolean; mode: string; extraQuota?: ExtraQuota; message?: string }>(
+      '/billing/addons/checkout',
+      { method: 'POST', body: JSON.stringify({ addonKey, quantity }) },
+    ),
+  claimAddon: (sessionId: string) =>
+    request<{ success: boolean; extraQuota: ExtraQuota; message: string }>('/billing/addons/claim', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId }),
+    }),
   status: () => request<BillingSubscription[]>('/billing/status'),
   history: () => request<PaymentHistory>('/billing/history'),
   stripeCheckout: (plan = 'pro') =>
@@ -2008,6 +2130,11 @@ export const billingApi = {
       `/billing/subscriptions/${id}/reconcile`,
       { method: 'POST' },
     ),
+  requestRefund: (id: string, reason?: string) =>
+    request<PaymentTransaction>(`/billing/payments/${id}/request-refund`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
 };
 
 export interface AdminPaymentSettings {
@@ -2088,6 +2215,15 @@ export const adminBillingApi = {
     request<PaymentTransaction>(`/admin/billing-settings/payments/${id}/refund`, {
       method: 'POST',
       body: JSON.stringify({ amount, reason }),
+    }),
+  approveRefund: (id: string) =>
+    request<PaymentTransaction>(`/admin/billing-settings/payments/${id}/approve-refund`, {
+      method: 'POST',
+    }),
+  rejectRefund: (id: string, reason?: string) =>
+    request<PaymentTransaction>(`/admin/billing-settings/payments/${id}/reject-refund`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
     }),
 };
 

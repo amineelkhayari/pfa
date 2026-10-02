@@ -6,7 +6,7 @@ import './DashboardCharts.css';
 
 type SessionPerformance = OrderConfirmationSummary['sessions'][number];
 
-interface DashboardChartsProps {
+export interface DashboardChartsProps {
   sessions: SessionPerformance[];
 }
 
@@ -31,7 +31,7 @@ export function DashboardCharts({ sessions }: DashboardChartsProps) {
         <span className="section-subtitle">Account-owned sessions only</span>
       </div>
       {!data.length ? (
-        <div className="charts-empty">{t('dashboard.charts.empty')}</div>
+        <div className="charts-empty">{t('dashboard.charts.empty', 'No session activity recorded')}</div>
       ) : (
         <div className="charts-grid">
           <div className="chart-card chart-wide">

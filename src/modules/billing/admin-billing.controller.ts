@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Query, Put } from '@nestjs/common';
-import { IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { RequireRole, RequireUnscopedKey } from '../auth/decorators/auth.decorators';
 import { ApiKeyRole } from '../auth/entities/api-key.entity';
 import { BillingConfigService, PaymentSettings } from './billing-config.service';
@@ -37,6 +37,10 @@ class RefundPaymentDto {
   @IsOptional() @IsString() reason?: string;
 }
 
+class RejectRefundDto {
+  @IsOptional() @IsString() @MaxLength(500) reason?: string;
+}
+
 class SavePlanDto {
   @IsString() slug: string; @IsString() name: string; @IsOptional() @IsString() description?: string;
   @IsInt() @Min(0) priceMonthly: number; @IsString() currency: string; @IsObject() limits: Record<string, number>; @IsObject() capabilities: Record<string, boolean>;
@@ -59,6 +63,8 @@ export class AdminBillingController {
   @Post('subscriptions/:id/cancel-plan-change') cancelPlanChange(@Param('id', ParseUUIDPipe) id: string) { return this.billing.cancelPlanChange(id); }
   @Post('subscriptions/:id/reconcile') reconcileSubscription(@Param('id', ParseUUIDPipe) id: string) { return this.billing.reconcileSubscription(id); }
   @Post('payments/:id/refund') refund(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RefundPaymentDto) { return this.billing.refundPayment(id, dto.amount, dto.reason); }
+  @Post('payments/:id/approve-refund') approveRefund(@Param('id', ParseUUIDPipe) id: string) { return this.billing.approvePaymentRefund(id); }
+  @Post('payments/:id/reject-refund') rejectRefund(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RejectRefundDto) { return this.billing.rejectPaymentRefund(id, dto?.reason); }
   @Get('plans') listPlans() { return this.plans.list(true); }
   @Post('plans') createPlan(@Body() dto: SavePlanDto) { return this.plans.create(dto as any); }
   @Put('plans/:id') updatePlan(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SavePlanDto) { return this.plans.update(id, dto as any); }

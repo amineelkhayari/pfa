@@ -16,11 +16,15 @@ import {
   Trash2,
   X,
   BookOpen,
-  ShieldCheck,
   Link2,
   CheckCircle2,
   Settings2,
+  ShieldCheck,
+  PackageCheck,
+  BarChart3,
 } from 'lucide-react';
+import { isOrderFulfilledOrClosed, canSendOrderConfirmation } from '../utils/orderStatus';
+import { StoreReportModal } from '../components/StoreReportModal';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '../components/Modal';
 import { StoreManager } from '../components/StoreManager';
@@ -119,6 +123,7 @@ export function Stores() {
   const [conversations, setConversations] = useState<Record<string, OrderAiConversation | null>>({});
   const [handoffOrderId, setHandoffOrderId] = useState<string | null>(null);
   const [managedStore, setManagedStore] = useState<Store | null>(null);
+  const [reportStore, setReportStore] = useState<Store | null>(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -492,6 +497,15 @@ export function Stores() {
                   {['shopify', 'woocommerce', 'youcan'].includes(store.provider) && store.settings?.connected && (
                     <button className="btn-secondary" onClick={() => openDetails(store, 'orders')}>
                       <ShoppingBag size={15} /> Orders
+                    </button>
+                  )}
+                  {['shopify', 'woocommerce', 'youcan'].includes(store.provider) && store.settings?.connected && (
+                    <button
+                      className="btn-secondary"
+                      onClick={() => setReportStore(store)}
+                      title="View store performance, evolution graphs & export report"
+                    >
+                      <BarChart3 size={15} /> Report
                     </button>
                   )}
                   {canWrite && (
@@ -877,6 +891,14 @@ export function Stores() {
             <button className={detailTab === 'reviews' ? 'active' : ''} onClick={() => setDetailTab('reviews')}>
               <Star size={15} /> Reviews ({reviews.length})
             </button>
+            <button
+              type="button"
+              className="btn-secondary btn-store-report"
+              onClick={() => setReportStore(detailStore)}
+              title="Open full analytics, evolution graphs & export"
+            >
+              <BarChart3 size={15} /> Report & Evolution
+            </button>
           </div>
         }
       >
@@ -951,7 +973,16 @@ export function Stores() {
                       <dt>Fulfillment</dt>
                       <dd>{order.fulfillmentStatus || '—'}</dd>
                       <dt>WhatsApp confirmation</dt>
-                      <dd>{order.confirmationStatus || 'not_sent'}</dd>
+                      <dd>
+                        {isOrderFulfilledOrClosed(order) && (order.confirmationStatus === 'not_sent' || !order.confirmationStatus) ? (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)' }}>
+                            <PackageCheck size={14} style={{ color: '#0284c7' }} />
+                            <span>not_sent (fulfilled & closed in store)</span>
+                          </span>
+                        ) : (
+                          order.confirmationStatus || 'not_sent'
+                        )}
+                      </dd>
                       <dt>Confirmation sent</dt>
                       <dd>{order.confirmationSentAt ? new Date(order.confirmationSentAt).toLocaleString() : '—'}</dd>
                       {order.confirmationError && (
@@ -975,22 +1006,28 @@ export function Stores() {
                           </div>
                         ) : null}
                       </dd>
-                      {canWrite && ['pending', 'not_sent', 'failed'].includes(order.confirmationStatus) && (
+                      {canWrite && (
                         <>
                           <dt>Action</dt>
-                          <dd>
-                            <button
-                              className="btn-secondary"
-                              disabled={remindingOrderId === order.id || trialGate.blocked}
-                              onClick={() => remindOrder(order)}
-                            >
-                              {remindingOrderId === order.id ? (
-                                <Loader2 className="animate-spin" size={15} />
-                              ) : (
-                                <Bell size={15} />
-                              )}
-                              Send reminder
-                            </button>
+                          <dd style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            {canSendOrderConfirmation(order) ? (
+                              <button
+                                className="btn-secondary"
+                                disabled={remindingOrderId === order.id || trialGate.blocked}
+                                onClick={() => remindOrder(order)}
+                              >
+                                {remindingOrderId === order.id ? (
+                                  <Loader2 className="animate-spin" size={15} />
+                                ) : (
+                                  <Bell size={15} />
+                                )}
+                                {order.confirmationStatus === 'not_sent' ? 'Send confirmation' : 'Send reminder'}
+                              </button>
+                            ) : isOrderFulfilledOrClosed(order) ? (
+                              <span className="text-muted" style={{ fontSize: '0.8125rem' }}>
+                                No confirmation needed (order fulfilled)
+                              </span>
+                            ) : null}
                             <button
                               className="btn-secondary"
                               disabled={handoffOrderId === order.id || trialGate.blocked}
@@ -1059,6 +1096,8 @@ export function Stores() {
           {t('stores.deleteConfirm')} <strong>{deleting?.name}</strong>
         </p>
       </Modal>
+
+      <StoreReportModal store={reportStore} onClose={() => setReportStore(null)} />
     </div>
   );
 }

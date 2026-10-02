@@ -1013,10 +1013,22 @@ html[dir='rtl'] .landing .final-cta button svg {
   width: 100%;
   padding: 12px;
   margin: 22px 0;
-  border: 1px solid #cad8d0;
-  background: white;
-  color: var(--ink);
-  font-weight: 800;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-white);
+  color: var(--text-primary);
+  font-weight: 700;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.pricing-grid article > button:hover {
+  background: var(--surface-hover);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 .pricing-grid .featured > button {
   background: var(--green);
@@ -1026,6 +1038,11 @@ html[dir='rtl'] .landing .final-cta button svg {
   justify-content: center;
   align-items: center;
   gap: 7px;
+}
+.pricing-grid .featured > button:hover {
+  background: var(--green-dark);
+  border-color: var(--green-dark);
+  color: white;
 }
 .pricing-grid ul {
   list-style: none;
@@ -1510,6 +1527,26 @@ html[dir='rtl'] .landing .final-cta button svg {
 .landing[data-theme='dark'] .flow-step,
 .landing[data-theme='dark'] .campaign-numbers > div { background: var(--bg-card); border-color: var(--border); }
 .landing[data-theme='dark'] .pricing-card.featured { background: var(--bg-card); border-color: var(--primary); }
+.landing[data-theme='dark'] .pricing-grid article > button {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+.landing[data-theme='dark'] .pricing-grid article > button:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+}
+.landing[data-theme='dark'] .pricing-grid .featured > button {
+  background: var(--primary);
+  color: #ffffff;
+  border-color: var(--primary);
+}
+.landing[data-theme='dark'] .pricing-grid .featured > button:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: #ffffff;
+}
 .landing[data-theme='dark'] .faq-answer { color: var(--muted); }
 .landing[data-theme='dark'] .footer-bottom { border-color: #293b33; }
 

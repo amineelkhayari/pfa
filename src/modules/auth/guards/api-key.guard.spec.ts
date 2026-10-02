@@ -3,11 +3,11 @@ import { ApiKeyGuard } from './api-key.guard';
 import { ApiKeyRole } from '../entities/api-key.entity';
 import { PUBLIC_KEY, REQUIRED_ROLE_KEY, SESSION_SCOPED_KEY } from '../decorators/auth.decorators';
 
-function context(headers: Record<string, string> = {}, params: Record<string, string> = {}) {
+function context(headers: Record<string, string> = {}, params: Record<string, string> = {}, path = '/api/sessions') {
   const request = {
     headers,
     params,
-    path: '/api/sessions',
+    path,
     method: 'GET',
     ip: '127.0.0.1',
     socket: { remoteAddress: '127.0.0.1' },
@@ -78,5 +78,26 @@ describe('JWT-only global auth guard', () => {
     const request = context({ authorization: 'Bearer jwt-token' }, { id: 'session-2' });
     await expect(guard.canActivate(request.value)).rejects.toThrow(ForbiddenException);
     expect(sessions.existsBy).toHaveBeenCalledWith({ id: 'session-2', userId: 'user-1' });
+  });
+
+  it('allows administrator accounts to access /api/ai/test-chat routes', async () => {
+    const adminUser = { id: 'admin-1', role: ApiKeyRole.ADMIN, status: 'active' } as any;
+    const { guard, users } = build();
+    users.validateToken.mockResolvedValue(adminUser);
+    const request = context({ authorization: 'Bearer jwt-token' }, {}, '/api/ai/test-chat');
+    await expect(guard.canActivate(request.value)).resolves.toBe(true);
+
+    const speechRequest = context({ authorization: 'Bearer jwt-token' }, {}, '/api/ai/test-chat/speech');
+    await expect(guard.canActivate(speechRequest.value)).resolves.toBe(true);
+  });
+
+  it('rejects administrator accounts from accessing tenant-only resources', async () => {
+    const adminUser = { id: 'admin-1', role: ApiKeyRole.ADMIN, status: 'active' } as any;
+    const { guard, users } = build();
+    users.validateToken.mockResolvedValue(adminUser);
+    const request = context({ authorization: 'Bearer jwt-token' }, {}, '/api/sessions');
+    await expect(guard.canActivate(request.value)).rejects.toThrow(
+      'Administrator accounts can only access administration resources',
+    );
   });
 });

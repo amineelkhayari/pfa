@@ -28,5 +28,9 @@ export class PaymentTransaction {
   @Column({ type: 'varchar', length: 3, default: 'USD' }) currency: string;
   @Column({ type: 'varchar', length: 255, nullable: true }) description: string | null;
   @Column({ type: dateColumnType(), nullable: true, transformer: DateTransformer }) paidAt: Date | null;
+  @Column({ type: dateColumnType(), nullable: true, transformer: DateTransformer }) refundRequestedAt?: Date | null;
+  @Column({ type: 'varchar', length: 500, nullable: true }) refundRequestReason?: string | null;
+  @Column({ type: 'varchar', length: 30, default: 'none' }) refundRequestStatus?: 'none' | 'pending' | 'approved' | 'rejected';
+  @Column({ type: 'varchar', length: 500, nullable: true }) refundRejectionReason?: string | null;
   @CreateDateColumn() createdAt: Date;
 }

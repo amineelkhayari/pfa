@@ -107,9 +107,9 @@ export class BillingConfigService implements OnModuleInit {
     return this.update({
       aiOrderConfirmationEnabled: patch.enabled,
       aiProvider: patch.provider,
-      aiBaseUrl: patch.baseUrl,
-      openAiApiKey: patch.apiKey,
-      openAiOrderModel: patch.model,
+      aiBaseUrl: patch.baseUrl !== undefined ? patch.baseUrl.trim() : undefined,
+      openAiApiKey: patch.apiKey !== undefined ? patch.apiKey.trim() : undefined,
+      openAiOrderModel: patch.model !== undefined ? patch.model.trim() : undefined,
       aiOrderMaxTurns: patch.maxTurns,
       aiOrderConversationTimeoutHours: patch.conversationTimeoutHours,
       audioSttModel: patch.audioSttModel,
@@ -128,7 +128,7 @@ export class BillingConfigService implements OnModuleInit {
     return this.current.openAiApiKey;
   }
   aiModel() {
-    return String(this.current.openAiOrderModel ?? 'gpt-5.4-nano');
+    return String(this.current.openAiOrderModel ?? 'gpt-5.4-nano').trim();
   }
   aiProvider() {
     return (this.current.aiProvider ?? 'openai') as 'openai' | 'openrouter' | 'gemini' | 'custom';

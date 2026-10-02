@@ -38,16 +38,34 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
   onModuleInit() {
     const configured = Number.parseInt(process.env.BILLING_RECONCILIATION_INTERVAL_MINUTES || '15', 10);
     const minutes = Number.isFinite(configured) ? configured : 15;
-    if (minutes <= 0) return;
-    this.reconciliationTimer = setInterval(() => void this.reconcileStaleSubscriptions(), minutes * 60_000);
-    this.reconciliationTimer.unref();
+    if (minutes > 0) {
+      this.reconciliationTimer = setInterval(() => void this.reconcileStaleSubscriptions(), minutes * 60_000);
+      this.reconciliationTimer.unref();
+    }
+    // Startup check for refunded subscriptions
+    void this.cleanupRefundedSubscriptions();
+  }
+
+  private async cleanupRefundedSubscriptions() {
+    try {
+      const activeSubs = await this.subscriptions.find({
+        where: [{ status: 'active' }, { status: 'trialing' }],
+      });
+      const userIds = [...new Set(activeSubs.map(s => s.userId))];
+      for (const uid of userIds) {
+        await this.refreshUserPlan(uid);
+      }
+    } catch (e) {
+      this.logger.warn(`Failed startup cleanup of refunded subscriptions: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   onModuleDestroy() {
     if (this.reconciliationTimer) clearInterval(this.reconciliationTimer);
   }
 
-  status(userId: string) {
+  async status(userId: string) {
+    await this.refreshUserPlan(userId);
     return this.subscriptions.find({ where: { userId }, order: { updatedAt: 'DESC' } });
   }
 
@@ -323,6 +341,46 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('Subscription is not connected to a payment provider');
     const warnings: string[] = [];
 
+    // Check FIRST if this subscription's payments were fully refunded
+    const txs = (await this.transactions.find({
+      where: row.providerSubscriptionId
+        ? [{ providerSubscriptionId: row.providerSubscriptionId }]
+        : [{ userId: row.userId, provider: row.provider }],
+    })) || [];
+    const succeeded = txs.filter(t => t.status === PaymentStatus.SUCCEEDED);
+    const refunded = txs.filter(t => t.status === PaymentStatus.REFUNDED);
+    const totalPaid = succeeded.reduce((sum, t) => sum + t.amount, 0);
+    const totalRefunded = refunded.reduce((sum, t) => sum + t.amount, 0);
+
+    if (totalPaid > 0 && totalRefunded >= totalPaid) {
+      warnings.push(`Subscription payments were fully refunded (${(totalRefunded / 100).toFixed(2)} ${txs[0]?.currency || 'USD'}). Subscription marked as cancelled.`);
+      row.status = 'cancelled';
+      row.cancelAtPeriodEnd = false;
+      row.currentPeriodEnd = new Date();
+      if (row.provider === BillingProvider.PAYPAL && row.providerSubscriptionId) {
+        try {
+          const token = await this.payPalToken();
+          await fetch(
+            `${this.payPalBase()}/v1/billing/subscriptions/${encodeURIComponent(row.providerSubscriptionId)}/cancel`,
+            {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reason: 'Subscription refunded' }),
+            },
+          );
+        } catch {
+          // ignore remote cancellation errors
+        }
+      }
+      await this.subscriptions.save(row);
+      await this.refreshUserPlan(row.userId);
+      return {
+        subscription: await this.subscriptions.findOneByOrFail({ id: row.id }),
+        reconciledAt: new Date(),
+        warnings,
+      };
+    }
+
     if (row.provider === BillingProvider.STRIPE) {
       const provider = await this.getStripeSubscription(row.providerSubscriptionId, true);
       const providerPlan = this.planSlugForProviderPrice(
@@ -350,28 +408,50 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       }
       row.providerScheduleId = this.stripeId(provider.schedule) ?? row.providerScheduleId;
     } else {
-      const token = await this.payPalToken();
-      const response = await fetch(
-        `${this.payPalBase()}/v1/billing/subscriptions/${encodeURIComponent(row.providerSubscriptionId)}`,
-        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } },
-      );
-      const provider = await this.json(response);
-      if (!response.ok) throw new BadGatewayException(provider.message ?? 'Unable to read PayPal subscription');
-      const providerPlan = this.planSlugForProviderPrice(BillingProvider.PAYPAL, String(provider.plan_id ?? ''));
-      row.status = String(provider.status ?? row.status).toLowerCase();
-      const nextBilling = provider.billing_info?.next_billing_time
-        ? new Date(provider.billing_info.next_billing_time)
-        : null;
-      if (nextBilling && !Number.isNaN(nextBilling.getTime())) row.currentPeriodEnd = nextBilling;
-      if (row.planChangeStatus === PlanChangeStatus.PENDING_APPROVAL && providerPlan === row.pendingPlanSlug)
-        row.planChangeStatus = PlanChangeStatus.SCHEDULED;
-      else if (
-        ![PlanChangeStatus.PENDING_APPROVAL, PlanChangeStatus.SCHEDULED].includes(row.planChangeStatus) &&
-        providerPlan &&
-        providerPlan !== row.planSlug
-      ) {
-        warnings.push(`Local plan ${row.planSlug} was corrected to PayPal plan ${providerPlan}.`);
-        row.planSlug = providerPlan;
+      try {
+        const token = await this.payPalToken();
+        const response = await fetch(
+          `${this.payPalBase()}/v1/billing/subscriptions/${encodeURIComponent(row.providerSubscriptionId)}`,
+          { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } },
+        );
+        const provider = await this.json(response);
+        if (!response.ok) {
+          if (response.status === 404) {
+            warnings.push('Subscription was not found on PayPal; marked as cancelled.');
+            row.status = 'cancelled';
+            row.cancelAtPeriodEnd = false;
+            row.currentPeriodEnd = new Date();
+          } else {
+            this.logger.warn(`PayPal subscription check returned ${response.status}: ${provider.message || 'Unknown error'}`);
+            warnings.push(`PayPal sync notice: ${provider.message ?? 'Unable to read PayPal subscription'}`);
+          }
+        } else {
+          const providerPlan = this.planSlugForProviderPrice(BillingProvider.PAYPAL, String(provider.plan_id ?? ''));
+          row.status = String(provider.status ?? row.status).toLowerCase();
+          if (['cancelled', 'expired'].includes(row.status)) {
+            row.cancelAtPeriodEnd = false;
+            row.currentPeriodEnd = new Date();
+          }
+          const nextBilling = provider.billing_info?.next_billing_time
+            ? new Date(provider.billing_info.next_billing_time)
+            : null;
+          if (nextBilling && !Number.isNaN(nextBilling.getTime()) && !['cancelled', 'expired'].includes(row.status)) {
+            row.currentPeriodEnd = nextBilling;
+          }
+          if (row.planChangeStatus === PlanChangeStatus.PENDING_APPROVAL && providerPlan === row.pendingPlanSlug)
+            row.planChangeStatus = PlanChangeStatus.SCHEDULED;
+          else if (
+            ![PlanChangeStatus.PENDING_APPROVAL, PlanChangeStatus.SCHEDULED].includes(row.planChangeStatus) &&
+            providerPlan &&
+            providerPlan !== row.planSlug
+          ) {
+            warnings.push(`Local plan ${row.planSlug} was corrected to PayPal plan ${providerPlan}.`);
+            row.planSlug = providerPlan;
+          }
+        }
+      } catch (err) {
+        this.logger.warn(`PayPal sync error: ${err instanceof Error ? err.message : String(err)}`);
+        warnings.push(`PayPal service notice: ${err instanceof Error ? err.message : 'Unable to reach PayPal'}`);
       }
     }
 
@@ -453,7 +533,25 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       );
       if (!response.ok && response.status !== 204) {
         const data = await this.json(response);
-        throw new BadGatewayException(data.message ?? 'PayPal cancellation failed');
+        const isAlreadyInactive =
+          response.status === 404 ||
+          response.status === 422 ||
+          String(data.name || '').includes('UNPROCESSABLE_ENTITY') ||
+          (Array.isArray(data.details) &&
+            data.details.some(
+              (d: Json) =>
+                d.issue === 'SUBSCRIPTION_STATUS_INVALID' ||
+                String(d.description || '')
+                  .toLowerCase()
+                  .includes('not active'),
+            ));
+        if (isAlreadyInactive) {
+          this.logger.warn(
+            `PayPal subscription ${row.providerSubscriptionId} already inactive or cancelled on PayPal: ${data.message ?? 'Status invalid'}`,
+          );
+        } else {
+          throw new BadGatewayException(data.message ?? 'PayPal cancellation failed');
+        }
       }
       row.status = 'cancelled';
       row.cancelAtPeriodEnd = false;
@@ -556,7 +654,105 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       paidAt: new Date(),
     });
     await this.transactions.save(refund);
+
+    // If original payment had a pending refund request, mark it as approved
+    if (payment.refundRequestStatus === 'pending') {
+      payment.refundRequestStatus = 'approved';
+      await this.transactions.save(payment);
+    }
+
+    // Cancel associated subscription and downgrade user to free plan upon refund
+    let sub: BillingSubscription | null = null;
+    if (payment.providerSubscriptionId) {
+      sub = await this.subscriptions.findOneBy({
+        provider: payment.provider,
+        providerSubscriptionId: payment.providerSubscriptionId,
+      });
+    }
+    if (!sub) {
+      sub = await this.subscriptions.findOne({
+        where: { userId: payment.userId, provider: payment.provider, status: In(['active', 'trialing']) },
+        order: { updatedAt: 'DESC' },
+      });
+    }
+    if (sub && ['active', 'trialing'].includes(sub.status.toLowerCase())) {
+      try {
+        await this.cancelSubscription(sub.id, undefined, true, `Refunded by administrator: ${reason}`);
+      } catch (err) {
+        this.logger.warn(
+          `Remote cancellation on refund failed: ${err instanceof Error ? err.message : String(err)}, updating local subscription`,
+        );
+        sub.status = 'cancelled';
+        sub.cancelAtPeriodEnd = false;
+        sub.currentPeriodEnd = new Date();
+        await this.subscriptions.save(sub);
+        await this.refreshUserPlan(payment.userId);
+      }
+    } else {
+      await this.refreshUserPlan(payment.userId);
+    }
+
     return refund;
+  }
+
+  async requestPaymentRefund(transactionId: string, userId: string, reason?: string) {
+    const payment = await this.transactions.findOneBy({ id: transactionId });
+    if (!payment) throw new NotFoundException('Transaction not found');
+    if (payment.userId !== userId) throw new UnauthorizedException('You can only request refunds for your own payments');
+    if (payment.status !== PaymentStatus.SUCCEEDED) throw new BadRequestException('Only successful payments can be refunded');
+    if (payment.amount <= 0) throw new BadRequestException('Zero-amount transactions cannot be refunded');
+
+    const paymentDate = payment.paidAt || payment.createdAt;
+    const diffMs = Date.now() - new Date(paymentDate).getTime();
+    const maxRefundWindowMs = 2 * 24 * 60 * 60 * 1000; // 48 hours (2 days)
+    if (diffMs > maxRefundWindowMs) {
+      throw new BadRequestException('Refund requests must be submitted within 2 days of payment');
+    }
+
+    if (payment.refundRequestStatus === 'pending') {
+      throw new BadRequestException('A refund request is already pending for this payment');
+    }
+    if (payment.refundRequestStatus === 'approved') {
+      throw new BadRequestException('This payment has already been refunded');
+    }
+
+    const prior = await this.transactions.find({
+      where: { parentTransactionId: payment.id, status: PaymentStatus.REFUNDED },
+    });
+    const priorTotal = prior.reduce((sum, row) => sum + row.amount, 0);
+    if (priorTotal >= payment.amount) {
+      throw new BadRequestException('This payment has already been fully refunded');
+    }
+
+    payment.refundRequestStatus = 'pending';
+    payment.refundRequestedAt = new Date();
+    payment.refundRequestReason = (reason?.trim() || 'Customer requested refund').slice(0, 500);
+    payment.refundRejectionReason = null;
+    return this.transactions.save(payment);
+  }
+
+  async approvePaymentRefund(transactionId: string) {
+    const payment = await this.transactions.findOneBy({ id: transactionId });
+    if (!payment) throw new NotFoundException('Transaction not found');
+    if (payment.refundRequestStatus !== 'pending') {
+      throw new BadRequestException('This payment does not have a pending refund request');
+    }
+    const reason = payment.refundRequestReason || 'Refund request approved by administrator';
+    const refund = await this.refundPayment(payment.id, payment.amount, reason);
+    payment.refundRequestStatus = 'approved';
+    await this.transactions.save(payment);
+    return refund;
+  }
+
+  async rejectPaymentRefund(transactionId: string, reason?: string) {
+    const payment = await this.transactions.findOneBy({ id: transactionId });
+    if (!payment) throw new NotFoundException('Transaction not found');
+    if (payment.refundRequestStatus !== 'pending') {
+      throw new BadRequestException('This payment does not have a pending refund request');
+    }
+    payment.refundRequestStatus = 'rejected';
+    payment.refundRejectionReason = (reason?.trim() || 'Refund request rejected by administrator').slice(0, 500);
+    return this.transactions.save(payment);
   }
 
   async adminHistory(query: PaymentHistoryQuery = {}) {
@@ -609,6 +805,9 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       'subscription_data[metadata][userId]': user.id,
       'subscription_data[metadata][planSlug]': plan.slug,
     });
+    if (plan.trialDays && plan.trialDays > 0) {
+      body.set('subscription_data[trial_period_days]', String(plan.trialDays));
+    }
     const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -648,6 +847,14 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`Stripe webhook received type=${String(event.type)} eventId=${String(event.id ?? 'unknown')}`);
     if (event.type === 'checkout.session.completed') {
       const userId = object.client_reference_id ?? object.metadata?.userId;
+      if (object.metadata?.type === 'quota_addon') {
+        const addonKey = String(object.metadata?.addonType || '');
+        const quantity = Number(object.metadata?.quantity || 1);
+        if (userId && addonKey) {
+          await this.applyQuotaAddon(userId, addonKey, quantity);
+        }
+        return;
+      }
       const planSlug = String(object.metadata?.planSlug ?? 'pro');
       const paid = ['paid', 'no_payment_required'].includes(String(object.payment_status));
       const subscriptionId = this.stripeId(object.subscription);
@@ -743,6 +950,20 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     if (plan.priceMonthly <= 0) throw new BadRequestException('Free plans do not require checkout');
     await this.assertCanCreateSubscription(user.id);
     const token = await this.payPalToken();
+    const subscriptionPayload: Record<string, any> = {
+      plan_id: plan.paypalPlanId || this.config.required('paypalPlanId', 'PAYPAL_PRO_PLAN_ID'),
+      custom_id: `${user.id}:${plan.slug}`,
+      subscriber: { name: { given_name: user.name }, email_address: user.email },
+      application_context: {
+        return_url: `${this.appUrl()}/account?billing=success`,
+        cancel_url: `${this.appUrl()}/account?billing=cancelled`,
+        user_action: 'SUBSCRIBE_NOW',
+      },
+    };
+    if (plan.trialDays && plan.trialDays > 0) {
+      const trialStartDate = new Date(Date.now() + plan.trialDays * 86_400_000);
+      subscriptionPayload.start_time = trialStartDate.toISOString();
+    }
     const response = await fetch(`${this.payPalBase()}/v1/billing/subscriptions`, {
       method: 'POST',
       headers: {
@@ -750,16 +971,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
         'Content-Type': 'application/json',
         Prefer: 'return=representation',
       },
-      body: JSON.stringify({
-        plan_id: plan.paypalPlanId || this.config.required('paypalPlanId', 'PAYPAL_PRO_PLAN_ID'),
-        custom_id: `${user.id}:${plan.slug}`,
-        subscriber: { name: { given_name: user.name }, email_address: user.email },
-        application_context: {
-          return_url: `${this.appUrl()}/account?billing=success`,
-          cancel_url: `${this.appUrl()}/account?billing=cancelled`,
-          user_action: 'SUBSCRIBE_NOW',
-        },
-      }),
+      body: JSON.stringify(subscriptionPayload),
     });
     const data = await this.json(response);
     const approve = Array.isArray(data.links)
@@ -871,6 +1083,30 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
         (!existing.planChangeEffectiveAt || existing.planChangeEffectiveAt <= new Date())
       )
         await this.completePlanChange(existing.id, existing.pendingPlanSlug);
+
+      if (['PAYMENT.SALE.REFUNDED', 'PAYMENT.SALE.REVERSED'].includes(eventType)) {
+        const targetSubId = subscriptionId || parent?.providerSubscriptionId;
+        let sub = targetSubId
+          ? await this.subscriptions.findOneBy({
+              provider: BillingProvider.PAYPAL,
+              providerSubscriptionId: targetSubId,
+            })
+          : null;
+        if (!sub) {
+          sub = await this.subscriptions.findOne({
+            where: { userId, provider: BillingProvider.PAYPAL, status: In(['active', 'trialing']) },
+            order: { updatedAt: 'DESC' },
+          });
+        }
+        if (sub && ['active', 'trialing'].includes(sub.status.toLowerCase())) {
+          sub.status = 'cancelled';
+          sub.cancelAtPeriodEnd = false;
+          sub.currentPeriodEnd = new Date();
+          await this.subscriptions.save(sub);
+          this.logger.log(`Subscription ${sub.id} cancelled due to PayPal refund event=${eventType}`);
+        }
+        await this.refreshUserPlan(userId);
+      }
     }
   }
 
@@ -942,6 +1178,29 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
         Number(object.status_transitions?.paid_at ?? object.created ?? event.created ?? Date.now() / 1000) * 1000,
       ),
     });
+
+    if (refunded) {
+      let sub = subscriptionId
+        ? await this.subscriptions.findOneBy({
+            provider: BillingProvider.STRIPE,
+            providerSubscriptionId: subscriptionId,
+          })
+        : existing;
+      if (!sub) {
+        sub = await this.subscriptions.findOne({
+          where: { userId, provider: BillingProvider.STRIPE, status: In(['active', 'trialing']) },
+          order: { updatedAt: 'DESC' },
+        });
+      }
+      if (sub && ['active', 'trialing'].includes(sub.status.toLowerCase())) {
+        sub.status = 'cancelled';
+        sub.cancelAtPeriodEnd = false;
+        sub.currentPeriodEnd = new Date();
+        await this.subscriptions.save(sub);
+        this.logger.log(`Subscription ${sub.id} cancelled due to Stripe charge.refunded`);
+      }
+      await this.refreshUserPlan(userId);
+    }
   }
 
   private async recordTransaction(
@@ -1157,8 +1416,33 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
   private async refreshUserPlan(userId: string) {
     const user = await this.users.findOneBy({ id: userId });
     if (!user) return;
-    const all = await this.subscriptions.find({ where: { userId } });
+    const all = (await this.subscriptions.find({ where: { userId } })) || [];
     const now = Date.now();
+
+    for (const subscription of all) {
+      if (['active', 'trialing'].includes(subscription.status.toLowerCase())) {
+        const txs = (await this.transactions.find({
+          where: subscription.providerSubscriptionId
+            ? [{ providerSubscriptionId: subscription.providerSubscriptionId }]
+            : [{ userId: subscription.userId, provider: subscription.provider }],
+        })) || [];
+        const succeeded = txs.filter(t => t.status === PaymentStatus.SUCCEEDED);
+        const refunded = txs.filter(t => t.status === PaymentStatus.REFUNDED);
+        const totalPaid = succeeded.reduce((sum, t) => sum + t.amount, 0);
+        const totalRefunded = refunded.reduce((sum, t) => sum + t.amount, 0);
+
+        if (totalPaid > 0 && totalRefunded >= totalPaid) {
+          this.logger.warn(
+            `Subscription ${subscription.id} (${subscription.provider}) was fully refunded (${totalRefunded}/${totalPaid}). Marking cancelled.`,
+          );
+          subscription.status = 'cancelled';
+          subscription.cancelAtPeriodEnd = false;
+          subscription.currentPeriodEnd = new Date();
+          await this.subscriptions.save(subscription);
+        }
+      }
+    }
+
     const active = all
       .filter(
         subscription =>
@@ -1204,17 +1488,28 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
 
   private async assertCanCreateSubscription(userId: string) {
     const rows = await this.subscriptions.find({ where: { userId } });
-    const existing = rows.find(
+    const now = Date.now();
+    const active = rows.find(
       row =>
-        ['active', 'trialing', 'pending', 'approval_pending', 'approved'].includes(row.status.toLowerCase()) ||
+        (['active', 'trialing'].includes(row.status.toLowerCase()) &&
+          (!row.currentPeriodEnd || row.currentPeriodEnd.getTime() > now)) ||
         [PlanChangeStatus.PENDING_PAYMENT, PlanChangeStatus.PENDING_APPROVAL, PlanChangeStatus.SCHEDULED].includes(
           row.planChangeStatus,
         ),
     );
-    if (existing)
+    if (active) {
       throw new BadRequestException(
-        'An active or pending subscription already exists. Change the existing subscription instead of creating another one.',
+        'An active subscription already exists. Change the existing subscription instead of creating another one.',
       );
+    }
+    const stale = rows.filter(row =>
+      ['pending', 'approval_pending'].includes(row.status.toLowerCase()),
+    );
+    for (const sub of stale) {
+      sub.status = 'cancelled';
+      sub.currentPeriodEnd = new Date();
+      await this.subscriptions.save(sub);
+    }
   }
 
   private stripePrice(plan: { stripePriceId: string | null; slug: string }) {
@@ -1402,7 +1697,222 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
   private async json(response: Response): Promise<Json> {
     return response.json().catch(() => ({})) as Promise<Json>;
   }
+  listAddons() {
+    return Object.values(QUOTA_ADDONS);
+  }
+
+  async applyQuotaAddon(
+    userId: string,
+    addonKey: string,
+    quantity = 1,
+    providerPaymentId?: string,
+    providerEventId?: string,
+  ) {
+    const safeQty = Math.max(1, Math.min(100, Math.floor(quantity)));
+    const addon = QUOTA_ADDONS[addonKey];
+    if (!addon) throw new BadRequestException(`Unknown quota addon: ${addonKey}`);
+
+    if (providerPaymentId) {
+      const existing = await this.transactions.findOne({
+        where: [
+          { providerPaymentId },
+          ...(providerEventId ? [{ providerEventId }] : []),
+        ],
+      });
+      if (existing) {
+        const user = await this.users.findOneBy({ id: userId });
+        const currentSettings = (user?.settings as Record<string, any>) || {};
+        return {
+          success: true,
+          addonKey,
+          quantity: safeQty,
+          extraQuota: currentSettings.extraQuota || {},
+          message: `${addon.title} was already credited to your account.`,
+        };
+      }
+    }
+
+    const user = await this.users.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException('User not found');
+
+    const currentSettings = (user.settings as Record<string, any>) || {};
+    const currentQuota = currentSettings.extraQuota || {};
+
+    const updatedQuota = {
+      sessions: (Number(currentQuota.sessions) || 0) + (addon.increments.sessions || 0) * safeQty,
+      stores: (Number(currentQuota.stores) || 0) + (addon.increments.stores || 0) * safeQty,
+      sentMessages: (Number(currentQuota.sentMessages) || 0) + (addon.increments.sentMessages || 0) * safeQty,
+      receivedMessages: (Number(currentQuota.receivedMessages) || 0) + (addon.increments.receivedMessages || 0) * safeQty,
+      aiTokens: (Number(currentQuota.aiTokens) || 0) + (addon.increments.aiTokens || 0) * safeQty,
+    };
+
+    const currentTrialEndsAt = currentSettings.trialEndsAt ? new Date(currentSettings.trialEndsAt).getTime() : 0;
+    const thirtyDaysFromNow = Date.now() + 30 * 86_400_000;
+    const newTrialEndsAt = new Date(Math.max(currentTrialEndsAt, thirtyDaysFromNow)).toISOString();
+
+    user.settings = {
+      ...currentSettings,
+      extraQuota: updatedQuota,
+      trialEndsAt: newTrialEndsAt,
+    };
+    await this.users.save(user);
+
+    const transaction = this.transactions.create({
+      userId: user.id,
+      provider: this.config.enabled('stripe') ? BillingProvider.STRIPE : BillingProvider.PAYPAL,
+      providerEventId: providerEventId || `addon:${addonKey}:${Date.now()}`,
+      providerPaymentId: providerPaymentId || `addon_${Date.now()}`,
+      status: PaymentStatus.SUCCEEDED,
+      amount: addon.priceCents * safeQty,
+      currency: 'USD',
+      description: `Purchased Addon: ${addon.title} (x${safeQty})`,
+      paidAt: new Date(),
+    });
+    await this.transactions.save(transaction);
+
+    return {
+      success: true,
+      addonKey,
+      quantity: safeQty,
+      extraQuota: updatedQuota,
+      message: `Successfully added ${addon.title} (x${safeQty}) to your account.`,
+    };
+  }
+
+  async claimStripeAddonSession(userId: string, sessionId: string) {
+    if (!sessionId || !sessionId.startsWith('cs_')) {
+      throw new BadRequestException('Invalid session ID');
+    }
+    const secret = this.config.required('stripeSecretKey', 'STRIPE_SECRET_KEY');
+    const response = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, {
+      headers: { Authorization: `Bearer ${secret}` },
+    });
+    const session = await this.json(response);
+    if (!response.ok || !session.id) {
+      throw new BadGatewayException(session.error?.message ?? 'Unable to verify Stripe checkout session');
+    }
+    if (session.payment_status !== 'paid') {
+      throw new BadRequestException('Payment has not been completed yet for this session.');
+    }
+    const sessionUserId = session.client_reference_id ?? session.metadata?.userId;
+    if (sessionUserId !== userId) {
+      throw new UnauthorizedException('This checkout session does not belong to your account.');
+    }
+    if (session.metadata?.type !== 'quota_addon') {
+      throw new BadRequestException('This checkout session is not an add-on purchase.');
+    }
+    const addonKey = String(session.metadata?.addonType || '');
+    const quantity = Number(session.metadata?.quantity || 1);
+    return this.applyQuotaAddon(
+      userId,
+      addonKey,
+      quantity,
+      this.stripeId(session.payment_intent) ?? session.id,
+      `stripe_session:${session.id}`,
+    );
+  }
+
+  async createAddonCheckout(user: UserAccount, addonKey: string, quantity = 1): Promise<{ url?: string; success?: boolean; mode: string; extraQuota?: any; message?: string }> {
+    const addon = QUOTA_ADDONS[addonKey];
+    if (!addon) throw new BadRequestException(`Unknown quota addon: ${addonKey}`);
+    const safeQty = Math.max(1, Math.min(100, Math.floor(quantity)));
+
+    if (this.config.enabled('stripe')) {
+      const secret = this.config.required('stripeSecretKey', 'STRIPE_SECRET_KEY');
+      const appUrl = this.appUrl();
+      const body = new URLSearchParams({
+        mode: 'payment',
+        success_url: `${appUrl}/account?addon=success&session_id={CHECKOUT_SESSION_ID}&key=${addonKey}`,
+        cancel_url: `${appUrl}/account?addon=cancelled`,
+        client_reference_id: user.id,
+        customer_email: user.email,
+        'line_items[0][price_data][currency]': 'usd',
+        'line_items[0][price_data][unit_amount]': String(addon.priceCents),
+        'line_items[0][price_data][product_data][name]': addon.title,
+        'line_items[0][price_data][product_data][description]': addon.description,
+        'line_items[0][quantity]': String(safeQty),
+        'metadata[type]': 'quota_addon',
+        'metadata[userId]': user.id,
+        'metadata[addonType]': addonKey,
+        'metadata[quantity]': String(safeQty),
+      });
+
+      const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      });
+      const data = await this.json(response);
+      if (!response.ok || typeof data.url !== 'string') {
+        throw new BadGatewayException(data.error?.message ?? 'Stripe addon checkout failed');
+      }
+      return { url: data.url, mode: 'stripe' };
+    }
+
+    const result = await this.applyQuotaAddon(user.id, addonKey, safeQty);
+    return {
+      success: true,
+      mode: 'instant',
+      extraQuota: result.extraQuota,
+      message: result.message,
+    };
+  }
 }
+
+export interface QuotaAddonDef {
+  key: string;
+  title: string;
+  description: string;
+  category: 'sessions' | 'stores' | 'messages' | 'ai';
+  priceCents: number;
+  currency: string;
+  increments: {
+    sessions?: number;
+    stores?: number;
+    sentMessages?: number;
+    receivedMessages?: number;
+    aiTokens?: number;
+  };
+}
+
+export const QUOTA_ADDONS: Record<string, QuotaAddonDef> = {
+  extra_session: {
+    key: 'extra_session',
+    title: '+1 WhatsApp Session',
+    description: 'Add 1 additional connected WhatsApp session slot to your workspace',
+    category: 'sessions',
+    priceCents: 300,
+    currency: 'USD',
+    increments: { sessions: 1 },
+  },
+  extra_store: {
+    key: 'extra_store',
+    title: '+1 Connected Store',
+    description: 'Add 1 additional store connection slot to your workspace',
+    category: 'stores',
+    priceCents: 200,
+    currency: 'USD',
+    increments: { stores: 1 },
+  },
+  extra_messages_1k: {
+    key: 'extra_messages_1k',
+    title: '+1,000 Messages Pack',
+    description: 'Add 1,000 sent & 1,000 received message allowance to your monthly quota',
+    category: 'messages',
+    priceCents: 500,
+    currency: 'USD',
+    increments: { sentMessages: 1000, receivedMessages: 1000 },
+  },
+  extra_ai_tokens_50k: {
+    key: 'extra_ai_tokens_50k',
+    title: '+50,000 AI Tokens Pack',
+    description: 'Add 50,000 AI tokens for bot context, replies, and intelligent workflows',
+    category: 'ai',
+    priceCents: 300,
+    currency: 'USD',
+    increments: { aiTokens: 50000 },
+  },
+};
 
 export interface PaymentHistoryQuery {
   userId?: string;

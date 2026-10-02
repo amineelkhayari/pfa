@@ -743,3 +743,87 @@
   color: var(--error);
   margin-bottom: 1rem;
 }
+
+/* Danger Zone - Reset Database */
+.infrastructure-page .danger-zone-card {
+  grid-column: 1 / -1;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.infrastructure-page .danger-zone-card .card-header {
+  border-bottom-color: rgba(239, 68, 68, 0.2);
+}
+
+.infrastructure-page .danger-header-icon {
+  color: var(--error) !important;
+}
+
+.infrastructure-page .danger-header-title {
+  color: var(--error);
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.infrastructure-page .danger-header-desc {
+  color: var(--text-secondary);
+  margin: 0.25rem 0 0;
+  font-size: 0.8125rem;
+}
+
+.infrastructure-page .danger-box {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 8px;
+  padding: 0.875rem 1rem;
+  color: var(--error);
+  font-size: 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.infrastructure-page .danger-box p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.infrastructure-page .danger-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 1rem;
+  align-items: flex-end;
+  margin-top: 1rem;
+}
+
+@media (max-width: 768px) {
+  .infrastructure-page .danger-form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.infrastructure-page .btn-danger-reset {
+  height: 42px;
+  background: var(--error);
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  font-weight: 600;
+  padding: 0 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: opacity 0.2s, filter 0.2s;
+  white-space: nowrap;
+}
+
+.infrastructure-page .btn-danger-reset:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.infrastructure-page .btn-danger-reset:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
