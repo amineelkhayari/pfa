@@ -113,7 +113,7 @@
 }
 
 .period-btn.active {
-  background: var(--bg-surface);
+  background: var(--bg-card);
   color: var(--primary);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
@@ -154,15 +154,19 @@
 }
 
 .btn-close-modal {
-  padding: 0.45rem;
+  padding: 0;
+  width: 32px;
+  height: 32px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
 }
 
 .btn-close-modal:hover {

@@ -34,6 +34,10 @@
   --radius: 10px;
   --radius-lg: 16px;
   --radius-xl: 24px;
+  --bg-surface: #ffffff;
+  --border-hover: #cbd5e1;
+  --font-mono: 'JetBrains Mono', Consolas, Monaco, 'Courier New', monospace;
+  --text: #0f172a;
 }
 
 /* Dark Mode */
@@ -63,6 +67,10 @@
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
   --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.5);
+  --bg-surface: #1e293b;
+  --border-hover: #475569;
+  --font-mono: 'JetBrains Mono', Consolas, Monaco, 'Courier New', monospace;
+  --text: #f1f5f9;
 }
 
 /* Explicit light toggle: keep native controls light even if the OS prefers dark. */
@@ -95,6 +103,10 @@
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
     --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.5);
+    --bg-surface: #1e293b;
+    --border-hover: #475569;
+    --font-mono: 'JetBrains Mono', Consolas, Monaco, 'Courier New', monospace;
+    --text: #f1f5f9;
   }
 }
 

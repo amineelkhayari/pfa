@@ -335,7 +335,7 @@ export function Account() {
               {activePayPalSub && (
                 <a
                   className="account-secondary"
-                  href="https://www.paypal.com/myaccount/autopay/"
+                  href="https://www.sandbox.paypal.com/myaccount/autopay/"
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}

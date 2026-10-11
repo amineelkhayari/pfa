@@ -92,11 +92,12 @@
 
 .toast-close {
   flex-shrink: 0;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 24px;
   height: 24px;
+  padding: 0;
   border-radius: 6px;
   border: none;
   background: transparent;

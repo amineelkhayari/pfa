@@ -62,8 +62,8 @@
 .quota-field-item label { font-size: .75rem; color: var(--text-secondary); font-weight: 600; }
 .quota-field-inputs { display: flex; gap: .35rem; align-items: center; }
 .quota-field-inputs input[type="number"] { width: 100%; padding: .4rem .5rem; border: 1px solid var(--border); border-radius: 6px; font-size: .8rem; background: var(--bg-white); color: var(--text-primary); }
-.quota-bump-btn { padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-light); font-size: .72rem; cursor: pointer; white-space: nowrap; }
-.quota-bump-btn:hover { background: color-mix(in srgb, var(--primary) 10%, var(--bg-white)); border-color: var(--primary); }
+.quota-bump-btn { padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-light); color: var(--text-primary); font-size: .72rem; cursor: pointer; white-space: nowrap; }
+.quota-bump-btn:hover { background: color-mix(in srgb, var(--primary) 10%, var(--bg-white)); border-color: var(--primary); color: var(--text-primary); }
 .quota-calc-row { font-size: .72rem; color: var(--text-secondary); margin-top: .15rem; }
 .quota-calc-row strong { color: var(--text-primary); }
 .quota-save-btn { width: 100%; padding: .5rem 1rem; border-radius: 6px; font-size: .8rem; font-weight: 600; cursor: pointer; border: none; background: var(--primary); color: #fff; }

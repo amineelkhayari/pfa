@@ -35,7 +35,6 @@ import {
 import { useTheme } from '../hooks/useTheme';
 import { type UserRole } from '../hooks/useRole';
 import { languageOptions, resolveSupportedLanguage, rtlLanguages, type SupportedLanguage } from '../i18n';
-import { healthApi } from '../services/api';
 import './Layout.css';
 import { ProductTour, START_PRODUCT_TOUR_EVENT } from './ProductTour';
 import { NotificationBell } from './NotificationBell';
@@ -137,7 +136,6 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   // Show the build-time version immediately, then replace it with the live running version from the
   // backend so a stale-built bundle can't display the wrong number. Falls back silently on error.
-  const [version, setVersion] = useState(__APP_VERSION__);
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
   const languageMenuRef = useRef<HTMLDivElement>(null);
 
@@ -151,20 +149,7 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    healthApi
-      .check()
-      .then(info => {
-        if (active && info?.version) setVersion(info.version);
-      })
-      .catch(() => {
-        /* keep the build-time fallback */
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+
 
   const handleNavClick = () => {
     if (isMobile) setIsMobileOpen(false);
@@ -216,7 +201,7 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
             {isMobileOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
           <div className="mobile-brand">
-            <img src="/smartconfirm_logo.webp" alt="SmartConfirm" className="sidebar-logo" />
+            <img src="/smartconfirm_logo.webp" alt="Smart Confirm" className="sidebar-logo" />
             <span className="brand-name">{t('common.appName')}</span>
           </div>
           <div style={{ width: 40 }} />
@@ -365,11 +350,7 @@ export function Layout({ onLogout, userRole }: LayoutProps) {
             <LogOut size={20} />
             {!isCollapsed && <span>{t('common.logout')}</span>}
           </button>
-          {!isCollapsed && (
-            <div className="sidebar-version" style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center', padding: '6px 0 2px' }}>
-              v{version}
-            </div>
-          )}
+          
         </div>
       </aside>
 

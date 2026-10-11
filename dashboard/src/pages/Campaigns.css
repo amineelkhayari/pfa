@@ -264,11 +264,22 @@
 [data-theme='dark'] .campaigns-page .pill.cancelled { background: rgba(239,68,68,.16); color: #fca5a5; }
 .campaign-row button {
   border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text);
-  padding: 0.4rem;
-  display: flex;
-  gap: 0.3rem;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+.campaign-row button:hover {
+  background: var(--surface-hover);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 .devices {
   margin-top: 1rem;

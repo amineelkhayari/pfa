@@ -6,7 +6,7 @@
     }
   },
   "common": {
-    "appName": "SmartConfirm",
+    "appName": "Smart Confirm",
     "loading": "Chargement...",
     "cancel": "Annuler",
     "automationOwnsChat": "L’automatisation gère cette discussion",

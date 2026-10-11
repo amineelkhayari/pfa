@@ -6,7 +6,7 @@
     }
   },
   "common": {
-    "appName": "SmartConfirm",
+    "appName": "Smart Confirm",
     "loading": "جارٍ التحميل...",
     "cancel": "إلغاء",
     "delete": "حذف",
@@ -187,7 +187,7 @@
     "connectionError": "تعذّر الاتصال بالخادم. يرجى المحاولة مرة أخرى.",
     "help": "هل تحتاج مساعدة؟",
     "viewDocs": "عرض التوثيق",
-    "footer": "صُنع بـ ❤️ بواسطة SmartConfirm Team ومجتمع SmartConfirm",
+    "footer": "صُنع بـ ❤️ بواسطة Smart Confirm Team ومجتمع Smart Confirm",
     "version": "v{{version}} · {{date}}"
   },
   "dashboard": {

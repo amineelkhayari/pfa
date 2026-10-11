@@ -62,7 +62,7 @@ export function createSwaggerConfig(): Omit<OpenAPIObject, 'paths'> {
   return (
     new DocumentBuilder()
       .setTitle('SmartConfirm API')
-      .setDescription('Open Source WhatsApp API Gateway - Free, Self-Hosted HTTP API')
+      .setDescription('SmartConfirm - E-Commerce WhatsApp Automation & COD Order Confirmation SaaS API')
       .setVersion(version)
       .addBearerAuth(
         {

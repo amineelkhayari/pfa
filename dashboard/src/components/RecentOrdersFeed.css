@@ -84,12 +84,14 @@
   justify-content: center;
   width: 32px;
   height: 32px;
+  padding: 0;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--bg-white);
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 
 .icon-refresh-btn:hover:not(:disabled) {

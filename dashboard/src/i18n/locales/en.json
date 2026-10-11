@@ -6,7 +6,7 @@
     }
   },
   "common": {
-    "appName": "SmartConfirm",
+    "appName": "Smart Confirm",
     "loading": "Loading...",
     "cancel": "Cancel",
     "automationOwnsChat": "Automation is handling this conversation",

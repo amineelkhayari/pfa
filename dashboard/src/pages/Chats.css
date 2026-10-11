@@ -577,8 +577,10 @@
 .chats-page .support-owner > div { flex: 1; min-width: 0; display: grid; }
 .chats-page .support-owner strong { color: var(--text-primary); font-size: 0.72rem; }
 .chats-page .support-owner span { color: var(--text-muted); font-size: 0.62rem; }
-.chats-page .support-owner button { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.45rem 0.55rem; border: 0; border-radius: 7px; background: currentColor; font-size: 0.62rem; font-weight: 800; }
-.chats-page .support-owner button svg, .chats-page .support-owner button:not(:disabled) { color: #fff; }
+.chats-page .support-owner button { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.45rem 0.65rem; border: 0; border-radius: 7px; background: #2563eb; color: #fff; font-size: 0.68rem; font-weight: 700; cursor: pointer; transition: all 0.15s ease; }
+.chats-page .support-owner.human button { background: var(--primary); color: #fff; }
+.chats-page .support-owner button:hover:not(:disabled) { opacity: 0.9; }
+.chats-page .support-owner button svg { color: #fff; stroke: currentColor; }
 .chats-page .customer-context-tabs { margin: 0.65rem 0.75rem 0; padding: 3px; display: flex; gap: 3px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-light); }
 .chats-page .customer-context-tabs button { flex: 1; padding: 0.45rem 0.3rem; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); font-size: 0.68rem; font-weight: 700; }
 .chats-page .customer-context-tabs button.active { background: var(--bg-card); color: var(--text-primary); box-shadow: var(--shadow-sm); }

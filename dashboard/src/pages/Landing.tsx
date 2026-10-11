@@ -52,9 +52,7 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
     <div className="landing" data-theme={resolvedTheme} dir={language === 'ar' ? 'rtl' : 'ltr'} lang={language}>
       <nav className="landing-nav">
         <a className="landing-brand" href="#top">
-          <span className="brand-mark">
-            <MessageCircle />
-          </span>
+          <img src="/smartconfirm_logo.webp" alt="SmartConfirm" className="brand-logo-img" style={{ width: '36px', height: '36px', objectFit: 'contain', borderRadius: '10px' }} />
           <span>SmartConfirm</span>
         </a>
         <button className="landing-menu" onClick={() => setMenuOpen(v => !v)} aria-label={copy.menu}>
@@ -479,11 +477,9 @@ export function Landing({ onSignIn, onSignUp }: LandingProps) {
         <div className="footer-top">
           <div>
             <a className="landing-brand" href="#top">
-              <span className="brand-mark">
-                <MessageCircle />
-              </span>
-              <span>SmartConfirm</span>
-            </a>
+          <img src="/smartconfirm_logo.webp" alt="SmartConfirm" className="brand-logo-img" style={{ width: '36px', height: '36px', objectFit: 'contain', borderRadius: '10px' }} />
+          <span>SmartConfirm</span>
+        </a>
             <p>{copy.footerText}</p>
           </div>
           <div>
